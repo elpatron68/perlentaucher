@@ -8,16 +8,18 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # WICHTIG: Du musst einen Runner mit dem Label "self-hosted" oder "linux" registrieren
+    # Siehe README für Anleitung zur Runner-Einrichtung
+    runs-on: self-hosted
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v3
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
 

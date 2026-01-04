@@ -1,7 +1,10 @@
-# Woodpecker CI Konfiguration als Alternative zu Forgejo Actions
+# Woodpecker CI Konfiguration
+# EMPFOHLEN: Einfacher als Forgejo Actions, da keine Runner-Einrichtung nötig ist
+# 
 # Um Woodpecker CI zu nutzen:
 # 1. Antrag stellen: https://codeberg.org/Codeberg/Community/issues
 # 2. Repository auf https://ci.codeberg.org aktivieren
+# 3. Diese Datei wird automatisch erkannt
 
 when:
   branch: [master, main]
@@ -21,13 +24,14 @@ steps:
       - python -m pip install --upgrade pip
       - pip install -r requirements.txt
       - pip install flake8
-      - echo "Linting mit flake8..."
+      - echo "=== Linting mit flake8 ==="
       - flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || true
       - flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      - echo "Python Syntax prüfen..."
+      - echo "=== Python Syntax prüfen ==="
       - python -m py_compile perlentaucher.py
-      - echo "Test: --help Option..."
+      - echo "=== Test: --help Option ==="
       - python perlentaucher.py --help
-      - echo "Test: Dry-run..."
+      - echo "=== Test: Dry-run ==="
       - python perlentaucher.py --limit 1 --loglevel DEBUG --download-dir /tmp/test_downloads || true
+      - echo "=== Tests abgeschlossen ==="
 
