@@ -1,5 +1,7 @@
 # Perlentaucher
 
+![Logo](assets/perlerntaucher_1024.png)
+
 Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/feed/) parst, bei [MediathekViewWeb](https://mediathekviewweb.de) sucht und die beste Qualität herunterlädt.
 
 ## Features
