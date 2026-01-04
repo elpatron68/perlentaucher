@@ -58,5 +58,58 @@ Englische Originalfassungen bevorzugen:
 python perlentaucher.py --sprache englisch
 ```
 
+## Docker-Nutzung
+
+Das Script kann auch als Docker-Container ausgeführt werden, der automatisch in einem konfigurierbaren Intervall läuft.
+
+### Docker-Image erstellen
+
+```bash
+docker build -t perlentaucher .
+```
+
+### Container ausführen
+
+Standard-Ausführung (alle 12 Stunden):
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  perlentaucher
+```
+
+Mit angepasstem Intervall (z.B. alle 6 Stunden):
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  -e INTERVAL_HOURS=6 \
+  perlentaucher
+```
+
+Mit allen Optionen:
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  -e INTERVAL_HOURS=12 \
+  -e LIMIT=5 \
+  -e SPRACHE=deutsch \
+  -e AUDIODESKRIPTION=ohne \
+  -e LOGLEVEL=INFO \
+  perlentaucher
+```
+
+### Umgebungsvariablen
+
+- `INTERVAL_HOURS`: Stunden zwischen den Ausführungen (Standard: 12)
+- `DOWNLOAD_DIR`: Download-Verzeichnis im Container (Standard: /downloads)
+- `LIMIT`: Anzahl der zu prüfenden RSS-Einträge (Standard: 10)
+- `LOGLEVEL`: Log-Level (Standard: INFO)
+- `SPRACHE`: Bevorzugte Sprache: `deutsch`, `englisch`, `egal` (Standard: deutsch)
+- `AUDIODESKRIPTION`: Bevorzugte Audiodeskription: `mit`, `ohne`, `egal` (Standard: egal)
+
+**Wichtig:** Verwenden Sie `-v` um ein Volume für die Downloads zu mounten, damit die Dateien auch nach dem Container-Stopp erhalten bleiben.
+
 ## Lizenz
 [MIT](LICENSE)
