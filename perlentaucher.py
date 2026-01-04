@@ -237,7 +237,7 @@ def score_movie(movie_data, prefer_language, prefer_audio_desc):
     
     return score
 
-def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="egal"):
+def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="egal", notify_url=None, entry_link=None):
     """
     Sucht nach einem Film in MediathekViewWeb und wählt die beste Fassung
     basierend auf den Präferenzen aus.
@@ -246,6 +246,8 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         movie_title: Der Filmtitel zum Suchen
         prefer_language: "deutsch", "englisch" oder "egal"
         prefer_audio_desc: "mit", "ohne" oder "egal"
+        notify_url: Optional - Apprise-URL für Benachrichtigungen
+        entry_link: Optional - Link zum Blog-Eintrag für Benachrichtigungen
     """
     logging.info(f"Suche in MediathekViewWeb nach: '{movie_title}'")
     payload = {
@@ -270,6 +272,13 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         results = data.get("result", {}).get("results", [])
         if not results:
             logging.warning(f"Keine Ergebnisse gefunden für '{movie_title}'")
+            # Benachrichtigung für keine Ergebnisse
+            if notify_url and APPRISE_AVAILABLE:
+                body = f"Keine Ergebnisse in der Mediathek gefunden:\n\n"
+                body += f"📽️ {movie_title}\n"
+                if entry_link:
+                    body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                send_notification(notify_url, "Film nicht gefunden", body, "warning")
             return None
         
         # Bewerte alle Ergebnisse
@@ -284,6 +293,14 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         
         if not scored_results:
             logging.warning(f"Keine gültigen Ergebnisse für '{movie_title}' gefunden")
+            # Benachrichtigung für erfolglose Suche
+            if notify_url and APPRISE_AVAILABLE:
+                body = f"Keine gültigen Ergebnisse für Film gefunden:\n\n"
+                body += f"📽️ {movie_title}\n"
+                body += f"ℹ️ Es wurden Ergebnisse gefunden, aber keine konnten verarbeitet werden.\n"
+                if entry_link:
+                    body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                send_notification(notify_url, "Suche erfolglos", body, "warning")
             return None
         
         # Sortiere nach Punktzahl (höchste zuerst)
@@ -411,7 +428,8 @@ def main():
     
     for i, movie in enumerate(movies):
         entry_id, entry, entry_link = new_entries[i]
-        result = search_mediathek(movie, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription)
+        result = search_mediathek(movie, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription, 
+                                 notify_url=args.notify, entry_link=entry_link)
         if result:
             success, title, filepath = download_movie(result, args.download_dir)
             # Markiere Eintrag als verarbeitet nach Download-Versuch
@@ -440,14 +458,7 @@ def main():
             if state_file:
                 save_processed_entry(state_file, entry_id)
                 logging.debug(f"Eintrag als verarbeitet markiert (Film nicht gefunden): '{entry.title}'")
-            
-            # Benachrichtigung für nicht gefundenen Film
-            if args.notify:
-                body = f"Film nicht in der Mediathek gefunden:\n\n"
-                body += f"📽️ {movie}\n"
-                if entry_link:
-                    body += f"\n🔗 Blog-Eintrag: {entry_link}"
-                send_notification(args.notify, "Film nicht gefunden", body, "warning")
+            # Hinweis: Benachrichtigung wird bereits in search_mediathek() gesendet
 
 if __name__ == "__main__":
     main()
