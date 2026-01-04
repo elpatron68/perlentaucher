@@ -6,7 +6,9 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 
 - Parst den RSS Feed nach neuen Filmeinträgen.
 - Sucht automatisch nach dem Filmtitel.
-- Lädt die Datei mit der höchsten Qualität herunter.
+- Lädt die beste Fassung basierend auf Ihren Präferenzen herunter.
+- Priorisierung nach Sprache (Deutsch/Englisch).
+- Priorisierung nach Audiodeskription (mit/ohne).
 - Konfigurierbarer Download-Ordner.
 - Logging.
 
@@ -36,12 +38,24 @@ python perlentaucher.py [Optionen]
 - `--download-dir`: Zielordner für Downloads (Standard: aktuelles Verzeichnis).
 - `--limit`: Anzahl der zu prüfenden RSS-Einträge (Standard: 10).
 - `--loglevel`: Detailgrad des Logs (Standard: INFO). Optionen: DEBUG, INFO, WARNING, ERROR.
+- `--sprache`: Bevorzugte Sprache (Standard: deutsch). Optionen: `deutsch`, `englisch`, `egal`.
+- `--audiodeskription`: Bevorzugte Audiodeskription (Standard: egal). Optionen: `mit`, `ohne`, `egal`.
 
-### Beispiel
+### Beispiele
 
 Die letzten 3 Filme suchen und in den Ordner `Filme` herunterladen:
 ```bash
 python perlentaucher.py --download-dir ./Filme --limit 3
+```
+
+Nur deutsche Fassungen ohne Audiodeskription bevorzugen:
+```bash
+python perlentaucher.py --sprache deutsch --audiodeskription ohne
+```
+
+Englische Originalfassungen bevorzugen:
+```bash
+python perlentaucher.py --sprache englisch
 ```
 
 ## Lizenz
