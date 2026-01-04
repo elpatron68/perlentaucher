@@ -8,6 +8,12 @@ import feedparser
 import json
 from datetime import datetime
 
+try:
+    import apprise
+    APPRISE_AVAILABLE = True
+except ImportError:
+    APPRISE_AVAILABLE = False
+
 # Configuration
 RSS_FEED_URL = "https://nexxtpress.de/author/mediathekperlen/feed/"
 MVW_API_URL = "https://mediathekviewweb.de/api/query"
@@ -49,6 +55,46 @@ def save_processed_entry(state_file, entry_id):
     except Exception as e:
         logging.error(f"Fehler beim Speichern der Status-Datei: {e}")
 
+def send_notification(apprise_url, title, body, notification_type="info"):
+    """
+    Sendet eine Benachrichtigung via Apprise.
+    
+    Args:
+        apprise_url: Apprise-URL (z.B. "mailto://user:pass@example.com" oder "discord://webhook_id/webhook_token")
+        title: Titel der Benachrichtigung
+        body: Inhalt der Benachrichtigung
+        notification_type: "success", "error", "warning" oder "info"
+    """
+    if not apprise_url or not APPRISE_AVAILABLE:
+        return
+    
+    try:
+        apobj = apprise.Apprise()
+        apobj.add(apprise_url)
+        
+        # Emoji basierend auf Typ
+        emoji_map = {
+            "success": "✅",
+            "error": "❌",
+            "warning": "⚠️",
+            "info": "ℹ️"
+        }
+        emoji = emoji_map.get(notification_type, "ℹ️")
+        
+        formatted_title = f"{emoji} {title}"
+        
+        success = apobj.notify(
+            body=body,
+            title=formatted_title,
+        )
+        
+        if success:
+            logging.debug(f"Benachrichtigung erfolgreich gesendet: {title}")
+        else:
+            logging.warning(f"Fehler beim Senden der Benachrichtigung: {title}")
+    except Exception as e:
+        logging.error(f"Fehler beim Senden der Benachrichtigung: {e}")
+
 def parse_rss_feed(limit, state_file=None):
     logging.info(f"Parse RSS-Feed: {RSS_FEED_URL}")
     feed = feedparser.parse(RSS_FEED_URL)
@@ -78,15 +124,30 @@ def parse_rss_feed(limit, state_file=None):
         
         title = entry.title
         # Regex to extract title from 'Director - „Movie" (Year)' or similar
-        # Looking for content inside „..."
-        match = re.search(r'„(.*?)"', title)
+        # Looking for content inside „..." - unterstützt verschiedene Anführungszeichen-Varianten
+        # Suche nach öffnendem „ (U+201E) und dann alles bis zum nächsten Anführungszeichen
+        # Unterstützt: „ " (U+201E + U+201C), „ " (U+201E + U+201D), „ " (U+201E + normales ")
+        # Verwendet Unicode-Escape-Sequenzen für bessere Kompatibilität
+        # U+201E = „, U+201C = ", U+201D = ", U+0022 = "
+        match = re.search(r'\u201E(.+?)(?:[\u201C\u201D\u0022])', title)
+        # Fallback: Normale Anführungszeichen
+        if not match:
+            match = re.search(r'"([^"]+?)"', title)
         if match:
             movie_title = match.group(1)
             logging.debug(f"Extracted movie title: '{movie_title}' from '{title}'")
             movies.append(movie_title)
-            new_entries.append((entry_id, entry))
+            # Speichere entry_id, entry und link für Benachrichtigungen
+            entry_link = entry.get('link', '')
+            new_entries.append((entry_id, entry, entry_link))
         else:
+            # Debug: Zeige die tatsächlichen Zeichen im Titel
             logging.warning(f"Konnte Filmtitel nicht aus RSS-Eintrag extrahieren: '{title}'")
+            logging.debug(f"Titel (repr): {repr(title)}")
+            # Zeige Unicode-Codepoints der Anführungszeichen
+            for i, char in enumerate(title):
+                if ord(char) in [0x201C, 0x201D, 0x201E, 0x201F, 0x2033, 0x2036, 0x275D, 0x275E, 34]:
+                    logging.debug(f"  Position {i}: '{char}' (U+{ord(char):04X})")
             # Auch Einträge ohne extrahierbaren Filmtitel als verarbeitet markieren,
             # damit sie nicht immer wieder versucht werden
             if state_file:
@@ -255,6 +316,12 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         return None
 
 def download_movie(movie_data, download_dir):
+    """
+    Lädt einen Film herunter.
+    
+    Returns:
+        tuple: (success: bool, title: str, filepath: str)
+    """
     url = movie_data.get("url_video")
     title = movie_data.get("title")
     # Clean filename
@@ -271,7 +338,7 @@ def download_movie(movie_data, download_dir):
         file_size = os.path.getsize(filepath)
         file_size_mb = file_size / (1024 * 1024)
         logging.info(f"Datei bereits vorhanden, überspringe Download: '{title}' -> {filepath} ({file_size_mb:.1f} MB)")
-        return
+        return (True, title, filepath)
 
     logging.info(f"Starte Download: '{title}' -> {filepath}")
     
@@ -293,12 +360,14 @@ def download_movie(movie_data, download_dir):
                          logging.info(f"Heruntergeladen: {downloaded / (1024*1024):.1f} MB ...")
         
         logging.info(f"Download abgeschlossen: {filepath}")
+        return (True, title, filepath)
 
     except Exception as e:
         logging.error(f"Download fehlgeschlagen für '{title}': {e}")
         # Clean up partial file
         if os.path.exists(filepath):
             os.remove(filepath)
+        return (False, title, filepath)
 
 def main():
     parser = argparse.ArgumentParser(description="Perlentaucher - RSS Feed Downloader for MediathekViewWeb")
@@ -313,6 +382,8 @@ def main():
                        help="Datei zum Speichern des Verarbeitungsstatus (Standard: .perlentaucher_state.json)")
     parser.add_argument("--no-state", action="store_true",
                        help="Deaktiviert das Tracking bereits verarbeiteter Einträge")
+    parser.add_argument("--notify", default=None,
+                       help="Apprise-URL für Benachrichtigungen (z.B. 'mailto://user:pass@example.com' oder 'discord://webhook_id/webhook_token')")
     
     args = parser.parse_args()
     
@@ -334,21 +405,49 @@ def main():
 
     movies, new_entries = parse_rss_feed(args.limit, state_file=state_file)
     
+    if args.notify and not APPRISE_AVAILABLE:
+        logging.warning("Apprise ist nicht installiert. Benachrichtigungen werden nicht gesendet.")
+        logging.warning("Installiere Apprise mit: pip install apprise")
+    
     for i, movie in enumerate(movies):
-        entry_id, entry = new_entries[i]
+        entry_id, entry, entry_link = new_entries[i]
         result = search_mediathek(movie, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription)
         if result:
-            download_movie(result, args.download_dir)
-            # Markiere Eintrag als verarbeitet nach erfolgreichem Download
+            success, title, filepath = download_movie(result, args.download_dir)
+            # Markiere Eintrag als verarbeitet nach Download-Versuch
             if state_file:
                 save_processed_entry(state_file, entry_id)
                 logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}'")
+            
+            # Benachrichtigung senden
+            if args.notify:
+                if success:
+                    body = f"Film erfolgreich heruntergeladen:\n\n"
+                    body += f"📽️ {title}\n"
+                    body += f"💾 {filepath}\n"
+                    if entry_link:
+                        body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                    send_notification(args.notify, "Download erfolgreich", body, "success")
+                else:
+                    body = f"Download fehlgeschlagen:\n\n"
+                    body += f"📽️ {title}\n"
+                    if entry_link:
+                        body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                    send_notification(args.notify, "Download fehlgeschlagen", body, "error")
         else:
             logging.warning(f"Überspringe '{movie}' - nicht in der Mediathek gefunden.")
             # Auch nicht gefundene Filme als verarbeitet markieren, damit sie nicht immer wieder versucht werden
             if state_file:
                 save_processed_entry(state_file, entry_id)
                 logging.debug(f"Eintrag als verarbeitet markiert (Film nicht gefunden): '{entry.title}'")
+            
+            # Benachrichtigung für nicht gefundenen Film
+            if args.notify:
+                body = f"Film nicht in der Mediathek gefunden:\n\n"
+                body += f"📽️ {movie}\n"
+                if entry_link:
+                    body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                send_notification(args.notify, "Film nicht gefunden", body, "warning")
 
 if __name__ == "__main__":
     main()

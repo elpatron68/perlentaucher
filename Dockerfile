@@ -23,6 +23,7 @@ ENV LIMIT=10
 ENV LOGLEVEL=INFO
 ENV SPRACHE=deutsch
 ENV AUDIODESKRIPTION=egal
+ENV NOTIFY=
 
 # Entrypoint
 ENTRYPOINT ["./docker-entrypoint.sh"]

@@ -11,7 +11,8 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 - Lädt die beste Fassung basierend auf deinen Präferenzen herunter.
 - Priorisierung nach Sprache (Deutsch/Englisch).
 - Priorisierung nach Audiodeskription (mit/ohne).
-- **Speichert bereits verarbeitete Blog-Beiträge** - verhindert doppelte Downloads.
+- Speichert bereits verarbeitete Blog-Beiträge - verhindert doppelte Downloads.
+- Optionale Benachrichtigungen via Apprise (Email, Discord, Telegram, Slack, etc.).
 - Konfigurierbarer Download-Ordner.
 - Logging.
 - Automatische Tests mit CI/CD-Pipeline (Codeberg Actions/Woodpecker CI).
@@ -46,6 +47,7 @@ python perlentaucher.py [Optionen]
 - `--audiodeskription`: Bevorzugte Audiodeskription (Standard: egal). Optionen: `mit`, `ohne`, `egal`.
 - `--state-file`: Datei zum Speichern des Verarbeitungsstatus (Standard: `.perlentaucher_state.json`).
 - `--no-state`: Deaktiviert das Tracking bereits verarbeiteter Einträge.
+- `--notify`: Apprise-URL für Benachrichtigungen (optional). Unterstützt viele Dienste wie Email, Discord, Telegram, Slack, etc.
 
 ### Beispiele
 
@@ -63,6 +65,32 @@ Englische Originalfassungen bevorzugen:
 ```bash
 python perlentaucher.py --sprache englisch
 ```
+
+Mit Benachrichtigungen (z.B. Discord Webhook):
+```bash
+python perlentaucher.py --notify "discord://webhook_id/webhook_token"
+```
+
+Mit Email-Benachrichtigungen:
+```bash
+python perlentaucher.py --notify "mailto://user:password@smtp.example.com"
+```
+
+### Benachrichtigungen
+
+Das Script unterstützt Benachrichtigungen via [Apprise](https://github.com/caronc/apprise), die über viele verschiedene Dienste gesendet werden können:
+
+- **Erfolgreiche Downloads**: Benachrichtigung mit Filmtitel, Dateipfad und Link zum Blog-Eintrag
+- **Fehlgeschlagene Downloads**: Benachrichtigung bei Download-Fehlern
+- **Nicht gefundene Filme**: Benachrichtigung wenn ein Film nicht in der Mediathek gefunden wurde
+
+Unterstützte Dienste (Beispiele):
+- Email: `mailto://user:pass@smtp.example.com`
+- Discord: `discord://webhook_id/webhook_token`
+- Telegram: `tgram://bot_token/chat_id`
+- Slack: `slack://token_a/token_b/token_c`
+- Pushover: `pover://user_key@token`
+- Und viele mehr - siehe [Apprise Dokumentation](https://github.com/caronc/apprise#supported-notifications)
 
 ## Docker-Nutzung
 
@@ -106,6 +134,29 @@ docker run -d \
   perlentaucher
 ```
 
+Mit Benachrichtigungen (z.B. Discord):
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  -e NOTIFY="discord://webhook_id/webhook_token" \
+  perlentaucher
+```
+
+Mit Benachrichtigungen und allen Optionen:
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  -e INTERVAL_HOURS=12 \
+  -e LIMIT=5 \
+  -e SPRACHE=deutsch \
+  -e AUDIODESKRIPTION=ohne \
+  -e LOGLEVEL=INFO \
+  -e NOTIFY="discord://webhook_id/webhook_token" \
+  perlentaucher
+```
+
 ### Umgebungsvariablen
 
 - `INTERVAL_HOURS`: Stunden zwischen den Ausführungen (Standard: 12)
@@ -115,6 +166,7 @@ docker run -d \
 - `SPRACHE`: Bevorzugte Sprache: `deutsch`, `englisch`, `egal` (Standard: deutsch)
 - `AUDIODESKRIPTION`: Bevorzugte Audiodeskription: `mit`, `ohne`, `egal` (Standard: egal)
 - `STATE_FILE`: Pfad zur State-Datei (Standard: `{DOWNLOAD_DIR}/.perlentaucher_state.json`)
+- `NOTIFY`: Apprise-URL für Benachrichtigungen (optional, z.B. `mailto://user:pass@example.com` oder `discord://webhook_id/webhook_token`)
 
 **Wichtig:** 
 - Verwende `-v` um ein Volume für die Downloads zu mounten, damit die Dateien auch nach dem Container-Stopp erhalten bleiben.

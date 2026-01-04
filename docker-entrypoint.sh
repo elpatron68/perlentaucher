@@ -8,6 +8,7 @@ LIMIT=${LIMIT:-10}
 LOGLEVEL=${LOGLEVEL:-INFO}
 SPRACHE=${SPRACHE:-deutsch}
 AUDIODESKRIPTION=${AUDIODESKRIPTION:-egal}
+NOTIFY=${NOTIFY:-}
 # State-Datei standardmäßig im Download-Verzeichnis speichern
 STATE_FILE=${STATE_FILE:-${DOWNLOAD_DIR}/.perlentaucher_state.json}
 
@@ -23,6 +24,11 @@ echo "Limit: ${LIMIT}"
 echo "Sprache: ${SPRACHE}"
 echo "Audiodeskription: ${AUDIODESKRIPTION}"
 echo "Log-Level: ${LOGLEVEL}"
+if [ -n "${NOTIFY}" ]; then
+    echo "Benachrichtigungen: Aktiviert"
+else
+    echo "Benachrichtigungen: Deaktiviert"
+fi
 echo "=========================================="
 echo ""
 
@@ -34,13 +40,19 @@ while true; do
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Starte Download-Zyklus..."
     
     # Führe das Script aus
+    NOTIFY_ARGS=""
+    if [ -n "${NOTIFY}" ]; then
+        NOTIFY_ARGS="--notify ${NOTIFY}"
+    fi
+    
     python perlentaucher.py \
         --download-dir "${DOWNLOAD_DIR}" \
         --limit "${LIMIT}" \
         --loglevel "${LOGLEVEL}" \
         --sprache "${SPRACHE}" \
         --audiodeskription "${AUDIODESKRIPTION}" \
-        --state-file "${STATE_FILE}"
+        --state-file "${STATE_FILE}" \
+        ${NOTIFY_ARGS}
     
     EXIT_CODE=$?
     
