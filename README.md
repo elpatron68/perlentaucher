@@ -1,4 +1,4 @@
-# Perlenlader
+# Perlentaucher
 
 Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/feed/) parst, bei [MediathekViewWeb](https://mediathekviewweb.de) sucht und die beste Qualität herunterlädt.
 
@@ -28,7 +28,7 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 ## Nutzung
 
 ```bash
-python perlenlader.py [Optionen]
+python perlentaucher.py [Optionen]
 ```
 
 ### Argumente
@@ -41,7 +41,7 @@ python perlenlader.py [Optionen]
 
 Die letzten 3 Filme suchen und in den Ordner `Filme` herunterladen:
 ```bash
-python perlenlader.py --download-dir ./Filme --limit 3
+python perlentaucher.py --download-dir ./Filme --limit 3
 ```
 
 ## Lizenz

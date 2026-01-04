@@ -130,7 +130,7 @@ def download_movie(movie_data, download_dir):
             os.remove(filepath)
 
 def main():
-    parser = argparse.ArgumentParser(description="Perlenlader - RSS Feed Downloader for MediathekViewWeb")
+    parser = argparse.ArgumentParser(description="Perlentaucher - RSS Feed Downloader for MediathekViewWeb")
     parser.add_argument("--download-dir", default=os.getcwd(), help="Directory to save downloads")
     parser.add_argument("--limit", type=int, default=10, help="Number of recent RSS posts to modify")
     parser.add_argument("--loglevel", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Log level")
