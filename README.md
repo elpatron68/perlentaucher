@@ -14,7 +14,7 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 - **Speichert bereits verarbeitete Blog-Beiträge** - verhindert doppelte Downloads.
 - Konfigurierbarer Download-Ordner.
 - Logging.
-- Automatische Tests mit CI/CD-Pipeline (Codeberg Actions).
+- Automatische Tests mit CI/CD-Pipeline (Codeberg Actions/Woodpecker CI).
 
 ## Installation
 
@@ -119,6 +119,27 @@ docker run -d \
 **Wichtig:** 
 - Verwende `-v` um ein Volume für die Downloads zu mounten, damit die Dateien auch nach dem Container-Stopp erhalten bleiben.
 - Die State-Datei (`.perlentaucher_state.json`) wird standardmäßig im Download-Verzeichnis gespeichert und wird automatisch mit dem Volume persistiert. Dadurch werden bereits verarbeitete Blog-Beiträge auch nach einem Container-Neustart nicht erneut heruntergeladen.
+
+## CI/CD
+
+Das Projekt verwendet Codeberg Actions (Forgejo Actions) für automatische Tests. Die Pipeline wird bei jedem Push und Pull Request ausgeführt.
+
+### Aktivierung auf Codeberg
+
+**Wichtig:** Actions müssen für dein Repository aktiviert sein:
+
+1. Gehe zu deinem Repository auf Codeberg
+2. Öffne die **Einstellungen** (Settings)
+3. Navigiere zu **Units** > **Overview**
+4. Aktiviere **Actions** (falls noch nicht aktiviert)
+
+Die Workflow-Datei befindet sich in `.github/workflows/test.yml` und testet das Script mit Python 3.9-3.12.
+
+**Alternative: Woodpecker CI**
+
+Falls du Woodpecker CI bevorzugst, ist eine `.woodpecker.yml` Konfiguration vorhanden. Um Woodpecker CI zu nutzen:
+1. Stelle einen Antrag bei [Codeberg Community](https://codeberg.org/Codeberg/Community/issues)
+2. Aktiviere dein Repository auf [ci.codeberg.org](https://ci.codeberg.org)
 
 ## Lizenz
 [MIT](LICENSE)
