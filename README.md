@@ -13,6 +13,7 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 - Priorisierung nach Audiodeskription (mit/ohne).
 - Konfigurierbarer Download-Ordner.
 - Logging.
+- Automatische Tests mit CI/CD-Pipeline (Codeberg Actions).
 
 ## Installation
 
