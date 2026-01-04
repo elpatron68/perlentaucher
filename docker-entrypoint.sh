@@ -8,6 +8,8 @@ LIMIT=${LIMIT:-10}
 LOGLEVEL=${LOGLEVEL:-INFO}
 SPRACHE=${SPRACHE:-deutsch}
 AUDIODESKRIPTION=${AUDIODESKRIPTION:-egal}
+# State-Datei standardmäßig im Download-Verzeichnis speichern
+STATE_FILE=${STATE_FILE:-${DOWNLOAD_DIR}/.perlentaucher_state.json}
 
 # Konvertiere Stunden in Sekunden
 INTERVAL_SECONDS=$((INTERVAL_HOURS * 3600))
@@ -37,7 +39,8 @@ while true; do
         --limit "${LIMIT}" \
         --loglevel "${LOGLEVEL}" \
         --sprache "${SPRACHE}" \
-        --audiodeskription "${AUDIODESKRIPTION}"
+        --audiodeskription "${AUDIODESKRIPTION}" \
+        --state-file "${STATE_FILE}"
     
     EXIT_CODE=$?
     

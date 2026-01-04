@@ -8,24 +8,25 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 
 - Parst den RSS Feed nach neuen Filmeinträgen.
 - Sucht automatisch nach dem Filmtitel.
-- Lädt die beste Fassung basierend auf Ihren Präferenzen herunter.
+- Lädt die beste Fassung basierend auf deinen Präferenzen herunter.
 - Priorisierung nach Sprache (Deutsch/Englisch).
 - Priorisierung nach Audiodeskription (mit/ohne).
+- **Speichert bereits verarbeitete Blog-Beiträge** - verhindert doppelte Downloads.
 - Konfigurierbarer Download-Ordner.
 - Logging.
 - Automatische Tests mit CI/CD-Pipeline (Codeberg Actions).
 
 ## Installation
 
-1. Python 3.x installieren.
-2. Repository klonen oder herunterladen.
-3. Virtuelle Umgebung erstellen (optional aber empfohlen):
+1. Installiere Python 3.x.
+2. Klone oder lade das Repository herunter.
+3. Erstelle eine virtuelle Umgebung (optional aber empfohlen):
    ```bash
    python -m venv .venv
    source .venv/bin/activate  # Linux/Mac
    .\.venv\Scripts\activate   # Windows
    ```
-4. Abhängigkeiten installieren:
+4. Installiere die Abhängigkeiten:
    ```bash
    pip install -r requirements.txt
    ```
@@ -43,6 +44,8 @@ python perlentaucher.py [Optionen]
 - `--loglevel`: Detailgrad des Logs (Standard: INFO). Optionen: DEBUG, INFO, WARNING, ERROR.
 - `--sprache`: Bevorzugte Sprache (Standard: deutsch). Optionen: `deutsch`, `englisch`, `egal`.
 - `--audiodeskription`: Bevorzugte Audiodeskription (Standard: egal). Optionen: `mit`, `ohne`, `egal`.
+- `--state-file`: Datei zum Speichern des Verarbeitungsstatus (Standard: `.perlentaucher_state.json`).
+- `--no-state`: Deaktiviert das Tracking bereits verarbeiteter Einträge.
 
 ### Beispiele
 
@@ -63,7 +66,7 @@ python perlentaucher.py --sprache englisch
 
 ## Docker-Nutzung
 
-Das Script kann auch als Docker-Container ausgeführt werden, der automatisch in einem konfigurierbaren Intervall läuft.
+Du kannst das Script auch als Docker-Container ausführen, der automatisch in einem konfigurierbaren Intervall läuft.
 
 ### Docker-Image erstellen
 
@@ -111,8 +114,11 @@ docker run -d \
 - `LOGLEVEL`: Log-Level (Standard: INFO)
 - `SPRACHE`: Bevorzugte Sprache: `deutsch`, `englisch`, `egal` (Standard: deutsch)
 - `AUDIODESKRIPTION`: Bevorzugte Audiodeskription: `mit`, `ohne`, `egal` (Standard: egal)
+- `STATE_FILE`: Pfad zur State-Datei (Standard: `{DOWNLOAD_DIR}/.perlentaucher_state.json`)
 
-**Wichtig:** Verwenden Sie `-v` um ein Volume für die Downloads zu mounten, damit die Dateien auch nach dem Container-Stopp erhalten bleiben.
+**Wichtig:** 
+- Verwende `-v` um ein Volume für die Downloads zu mounten, damit die Dateien auch nach dem Container-Stopp erhalten bleiben.
+- Die State-Datei (`.perlentaucher_state.json`) wird standardmäßig im Download-Verzeichnis gespeichert und wird automatisch mit dem Volume persistiert. Dadurch werden bereits verarbeitete Blog-Beiträge auch nach einem Container-Neustart nicht erneut heruntergeladen.
 
 ## Lizenz
 [MIT](LICENSE)

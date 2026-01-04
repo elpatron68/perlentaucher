@@ -6,6 +6,7 @@ import sys
 import requests
 import feedparser
 import json
+from datetime import datetime
 
 # Configuration
 RSS_FEED_URL = "https://nexxtpress.de/author/mediathekperlen/feed/"
@@ -20,7 +21,35 @@ def setup_logging(level_name):
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-def parse_rss_feed(limit):
+def load_processed_entries(state_file):
+    """Lädt die Liste der bereits verarbeiteten Einträge."""
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return set(data.get('processed_entries', []))
+        except Exception as e:
+            logging.warning(f"Fehler beim Laden der Status-Datei: {e}")
+            return set()
+    return set()
+
+def save_processed_entry(state_file, entry_id):
+    """Speichert einen Eintrag als verarbeitet."""
+    processed = load_processed_entries(state_file)
+    processed.add(entry_id)
+    
+    data = {
+        'processed_entries': list(processed),
+        'last_updated': datetime.now().isoformat()
+    }
+    
+    try:
+        with open(state_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logging.error(f"Fehler beim Speichern der Status-Datei: {e}")
+
+def parse_rss_feed(limit, state_file=None):
     logging.info(f"Parse RSS-Feed: {RSS_FEED_URL}")
     feed = feedparser.parse(RSS_FEED_URL)
     
@@ -30,20 +59,43 @@ def parse_rss_feed(limit):
     entries = feed.entries[:limit]
     logging.info(f"{len(entries)} Einträge gefunden (Limit: {limit})")
     
+    # Lade bereits verarbeitete Einträge
+    processed_entries = load_processed_entries(state_file) if state_file else set()
+    
     movies = []
+    new_entries = []
+    skipped_count = 0
+    
     for entry in entries:
+        # Verwende entry.id oder entry.link als eindeutige Identifikation
+        entry_id = entry.get('id') or entry.get('link') or entry.get('title', '')
+        
+        # Prüfe, ob Eintrag bereits verarbeitet wurde
+        if entry_id in processed_entries:
+            logging.debug(f"Eintrag bereits verarbeitet, überspringe: '{entry.title}'")
+            skipped_count += 1
+            continue
+        
         title = entry.title
-        # Regex to extract title from 'Director - „Movie“ (Year)' or similar
-        # Looking for content inside „...“
-        match = re.search(r'„(.*?)“', title)
+        # Regex to extract title from 'Director - „Movie" (Year)' or similar
+        # Looking for content inside „..."
+        match = re.search(r'„(.*?)"', title)
         if match:
             movie_title = match.group(1)
             logging.debug(f"Extracted movie title: '{movie_title}' from '{title}'")
             movies.append(movie_title)
+            new_entries.append((entry_id, entry))
         else:
             logging.warning(f"Konnte Filmtitel nicht aus RSS-Eintrag extrahieren: '{title}'")
+            # Auch Einträge ohne extrahierbaren Filmtitel als verarbeitet markieren,
+            # damit sie nicht immer wieder versucht werden
+            if state_file:
+                save_processed_entry(state_file, entry_id)
     
-    return movies
+    if skipped_count > 0:
+        logging.info(f"{skipped_count} Einträge wurden bereits verarbeitet und übersprungen")
+    
+    return movies, new_entries
 
 def has_audio_description(movie_data):
     """Prüft, ob ein Film Audiodeskription hat."""
@@ -257,6 +309,10 @@ def main():
                        help="Bevorzugte Sprache: deutsch, englisch oder egal (Standard: deutsch)")
     parser.add_argument("--audiodeskription", default="egal", choices=["mit", "ohne", "egal"],
                        help="Bevorzugte Audiodeskription: mit, ohne oder egal (Standard: egal)")
+    parser.add_argument("--state-file", default=".perlentaucher_state.json",
+                       help="Datei zum Speichern des Verarbeitungsstatus (Standard: .perlentaucher_state.json)")
+    parser.add_argument("--no-state", action="store_true",
+                       help="Deaktiviert das Tracking bereits verarbeiteter Einträge")
     
     args = parser.parse_args()
     
@@ -272,14 +328,27 @@ def main():
 
     logging.info(f"Präferenzen: Sprache={args.sprache}, Audiodeskription={args.audiodeskription}")
 
-    movies = parse_rss_feed(args.limit)
+    state_file = None if args.no_state else args.state_file
+    if state_file:
+        logging.info(f"Status-Datei: {state_file}")
+
+    movies, new_entries = parse_rss_feed(args.limit, state_file=state_file)
     
-    for movie in movies:
+    for i, movie in enumerate(movies):
+        entry_id, entry = new_entries[i]
         result = search_mediathek(movie, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription)
         if result:
             download_movie(result, args.download_dir)
+            # Markiere Eintrag als verarbeitet nach erfolgreichem Download
+            if state_file:
+                save_processed_entry(state_file, entry_id)
+                logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}'")
         else:
             logging.warning(f"Überspringe '{movie}' - nicht in der Mediathek gefunden.")
+            # Auch nicht gefundene Filme als verarbeitet markieren, damit sie nicht immer wieder versucht werden
+            if state_file:
+                save_processed_entry(state_file, entry_id)
+                logging.debug(f"Eintrag als verarbeitet markiert (Film nicht gefunden): '{entry.title}'")
 
 if __name__ == "__main__":
     main()
