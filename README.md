@@ -3,6 +3,7 @@
 Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/feed/) parst, bei [MediathekViewWeb](https://mediathekviewweb.de) sucht und die beste Qualität herunterlädt.
 
 ## Features
+
 - Parst den RSS Feed nach neuen Filmeinträgen.
 - Sucht automatisch nach dem Filmtitel.
 - Lädt die Datei mit der höchsten Qualität herunter.
@@ -44,5 +45,4 @@ python perlenlader.py --download-dir ./Filme --limit 3
 ```
 
 ## Lizenz
-
-MIT
+[MIT](LICENSE)
