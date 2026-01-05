@@ -3,3 +3,4 @@ __pycache__/
 test_downloads/
 *.pyc
 .perlentaucher_state.json
+.notizen.txt
