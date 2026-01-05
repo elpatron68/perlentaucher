@@ -20,7 +20,7 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 ## Installation
 
 1. Installiere Python 3.x.
-2. Klone oder lade das Repository herunter.
+2. Klone oder lade das Repository herunter. Du kannst auch ein [Release von Codeberg herunterladen](https://codeberg.org/elpatron/Perlentaucher/releases).
 3. Erstelle eine virtuelle Umgebung (optional aber empfohlen):
    ```bash
    python -m venv .venv
