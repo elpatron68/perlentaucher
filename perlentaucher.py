@@ -7,6 +7,7 @@ import requests
 import feedparser
 import json
 from datetime import datetime
+from typing import Optional, Dict, Tuple
 
 try:
     import apprise
@@ -54,6 +55,166 @@ def save_processed_entry(state_file, entry_id):
             json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception as e:
         logging.error(f"Fehler beim Speichern der Status-Datei: {e}")
+
+def extract_year_from_title(title: str) -> Optional[int]:
+    """
+    Extrahiert das Jahr aus einem RSS-Feed-Titel im Format 'Director - „Movie" (Year)' oder 'Movie (Year)'.
+    
+    Args:
+        title: Der RSS-Feed-Titel
+        
+    Returns:
+        Das Jahr als Integer oder None, wenn kein Jahr gefunden wurde
+    """
+    # Suche nach Jahreszahlen in Klammern: (YYYY)
+    match = re.search(r'\((\d{4})\)', title)
+    if match:
+        try:
+            year = int(match.group(1))
+            # Plausibilitätsprüfung: Jahr sollte zwischen 1900 und aktuelles Jahr + 10 sein
+            current_year = datetime.now().year
+            if 1900 <= year <= current_year + 10:
+                return year
+        except ValueError:
+            pass
+    return None
+
+def search_tmdb(movie_title: str, year: Optional[int], api_key: str) -> Optional[Dict]:
+    """
+    Sucht nach einem Film in The Movie Database (TMDB).
+    
+    Args:
+        movie_title: Der Filmtitel
+        year: Optional - Das Jahr des Films
+        api_key: TMDB API-Key
+        
+    Returns:
+        Dictionary mit 'tmdb_id' und 'year' oder None bei Fehler
+    """
+    if not api_key:
+        return None
+    
+    try:
+        url = "https://api.themoviedb.org/3/search/movie"
+        params = {
+            "api_key": api_key,
+            "query": movie_title,
+            "language": "de-DE"
+        }
+        if year:
+            params["year"] = year
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        results = data.get("results", [])
+        if results:
+            # Nimm das erste Ergebnis (bestes Match)
+            first_result = results[0]
+            tmdb_id = first_result.get("id")
+            result_year = first_result.get("release_date", "")[:4] if first_result.get("release_date") else None
+            
+            if tmdb_id:
+                logging.debug(f"TMDB Match gefunden: '{movie_title}' -> tmdbid-{tmdb_id}")
+                return {
+                    "tmdb_id": tmdb_id,
+                    "year": int(result_year) if result_year and result_year.isdigit() else year
+                }
+    except requests.RequestException as e:
+        logging.debug(f"TMDB API-Fehler für '{movie_title}': {e}")
+    except Exception as e:
+        logging.debug(f"Unerwarteter Fehler bei TMDB-Suche für '{movie_title}': {e}")
+    
+    return None
+
+def search_omdb(movie_title: str, year: Optional[int], api_key: str) -> Optional[Dict]:
+    """
+    Sucht nach einem Film in OMDb API.
+    
+    Args:
+        movie_title: Der Filmtitel
+        year: Optional - Das Jahr des Films
+        api_key: OMDb API-Key
+        
+    Returns:
+        Dictionary mit 'imdb_id' und 'year' oder None bei Fehler
+    """
+    if not api_key:
+        return None
+    
+    try:
+        url = "http://www.omdbapi.com/"
+        params = {
+            "apikey": api_key,
+            "t": movie_title,
+            "type": "movie"
+        }
+        if year:
+            params["y"] = year
+        
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get("Response") == "True" and data.get("imdbID"):
+            imdb_id = data.get("imdbID")
+            result_year = data.get("Year")
+            
+            if imdb_id:
+                logging.debug(f"OMDB Match gefunden: '{movie_title}' -> {imdb_id}")
+                return {
+                    "imdb_id": imdb_id,
+                    "year": int(result_year) if result_year and result_year.isdigit() else year
+                }
+    except requests.RequestException as e:
+        logging.debug(f"OMDB API-Fehler für '{movie_title}': {e}")
+    except Exception as e:
+        logging.debug(f"Unerwarteter Fehler bei OMDB-Suche für '{movie_title}': {e}")
+    
+    return None
+
+def get_metadata(movie_title: str, year: Optional[int], tmdb_api_key: Optional[str], omdb_api_key: Optional[str]) -> Dict:
+    """
+    Holt Metadata für einen Film von TMDB oder OMDB.
+    
+    Args:
+        movie_title: Der Filmtitel
+        year: Optional - Das Jahr (aus RSS-Feed extrahiert)
+        tmdb_api_key: Optional - TMDB API-Key
+        omdb_api_key: Optional - OMDb API-Key
+        
+    Returns:
+        Dictionary mit:
+        - 'year': Jahr (aus RSS-Feed oder Provider)
+        - 'provider_id': String im Format '[tmdbid-123]' oder '[imdbid-tt123456]' oder None
+    """
+    result = {
+        "year": year,
+        "provider_id": None
+    }
+    
+    # Versuche zuerst TMDB
+    if tmdb_api_key:
+        tmdb_result = search_tmdb(movie_title, year, tmdb_api_key)
+        if tmdb_result:
+            result["year"] = tmdb_result.get("year") or year
+            tmdb_id = tmdb_result.get("tmdb_id")
+            if tmdb_id:
+                result["provider_id"] = f"[tmdbid-{tmdb_id}]"
+                return result
+    
+    # Fallback: Versuche OMDB
+    if omdb_api_key:
+        omdb_result = search_omdb(movie_title, year, omdb_api_key)
+        if omdb_result:
+            result["year"] = omdb_result.get("year") or year
+            imdb_id = omdb_result.get("imdb_id")
+            if imdb_id:
+                result["provider_id"] = f"[imdbid-{imdb_id}]"
+                return result
+    
+    return result
 
 def send_notification(apprise_url, title, body, notification_type="info"):
     """
@@ -135,8 +296,10 @@ def parse_rss_feed(limit, state_file=None):
             match = re.search(r'"([^"]+?)"', title)
         if match:
             movie_title = match.group(1)
-            logging.debug(f"Extracted movie title: '{movie_title}' from '{title}'")
-            movies.append(movie_title)
+            # Extrahiere Jahr aus dem RSS-Feed-Titel
+            year = extract_year_from_title(title)
+            logging.debug(f"Extracted movie title: '{movie_title}' from '{title}'" + (f" (Jahr: {year})" if year else ""))
+            movies.append((movie_title, year))
             # Speichere entry_id, entry und link für Benachrichtigungen
             entry_link = entry.get('link', '')
             new_entries.append((entry_id, entry, entry_link))
@@ -332,23 +495,50 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         logging.error(f"Unerwarteter Fehler bei der Suche nach '{movie_title}': {e}")
         return None
 
-def download_movie(movie_data, download_dir):
+def download_movie(movie_data, download_dir, movie_title: str, metadata: Dict):
     """
     Lädt einen Film herunter.
+    
+    Args:
+        movie_data: Die Filmdaten von MediathekViewWeb
+        download_dir: Download-Verzeichnis
+        movie_title: Der ursprüngliche Filmtitel aus dem RSS-Feed
+        metadata: Dictionary mit 'year' und 'provider_id' (von get_metadata())
     
     Returns:
         tuple: (success: bool, title: str, filepath: str)
     """
     url = movie_data.get("url_video")
     title = movie_data.get("title")
-    # Clean filename
-    safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)
+    
+    # Verwende den ursprünglichen Filmtitel aus RSS-Feed für Dateinamen
+    base_title = movie_title
+    
+    # Clean filename - entferne problematische Zeichen
+    safe_title = re.sub(r'[<>:"/\\|?*]', '_', base_title)
+    
+    # Baue Dateinamen im Jellyfin/Plex-Format: "Movie Name (year) [provider_id].ext"
+    filename_parts = [safe_title]
+    
+    # Füge Jahr hinzu, falls vorhanden
+    year = metadata.get("year")
+    if year:
+        filename_parts.append(f"({year})")
+    
+    # Füge Provider-ID hinzu, falls vorhanden
+    provider_id = metadata.get("provider_id")
+    if provider_id:
+        filename_parts.append(provider_id)
+    
+    # Baue Dateinamen zusammen
+    base_filename = " ".join(filename_parts)
+    
     # Try to guess extension
     ext = "mp4"
     if url.endswith(".mkv"): ext = "mkv"
     if url.endswith(".mp4"): ext = "mp4"
     
-    filename = f"{safe_title}.{ext}"
+    filename = f"{base_filename}.{ext}"
     filepath = os.path.join(download_dir, filename)
 
     if os.path.exists(filepath):
@@ -401,8 +591,16 @@ def main():
                        help="Deaktiviert das Tracking bereits verarbeiteter Einträge")
     parser.add_argument("--notify", default=None,
                        help="Apprise-URL für Benachrichtigungen (z.B. 'mailto://user:pass@example.com' oder 'discord://webhook_id/webhook_token')")
+    parser.add_argument("--tmdb-api-key", default=None,
+                       help="TMDB API-Key für Metadata-Abfrage (optional, kann auch über Umgebungsvariable TMDB_API_KEY gesetzt werden)")
+    parser.add_argument("--omdb-api-key", default=None,
+                       help="OMDb API-Key für Metadata-Abfrage (optional, kann auch über Umgebungsvariable OMDB_API_KEY gesetzt werden)")
     
     args = parser.parse_args()
+    
+    # Unterstützung für Umgebungsvariablen
+    args.tmdb_api_key = args.tmdb_api_key or os.environ.get('TMDB_API_KEY')
+    args.omdb_api_key = args.omdb_api_key or os.environ.get('OMDB_API_KEY')
     
     setup_logging(args.loglevel)
     
@@ -426,12 +624,16 @@ def main():
         logging.warning("Apprise ist nicht installiert. Benachrichtigungen werden nicht gesendet.")
         logging.warning("Installiere Apprise mit: pip install apprise")
     
-    for i, movie in enumerate(movies):
+    for i, movie_data in enumerate(movies):
         entry_id, entry, entry_link = new_entries[i]
-        result = search_mediathek(movie, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription, 
+        movie_title, year = movie_data if isinstance(movie_data, tuple) else (movie_data, None)
+        
+        result = search_mediathek(movie_title, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription, 
                                  notify_url=args.notify, entry_link=entry_link)
         if result:
-            success, title, filepath = download_movie(result, args.download_dir)
+            # Hole Metadata für Dateinamen-Generierung
+            metadata = get_metadata(movie_title, year, args.tmdb_api_key, args.omdb_api_key)
+            success, title, filepath = download_movie(result, args.download_dir, movie_title, metadata)
             # Markiere Eintrag als verarbeitet nach Download-Versuch
             if state_file:
                 save_processed_entry(state_file, entry_id)
@@ -453,7 +655,7 @@ def main():
                         body += f"\n🔗 Blog-Eintrag: {entry_link}"
                     send_notification(args.notify, "Download fehlgeschlagen", body, "error")
         else:
-            logging.warning(f"Überspringe '{movie}' - nicht in der Mediathek gefunden.")
+            logging.warning(f"Überspringe '{movie_title}' - nicht in der Mediathek gefunden.")
             # Auch nicht gefundene Filme als verarbeitet markieren, damit sie nicht immer wieder versucht werden
             if state_file:
                 save_processed_entry(state_file, entry_id)

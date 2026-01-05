@@ -13,6 +13,8 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 - Priorisierung nach Audiodeskription (mit/ohne).
 - Speichert bereits verarbeitete Blog-Beiträge - verhindert doppelte Downloads.
 - Optionale Benachrichtigungen via Apprise (Email, Discord, Telegram, Slack, etc.).
+- Jellyfin/Plex-kompatible Dateinamen mit Jahr und Metadata Provider IDs (TMDB/OMDB).
+- Optionale Metadata Provider-Integration (TMDB/OMDB) für bessere Film-Erkennung.
 - Konfigurierbarer Download-Ordner.
 - Logging.
 - Automatische Tests mit CI/CD-Pipeline (Codeberg Actions/Woodpecker CI).
@@ -48,6 +50,8 @@ python perlentaucher.py [Optionen]
 - `--state-file`: Datei zum Speichern des Verarbeitungsstatus (Standard: `.perlentaucher_state.json`).
 - `--no-state`: Deaktiviert das Tracking bereits verarbeiteter Einträge.
 - `--notify`: Apprise-URL für Benachrichtigungen (optional). Unterstützt viele Dienste wie Email, Discord, Telegram, Slack, etc.
+- `--tmdb-api-key`: TMDB API-Key für Metadata-Abfrage (optional). Kann auch über Umgebungsvariable `TMDB_API_KEY` gesetzt werden.
+- `--omdb-api-key`: OMDb API-Key für Metadata-Abfrage (optional). Kann auch über Umgebungsvariable `OMDB_API_KEY` gesetzt werden.
 
 ### Beispiele
 
@@ -75,6 +79,36 @@ Mit Email-Benachrichtigungen:
 ```bash
 python perlentaucher.py --notify "mailto://user:password@smtp.example.com"
 ```
+
+Mit Metadata Provider-Integration (TMDB):
+```bash
+python perlentaucher.py --tmdb-api-key "dein_tmdb_api_key"
+```
+
+Mit Metadata Provider-Integration (OMDB):
+```bash
+python perlentaucher.py --omdb-api-key "dein_omdb_api_key"
+```
+
+Mit beiden Metadata Providern:
+```bash
+python perlentaucher.py --tmdb-api-key "dein_tmdb_api_key" --omdb-api-key "dein_omdb_api_key"
+```
+
+### Dateinamen-Schema für Jellyfin/Plex
+
+Das Script generiert Dateinamen im Format, das von Jellyfin und Plex automatisch erkannt wird:
+
+- **Mit Jahr und Provider-ID**: `Movie Name (2022) [tmdbid-123456].mp4`
+- **Nur mit Jahr**: `Movie Name (2022).mp4`
+- **Nur mit Provider-ID**: `Movie Name [imdbid-tt1234567].mp4`
+- **Ohne Metadata**: `Movie Name.mp4` (Fallback)
+
+Das Jahr wird automatisch aus dem RSS-Feed-Titel extrahiert. Wenn API-Keys für TMDB oder OMDB angegeben werden, werden zusätzlich Metadata Provider IDs hinzugefügt, um die Film-Erkennung zu verbessern.
+
+**API-Keys beschaffen:**
+- **TMDB**: Registriere dich auf [themoviedb.org](https://www.themoviedb.org/) und erstelle einen API-Key unter [Settings > API](https://www.themoviedb.org/settings/api)
+- **OMDb**: Registriere dich auf [omdbapi.com](http://www.omdbapi.com/) und erstelle einen API-Key unter [API Key](http://www.omdbapi.com/apikey.aspx)
 
 ### Benachrichtigungen
 
@@ -159,6 +193,40 @@ docker run -d \
   perlentaucher
 ```
 
+Mit Metadata Provider-Integration (TMDB):
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  -e TMDB_API_KEY="dein_tmdb_api_key" \
+  perlentaucher
+```
+
+Mit Metadata Provider-Integration (OMDB):
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  -e OMDB_API_KEY="dein_omdb_api_key" \
+  perlentaucher
+```
+
+Mit beiden Metadata Providern und allen Optionen:
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  -e INTERVAL_HOURS=12 \
+  -e LIMIT=5 \
+  -e SPRACHE=deutsch \
+  -e AUDIODESKRIPTION=ohne \
+  -e LOGLEVEL=INFO \
+  -e NOTIFY="discord://webhook_id/webhook_token" \
+  -e TMDB_API_KEY="dein_tmdb_api_key" \
+  -e OMDB_API_KEY="dein_omdb_api_key" \
+  perlentaucher
+```
+
 ### Umgebungsvariablen
 
 - `INTERVAL_HOURS`: Stunden zwischen den Ausführungen (Standard: 12)
@@ -169,6 +237,8 @@ docker run -d \
 - `AUDIODESKRIPTION`: Bevorzugte Audiodeskription: `mit`, `ohne`, `egal` (Standard: egal)
 - `STATE_FILE`: Pfad zur State-Datei (Standard: `{DOWNLOAD_DIR}/.perlentaucher_state.json`)
 - `NOTIFY`: Apprise-URL für Benachrichtigungen (optional, z.B. `mailto://user:pass@example.com` oder `discord://webhook_id/webhook_token`)
+- `TMDB_API_KEY`: TMDB API-Key für Metadata-Abfrage (optional)
+- `OMDB_API_KEY`: OMDb API-Key für Metadata-Abfrage (optional)
 
 **Wichtig:** 
 - Verwende `-v` um ein Volume für die Downloads zu mounten, damit die Dateien auch nach dem Container-Stopp erhalten bleiben.

@@ -9,6 +9,8 @@ LOGLEVEL=${LOGLEVEL:-INFO}
 SPRACHE=${SPRACHE:-deutsch}
 AUDIODESKRIPTION=${AUDIODESKRIPTION:-egal}
 NOTIFY=${NOTIFY:-}
+TMDB_API_KEY=${TMDB_API_KEY:-}
+OMDB_API_KEY=${OMDB_API_KEY:-}
 # State-Datei standardmäßig im Download-Verzeichnis speichern
 STATE_FILE=${STATE_FILE:-${DOWNLOAD_DIR}/.perlentaucher_state.json}
 
@@ -29,6 +31,16 @@ if [ -n "${NOTIFY}" ]; then
 else
     echo "Benachrichtigungen: Deaktiviert"
 fi
+if [ -n "${TMDB_API_KEY}" ]; then
+    echo "TMDB API-Key: Gesetzt"
+else
+    echo "TMDB API-Key: Nicht gesetzt"
+fi
+if [ -n "${OMDB_API_KEY}" ]; then
+    echo "OMDB API-Key: Gesetzt"
+else
+    echo "OMDB API-Key: Nicht gesetzt"
+fi
 echo "=========================================="
 echo ""
 
@@ -45,6 +57,16 @@ while true; do
         NOTIFY_ARGS="--notify ${NOTIFY}"
     fi
     
+    TMDB_API_KEY_ARGS=""
+    if [ -n "${TMDB_API_KEY}" ]; then
+        TMDB_API_KEY_ARGS="--tmdb-api-key ${TMDB_API_KEY}"
+    fi
+    
+    OMDB_API_KEY_ARGS=""
+    if [ -n "${OMDB_API_KEY}" ]; then
+        OMDB_API_KEY_ARGS="--omdb-api-key ${OMDB_API_KEY}"
+    fi
+    
     python perlentaucher.py \
         --download-dir "${DOWNLOAD_DIR}" \
         --limit "${LIMIT}" \
@@ -52,7 +74,9 @@ while true; do
         --sprache "${SPRACHE}" \
         --audiodeskription "${AUDIODESKRIPTION}" \
         --state-file "${STATE_FILE}" \
-        ${NOTIFY_ARGS}
+        ${NOTIFY_ARGS} \
+        ${TMDB_API_KEY_ARGS} \
+        ${OMDB_API_KEY_ARGS}
     
     EXIT_CODE=$?
     
