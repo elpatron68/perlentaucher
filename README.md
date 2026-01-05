@@ -84,6 +84,8 @@ Das Script unterstützt Benachrichtigungen via [Apprise](https://github.com/caro
 - **Fehlgeschlagene Downloads**: Benachrichtigung bei Download-Fehlern
 - **Nicht gefundene Filme**: Benachrichtigung wenn ein Film nicht in der Mediathek gefunden wurde
 
+![Screenshot ntfy-Benachrichtigungen](assets/perlentaucher-ntfy.png)
+
 Unterstützte Dienste (Beispiele):
 - Email: `mailto://user:pass@smtp.example.com`
 - Discord: `discord://webhook_id/webhook_token`
