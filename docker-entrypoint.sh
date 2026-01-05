@@ -31,15 +31,21 @@ if [ -n "${NOTIFY}" ]; then
 else
     echo "Benachrichtigungen: Deaktiviert"
 fi
-if [ -n "${TMDB_API_KEY}" ]; then
-    echo "TMDB API-Key: Gesetzt"
+# Prüfe Metadaten-Provider
+METADATA_PROVIDER=""
+if [ -n "${TMDB_API_KEY}" ] && [ -n "${OMDB_API_KEY}" ]; then
+    METADATA_PROVIDER="TMDB, OMDB"
+elif [ -n "${TMDB_API_KEY}" ]; then
+    METADATA_PROVIDER="TMDB"
+elif [ -n "${OMDB_API_KEY}" ]; then
+    METADATA_PROVIDER="OMDB"
 else
-    echo "TMDB API-Key: Nicht gesetzt"
+    METADATA_PROVIDER="Keiner"
 fi
-if [ -n "${OMDB_API_KEY}" ]; then
-    echo "OMDB API-Key: Gesetzt"
+if [ "${METADATA_PROVIDER}" != "Keiner" ]; then
+    echo "Metadaten-Provider: Aktiviert (${METADATA_PROVIDER})"
 else
-    echo "OMDB API-Key: Nicht gesetzt"
+    echo "Metadaten-Provider: Deaktiviert"
 fi
 echo "=========================================="
 echo ""
