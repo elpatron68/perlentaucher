@@ -138,6 +138,53 @@ Du kannst das Script auch als Docker-Container ausführen, der automatisch in ei
 docker build -t perlentaucher .
 ```
 
+Mit Versions-Tag:
+```bash
+docker build -t perlentaucher:v0.1.3 -t perlentaucher:latest .
+```
+
+### Docker-Image aus Codeberg Container Registry verwenden
+
+Du kannst das Image auch direkt aus der Codeberg Container Registry verwenden, ohne es selbst zu bauen:
+
+**Container aus Registry laden und starten:**
+
+Standard-Ausführung (latest Tag):
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  codeberg.org/elpatron/perlentaucher:latest
+```
+
+Mit spezifischer Version (z.B. v0.1.3):
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  codeberg.org/elpatron/perlentaucher:v0.1.3
+```
+
+**Container manuell aus Registry laden (ohne sofort zu starten):**
+```bash
+docker pull codeberg.org/elpatron/perlentaucher:latest
+# oder mit spezifischer Version:
+docker pull codeberg.org/elpatron/perlentaucher:v0.1.3
+```
+
+**Verfügbare Tags:**
+- `latest` - Immer die neueste Version
+- `v0.1.3` - Spezifische Version (siehe [Releases](https://codeberg.org/elpatron/Perlentaucher/releases) für alle verfügbaren Versionen)
+
+**Hinweis:** Wenn du ein privates Repository verwendest oder 2FA aktiviert hast, musst du dich zuerst bei der Codeberg Container Registry anmelden:
+```bash
+docker login codeberg.org
+# Username: dein_benutzername
+# Password: dein_personal_access_token (nicht dein Passwort!)
+```
+
+Einen Personal Access Token erstellst du unter Codeberg → Settings → Applications → Generate New Token (mit Scopes `read:packages` und `write:packages`).
+
 ### Container ausführen
 
 Standard-Ausführung (alle 12 Stunden):
