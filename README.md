@@ -6,7 +6,7 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 
 ## Features
 
-- Parst den RSS Feed nach neuen Filmeinträgen.
+- Parst den RSS Feed der Mediathekperlen nach neuen Filmeinträgen.
 - Sucht automatisch nach dem Filmtitel.
 - Lädt die beste Fassung basierend auf deinen Präferenzen herunter.
 - Priorisierung nach Sprache (Deutsch/Englisch).

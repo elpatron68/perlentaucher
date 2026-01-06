@@ -51,7 +51,7 @@ Die Quickstart-Scripts führen dich interaktiv durch die Installation und Konfig
   sudo pacman -S python python-pip
   ```
 
-### macOS
+### macOS (nicht getestet)
 
 1. Öffne Terminal im Projekt-Verzeichnis
 2. Führe das macOS-Quickstart-Script aus:
