@@ -29,26 +29,81 @@ def setup_logging(level_name):
     )
 
 def load_processed_entries(state_file):
-    """Lädt die Liste der bereits verarbeiteten Einträge."""
+    """
+    Lädt die Liste der bereits verarbeiteten Einträge.
+    Unterstützt sowohl alte (nur processed_entries Liste) als auch neue Datenstruktur.
+    """
     if os.path.exists(state_file):
         try:
             with open(state_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+                # Neue Struktur mit 'entries' Dictionary
+                if 'entries' in data:
+                    return set(data['entries'].keys())
+                # Alte Struktur mit 'processed_entries' Liste (Rückwärtskompatibilität)
                 return set(data.get('processed_entries', []))
         except Exception as e:
             logging.warning(f"Fehler beim Laden der Status-Datei: {e}")
             return set()
     return set()
 
-def save_processed_entry(state_file, entry_id):
-    """Speichert einen Eintrag als verarbeitet."""
-    processed = load_processed_entries(state_file)
-    processed.add(entry_id)
+def load_state_file(state_file):
+    """
+    Lädt die komplette State-Datei mit allen Details.
     
-    data = {
-        'processed_entries': list(processed),
-        'last_updated': datetime.now().isoformat()
+    Returns:
+        Dictionary mit 'entries' (dict) und 'last_updated' (str)
+    """
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # Konvertiere alte Struktur zu neuer
+                if 'entries' not in data and 'processed_entries' in data:
+                    entries = {}
+                    for entry_id in data.get('processed_entries', []):
+                        entries[entry_id] = {
+                            'status': 'unknown',
+                            'timestamp': data.get('last_updated', datetime.now().isoformat())
+                        }
+                    data['entries'] = entries
+                return data
+        except Exception as e:
+            logging.warning(f"Fehler beim Laden der Status-Datei: {e}")
+    return {'entries': {}, 'last_updated': datetime.now().isoformat()}
+
+def save_processed_entry(state_file, entry_id, status=None, movie_title=None, filename=None):
+    """
+    Speichert einen Eintrag als verarbeitet mit Status und weiteren Details.
+    
+    Args:
+        state_file: Pfad zur State-Datei
+        entry_id: Eindeutige ID des RSS-Eintrags
+        status: Status des Eintrags ('download_success', 'download_failed', 'not_found', 'title_extraction_failed')
+        movie_title: Filmtitel (optional)
+        filename: Dateiname der heruntergeladenen Datei (optional)
+    """
+    data = load_state_file(state_file)
+    
+    # Erstelle oder aktualisiere Eintrag
+    if 'entries' not in data:
+        data['entries'] = {}
+    
+    entry_data = {
+        'status': status or 'unknown',
+        'timestamp': datetime.now().isoformat()
     }
+    
+    if movie_title:
+        entry_data['movie_title'] = movie_title
+    if filename:
+        entry_data['filename'] = filename
+    
+    data['entries'][entry_id] = entry_data
+    data['last_updated'] = datetime.now().isoformat()
+    
+    # Für Rückwärtskompatibilität: processed_entries Liste beibehalten
+    data['processed_entries'] = list(data['entries'].keys())
     
     try:
         with open(state_file, 'w', encoding='utf-8') as f:
@@ -314,7 +369,7 @@ def parse_rss_feed(limit, state_file=None):
             # Auch Einträge ohne extrahierbaren Filmtitel als verarbeitet markieren,
             # damit sie nicht immer wieder versucht werden
             if state_file:
-                save_processed_entry(state_file, entry_id)
+                save_processed_entry(state_file, entry_id, status='title_extraction_failed', movie_title=title)
     
     if skipped_count > 0:
         logging.info(f"{skipped_count} Einträge wurden bereits verarbeitet und übersprungen")
@@ -636,8 +691,10 @@ def main():
             success, title, filepath = download_movie(result, args.download_dir, movie_title, metadata)
             # Markiere Eintrag als verarbeitet nach Download-Versuch
             if state_file:
-                save_processed_entry(state_file, entry_id)
-                logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}'")
+                status = 'download_success' if success else 'download_failed'
+                filename = os.path.basename(filepath) if filepath else None
+                save_processed_entry(state_file, entry_id, status=status, movie_title=movie_title, filename=filename)
+                logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}' (Status: {status})")
             
             # Benachrichtigung senden
             if args.notify:
@@ -658,7 +715,7 @@ def main():
             logging.warning(f"Überspringe '{movie_title}' - nicht in der Mediathek gefunden.")
             # Auch nicht gefundene Filme als verarbeitet markieren, damit sie nicht immer wieder versucht werden
             if state_file:
-                save_processed_entry(state_file, entry_id)
+                save_processed_entry(state_file, entry_id, status='not_found', movie_title=movie_title)
                 logging.debug(f"Eintrag als verarbeitet markiert (Film nicht gefunden): '{entry.title}'")
             # Hinweis: Benachrichtigung wird bereits in search_mediathek() gesendet
 
