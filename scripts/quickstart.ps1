@@ -1,21 +1,56 @@
 # Quickstart-Script für Perlentaucher (Windows)
 # Installiert Dependencies und führt interaktive Konfiguration durch
 # 
-# Hinweis: PowerShell 7+ (pwsh) wird empfohlen.
-# Falls Windows PowerShell 5.1 verwendet wird, bitte pwsh verwenden oder PowerShell 7 installieren.
+# Hinweis: PowerShell 5.1+ (Windows PowerShell) oder PowerShell 7+ wird benötigt.
+# PowerShell 7+ (pwsh) wird empfohlen für beste Kompatibilität.
 
 $ErrorActionPreference = "Stop"
 
 # Prüfe PowerShell-Version
-if ($PSVersionTable.PSVersion.Major -lt 7) {
-    Write-Warning "Dieses Script wurde für PowerShell 7+ entwickelt."
-    Write-Warning "Installiere PowerShell 7: winget install Microsoft.PowerShell"
-    Write-Warning "Oder verwende: pwsh .\scripts\quickstart.ps1"
+$psVersion = $PSVersionTable.PSVersion
+$psMajor = $psVersion.Major
+$psMinor = $psVersion.Minor
+
+# Minimale Version: PowerShell 3.0 (Windows PowerShell) oder PowerShell 7.0
+if ($psMajor -lt 3) {
+    Write-Host "==========================================" -ForegroundColor Red
+    Write-Host "FEHLER: PowerShell-Version nicht unterstützt" -ForegroundColor Red
+    Write-Host "==========================================" -ForegroundColor Red
     Write-Host ""
-    $continue = Read-Host "Trotzdem fortfahren? (kann zu Fehlern führen) [j/N]"
-    if ($continue -notmatch '^[JjYy]') {
-        exit 1
+    Write-Host "Gefundene Version: PowerShell $($psMajor).$($psMinor)" -ForegroundColor Yellow
+    Write-Host "Erforderliche Version: PowerShell 5.1+ (Windows PowerShell) oder PowerShell 7+" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Lösungen:" -ForegroundColor Cyan
+    Write-Host "1. Installiere PowerShell 7 (empfohlen):" -ForegroundColor White
+    Write-Host "   winget install Microsoft.PowerShell" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "2. Verwende PowerShell 7 direkt:" -ForegroundColor White
+    Write-Host "   pwsh .\scripts\quickstart.ps1" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "3. Aktualisiere Windows PowerShell (falls Windows 7+):" -ForegroundColor White
+    Write-Host "   Windows PowerShell 5.1 sollte standardmäßig installiert sein" -ForegroundColor Gray
+    Write-Host ""
+    exit 1
+}
+
+# Warnung für PowerShell 5.1 (Windows PowerShell)
+if ($psMajor -eq 5 -and $psMinor -lt 1) {
+    Write-Warning "PowerShell 5.1 wird empfohlen. Deine Version: $($psMajor).$($psMinor)"
+}
+
+# Empfehlung für PowerShell 7+ (aber nicht zwingend)
+if ($psMajor -lt 7) {
+    Write-Host ""
+    Write-Host "Hinweis: PowerShell 7+ wird empfohlen für beste Kompatibilität." -ForegroundColor Yellow
+    Write-Host "Installiere mit: winget install Microsoft.PowerShell" -ForegroundColor Gray
+    Write-Host "Oder verwende: pwsh .\scripts\quickstart.ps1" -ForegroundColor Gray
+    Write-Host ""
+    $continue = Read-Host "Mit aktueller Version fortfahren? [J/n]"
+    if ($continue -match '^[Nn]') {
+        Write-Host "Abgebrochen." -ForegroundColor Yellow
+        exit 0
     }
+    Write-Host ""
 }
 
 # Funktion: Python-Check
