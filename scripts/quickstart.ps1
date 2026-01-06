@@ -48,7 +48,7 @@ function Show-PythonInstructions {
 # Funktion: pip-Check
 function Test-Pip {
     try {
-        $pipVersion = pip --version 2>&1
+        $null = pip --version 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-Host "✓ pip gefunden" -ForegroundColor Green
             return $true
@@ -56,7 +56,7 @@ function Test-Pip {
     } catch {
         # Versuche python -m pip
         try {
-            $pipVersion = python -m pip --version 2>&1
+            $null = python -m pip --version 2>&1
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "✓ pip gefunden (via python -m pip)" -ForegroundColor Green
                 return $true
