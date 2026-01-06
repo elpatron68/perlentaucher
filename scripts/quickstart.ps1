@@ -1,27 +1,45 @@
 # Quickstart-Script für Perlentaucher (Windows)
 # Installiert Dependencies und führt interaktive Konfiguration durch
+# 
+# Hinweis: PowerShell 7+ (pwsh) wird empfohlen.
+# Falls Windows PowerShell 5.1 verwendet wird, bitte pwsh verwenden oder PowerShell 7 installieren.
 
 $ErrorActionPreference = "Stop"
+
+# Prüfe PowerShell-Version
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    Write-Warning "Dieses Script wurde für PowerShell 7+ entwickelt."
+    Write-Warning "Installiere PowerShell 7: winget install Microsoft.PowerShell"
+    Write-Warning "Oder verwende: pwsh .\scripts\quickstart.ps1"
+    Write-Host ""
+    $continue = Read-Host "Trotzdem fortfahren? (kann zu Fehlern führen) [j/N]"
+    if ($continue -notmatch '^[JjYy]') {
+        exit 1
+    }
+}
 
 # Funktion: Python-Check
 function Test-Python {
     try {
-        $pythonVersion = python --version 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            $versionString = $pythonVersion -replace "Python ", ""
+        $output = & python --version 2>&1
+        if ($LASTEXITCODE -eq 0 -or ($LASTEXITCODE -eq $null -and $?)) {
+            $versionString = ($output | Out-String).Trim() -replace "Python ", ""
             $versionParts = $versionString.Split('.')
-            $major = [int]$versionParts[0]
-            $minor = [int]$versionParts[1]
-            
-            if ($major -eq 3 -and $minor -ge 7) {
-                Write-Host "✓ Python $versionString gefunden" -ForegroundColor Green
-                return $true
-            } else {
-                Write-Host "✗ Python $versionString gefunden, aber Version 3.7+ erforderlich" -ForegroundColor Red
-                return $false
+            if ($versionParts.Length -ge 2) {
+                $major = [int]$versionParts[0]
+                $minor = [int]$versionParts[1]
+                
+                if ($major -eq 3 -and $minor -ge 7) {
+                    Write-Host "✓ Python $versionString gefunden" -ForegroundColor Green
+                    return $true
+                } else {
+                    Write-Host "✗ Python $versionString gefunden, aber Version 3.7+ erforderlich" -ForegroundColor Red
+                    return $false
+                }
             }
         }
-    } catch {
+    }
+    catch {
         return $false
     }
     return $false
@@ -47,25 +65,31 @@ function Show-PythonInstructions {
 
 # Funktion: pip-Check
 function Test-Pip {
+    # Versuche pip direkt
     try {
-        $null = pip --version 2>&1
-        if ($LASTEXITCODE -eq 0) {
+        $null = & pip --version 2>&1
+        if ($LASTEXITCODE -eq 0 -or ($LASTEXITCODE -eq $null -and $?)) {
             Write-Host "✓ pip gefunden" -ForegroundColor Green
             return $true
         }
-    } catch {
-        # Versuche python -m pip
-        try {
-            $null = python -m pip --version 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "✓ pip gefunden (via python -m pip)" -ForegroundColor Green
-                return $true
-            }
-        } catch {
-            # Beide Versuche fehlgeschlagen
-        }
+    }
+    catch {
+        # pip direkt nicht verfügbar
     }
     
+    # Versuche python -m pip
+    try {
+        $null = & python -m pip --version 2>&1
+        if ($LASTEXITCODE -eq 0 -or ($LASTEXITCODE -eq $null -and $?)) {
+            Write-Host "✓ pip gefunden (via python -m pip)" -ForegroundColor Green
+            return $true
+        }
+    }
+    catch {
+        # python -m pip auch nicht verfügbar
+    }
+    
+    # Beide Versuche fehlgeschlagen
     Write-Host "⚠ pip nicht gefunden" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "pip sollte mit Python installiert werden."
@@ -122,9 +146,22 @@ Write-Host "✓ Dependencies installiert" -ForegroundColor Green
 Write-Host ""
 
 # Hole Script-Verzeichnis
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$projectDir = Split-Path -Parent $scriptDir
+if ($MyInvocation.MyCommand.Path) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $projectDir = Split-Path -Parent $scriptDir
+} else {
+    # Fallback: Nutze aktuelles Verzeichnis wenn Script-Pfad nicht verfügbar
+    $scriptDir = $PSScriptRoot
+    if ($scriptDir) {
+        $projectDir = Split-Path -Parent $scriptDir
+    } else {
+        $projectDir = Get-Location
+    }
+}
+
+# Wechsle zum Projekt-Verzeichnis
 Set-Location $projectDir
+$projectDir = Get-Location | Select-Object -ExpandProperty Path
 
 # Interaktive Parameterabfrage
 Write-Host "==========================================" -ForegroundColor Cyan
@@ -226,7 +263,7 @@ $omdbApiKey = Read-Host "OMDb API-Key (optional, leer lassen zum Überspringen)"
 # Erstelle Config-Datei
 Write-Host ""
 Write-Host "Erstelle Konfigurationsdatei..."
-$configFile = ".perlentaucher_config.json"
+$configFile = Join-Path $projectDir ".perlentaucher_config.json"
 
 $config = @{
     download_dir = $downloadDir
@@ -239,18 +276,40 @@ $config = @{
     notify = $notify
     tmdb_api_key = $tmdbApiKey
     omdb_api_key = $omdbApiKey
-} | ConvertTo-Json
+}
 
-$config | Set-Content -Path $configFile -Encoding UTF8
-Write-Host "✓ Konfiguration gespeichert: $configFile" -ForegroundColor Green
+try {
+    $jsonContent = $config | ConvertTo-Json -Depth 10
+    
+    # Stelle sicher, dass wir im richtigen Verzeichnis sind
+    Set-Location $projectDir
+    
+    $jsonContent | Set-Content -Path $configFile -Encoding UTF8 -ErrorAction Stop
+    
+    # Prüfe ob Datei wirklich existiert
+    if (Test-Path $configFile) {
+        $fullPath = (Resolve-Path $configFile).Path
+        Write-Host "✓ Konfiguration gespeichert: $fullPath" -ForegroundColor Green
+    } else {
+        Write-Host "✗ Fehler: Konfigurationsdatei konnte nicht erstellt werden" -ForegroundColor Red
+        Write-Host "  Erwarteter Pfad: $configFile" -ForegroundColor Yellow
+        Write-Host "  Aktuelles Verzeichnis: $(Get-Location)" -ForegroundColor Yellow
+        exit 1
+    }
+}
+catch {
+    Write-Host "✗ Fehler beim Erstellen der Konfigurationsdatei: $_" -ForegroundColor Red
+    Write-Host "  Fehler-Details: $($_.Exception.Message)" -ForegroundColor Yellow
+    exit 1
+}
 
 # Erstelle Wrapper-Script (Batch)
 Write-Host ""
 Write-Host "Erstelle Wrapper-Script..."
-$wrapperScript = "run_perlentaucher.bat"
+$wrapperScript = Join-Path $projectDir "run_perlentaucher.bat"
 
 # Erstelle Python-Helper-Script für Batch
-$helperScript = "run_perlentaucher_helper.py"
+$helperScript = Join-Path $projectDir "run_perlentaucher_helper.py"
 $helperContent = @'
 import json
 import sys
