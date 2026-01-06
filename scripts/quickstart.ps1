@@ -62,7 +62,7 @@ function Test-Pip {
                 return $true
             }
         } catch {
-            return $false
+            # Beide Versuche fehlgeschlagen
         }
     }
     
