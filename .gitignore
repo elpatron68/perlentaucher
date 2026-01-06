@@ -3,4 +3,8 @@ __pycache__/
 test_downloads/
 *.pyc
 .perlentaucher_state.json
+.perlentaucher_config.json
 .notizen.txt
+run_perlentaucher.sh
+run_perlentaucher.bat
+run_perlentaucher_helper.py

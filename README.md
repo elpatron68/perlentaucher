@@ -25,6 +25,18 @@ Eine detaillierte grafische Darstellung des Programmablaufs findest du in der [D
 
 ## Installation
 
+### Schnellstart (empfohlen für Anfänger)
+
+Die einfachste Methode ist die Nutzung der Quickstart-Scripts, die dich interaktiv durch die Installation und Konfiguration führen:
+
+- **Linux:** `./scripts/quickstart.sh`
+- **macOS:** `./scripts/quickstart-macos.sh`
+- **Windows:** `.\scripts\quickstart.ps1`
+
+Eine ausführliche Anleitung findest du in der [Quickstart-Dokumentation](docs/quickstart.md).
+
+### Manuelle Installation
+
 1. Installiere Python 3.x.
 2. Klone oder lade das Repository herunter. Du kannst auch ein [Release von Codeberg herunterladen](https://codeberg.org/elpatron/Perlentaucher/releases).
 3. Erstelle eine virtuelle Umgebung (optional aber empfohlen):
