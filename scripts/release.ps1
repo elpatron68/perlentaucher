@@ -42,6 +42,21 @@ if ($status) {
     }
 }
 
+# Aktualisiere Version in _version.py
+$versionNumber = $newTag.TrimStart('v')  # Entferne 'v' Präfix
+Write-Host "Aktualisiere Version in _version.py: $versionNumber" -ForegroundColor Cyan
+$versionContent = "# Version wird automatisch vom Release-Script aktualisiert`n__version__ = `"$versionNumber`"`n"
+Set-Content -Path "_version.py" -Value $versionContent -NoNewline
+
+# Committe Version-Update
+Write-Host "Committe Version-Update..." -ForegroundColor Cyan
+git add _version.py
+$commitOutput = git commit -m "Bump version to $versionNumber" 2>&1
+if ($LASTEXITCODE -ne 0 -or $commitOutput -match "nothing to commit") {
+    # Wenn nichts zu committen ist (Datei bereits aktuell), ist das OK
+    Write-Host "Version bereits aktuell oder kein Commit notwendig" -ForegroundColor Gray
+}
+
 # Erstelle neuen Tag
 Write-Host "`nErstelle Git-Tag: $newTag" -ForegroundColor Cyan
 git tag -a $newTag -m "Release $newTag"

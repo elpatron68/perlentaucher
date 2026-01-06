@@ -42,6 +42,19 @@ if [ -n "$(git status --porcelain)" ]; then
     fi
 fi
 
+# Aktualisiere Version in _version.py
+version_number=$(echo "$new_tag" | sed 's/^v//')  # Entferne 'v' Präfix
+echo "Aktualisiere Version in _version.py: $version_number"
+cat > _version.py <<EOF
+# Version wird automatisch vom Release-Script aktualisiert
+__version__ = "$version_number"
+EOF
+
+# Committe Version-Update
+echo "Committe Version-Update..."
+git add _version.py
+git commit -m "Bump version to $version_number" 2>/dev/null || echo "Version bereits aktuell oder kein Commit notwendig"
+
 # Erstelle neuen Tag
 echo ""
 echo "Erstelle Git-Tag: $new_tag"

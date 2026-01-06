@@ -15,6 +15,12 @@ try:
 except ImportError:
     APPRISE_AVAILABLE = False
 
+# Versions-Import
+try:
+    from _version import __version__
+except ImportError:
+    __version__ = "unknown"
+
 # Configuration
 RSS_FEED_URL = "https://nexxtpress.de/author/mediathekperlen/feed/"
 MVW_API_URL = "https://mediathekviewweb.de/api/query"
@@ -658,6 +664,9 @@ def main():
     args.omdb_api_key = args.omdb_api_key or os.environ.get('OMDB_API_KEY')
     
     setup_logging(args.loglevel)
+    
+    # Version beim Start ausgeben
+    logging.info(f"Perlentaucher v{__version__}")
     
     if not os.path.exists(args.download_dir):
         try:
