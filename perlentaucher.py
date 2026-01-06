@@ -429,12 +429,129 @@ def detect_language(movie_data):
     else:
         return "unbekannt"
 
-def score_movie(movie_data, prefer_language, prefer_audio_desc):
+def calculate_title_similarity(search_title: str, result_title: str) -> float:
     """
-    Bewertet einen Film basierend auf den Präferenzen.
+    Berechnet die Ähnlichkeit zwischen Suchtitel und Ergebnis-Titel.
+    Gibt einen Wert zwischen 0.0 (keine Übereinstimmung) und 1.0 (exakte Übereinstimmung) zurück.
+    """
+    search_lower = search_title.lower().strip()
+    result_lower = result_title.lower().strip()
+    
+    # Exakte Übereinstimmung (nach Normalisierung)
+    if search_lower == result_lower:
+        return 1.0
+    
+    # Exakte Übereinstimmung wenn Suchtitel im Ergebnis-Titel enthalten ist
+    # (z.B. "Spencer" in "Spencer (2021)")
+    if search_lower in result_lower:
+        # Bonus wenn der Titel am Anfang steht
+        if result_lower.startswith(search_lower):
+            return 0.95
+        return 0.85
+    
+    # Umgekehrt: Ergebnis-Titel im Suchtitel enthalten
+    if result_lower in search_lower:
+        return 0.80
+    
+    # Wortweise Übereinstimmung
+    search_words = set(search_lower.split())
+    result_words = set(result_lower.split())
+    
+    if not search_words or not result_words:
+        return 0.0
+    
+    # Berechne Jaccard-Ähnlichkeit (Schnittmenge / Vereinigungsmenge)
+    intersection = search_words & result_words
+    union = search_words | result_words
+    
+    if not union:
+        return 0.0
+    
+    jaccard = len(intersection) / len(union)
+    
+    # Wenn alle Suchwörter im Ergebnis enthalten sind, erhöhe den Score
+    if search_words.issubset(result_words):
+        jaccard = min(1.0, jaccard * 1.3)
+    
+    return jaccard
+
+def score_movie(movie_data, prefer_language, prefer_audio_desc, search_title: str = None, search_year: Optional[int] = None, metadata: Dict = None):
+    """
+    Bewertet einen Film basierend auf den Präferenzen und Titelübereinstimmung.
     Höhere Punktzahl = bessere Übereinstimmung.
+    
+    Args:
+        movie_data: Die Filmdaten von MediathekViewWeb
+        prefer_language: "deutsch", "englisch" oder "egal"
+        prefer_audio_desc: "mit", "ohne" oder "egal"
+        search_title: Der gesuchte Filmtitel (optional, für Titelübereinstimmung)
+        search_year: Das gesuchte Jahr (optional, für Jahr-Übereinstimmung)
+        metadata: Dictionary mit 'provider_id' (tmdbid-XXX oder imdbid-XXX) für exaktes Matching
     """
     score = 0
+    
+    # TITELÜBEREINSTIMMUNG - höchste Priorität (10000+ Punkte)
+    if search_title:
+        result_title = movie_data.get("title", "")
+        title_similarity = calculate_title_similarity(search_title, result_title)
+        # Titelübereinstimmung ist sehr wichtig - multipliziere mit hohem Faktor
+        score += title_similarity * 10000
+    
+    # METADATA-MATCHING - sehr hohe Priorität (50000+ Punkte)
+    # Wenn wir eine TMDB/IMDB-ID haben, prüfe ob der Film diese ID enthält
+    if metadata and metadata.get("provider_id"):
+        provider_id = metadata.get("provider_id")
+        # Entferne Klammern: [tmdbid-123] -> tmdbid-123
+        provider_id_clean = provider_id.strip("[]")
+        
+        # Extrahiere die ID-Nummer (z.B. "123" aus "tmdbid-123" oder "tt123456" aus "imdbid-tt123456")
+        id_match = re.search(r'(\d+)$', provider_id_clean)
+        if id_match:
+            id_number = id_match.group(1)
+            provider_type = provider_id_clean.split('-')[0].lower() if '-' in provider_id_clean else None
+            
+            # Prüfe in title, topic und description
+            title = movie_data.get("title", "").lower()
+            topic = movie_data.get("topic", "").lower()
+            description = movie_data.get("description", "").lower()
+            combined_text = f"{title} {topic} {description}"
+            
+            # Suche nach verschiedenen Formaten: tmdbid-123, tmdbid:123, [tmdbid-123], etc.
+            search_patterns = [
+                provider_id_clean.lower(),  # Original-Format
+                id_number,  # Nur die ID-Nummer
+            ]
+            
+            if provider_type:
+                search_patterns.extend([
+                    f"{provider_type}-{id_number}",
+                    f"{provider_type}:{id_number}",
+                    f"{provider_type} {id_number}",
+                ])
+            
+            for pattern in search_patterns:
+                if pattern in combined_text:
+                    score += 50000  # Sehr hohe Punktzahl für exaktes Metadata-Matching
+                    logging.debug(f"Metadata-Match gefunden: {pattern} in '{movie_data.get('title')}'")
+                    break
+    
+    # JAHR-ÜBEREINSTIMMUNG - hohe Priorität (5000+ Punkte)
+    if search_year:
+        # Versuche Jahr aus verschiedenen Feldern zu extrahieren
+        title = movie_data.get("title", "")
+        topic = movie_data.get("topic", "")
+        description = movie_data.get("description", "")
+        
+        # Suche nach Jahreszahlen in Klammern: (YYYY)
+        year_match = re.search(r'\((\d{4})\)', f"{title} {topic} {description}")
+        if year_match:
+            result_year = int(year_match.group(1))
+            if result_year == search_year:
+                score += 5000  # Exakte Jahresübereinstimmung
+            elif abs(result_year - search_year) <= 1:
+                score += 2000  # Jahr ±1 ist auch gut
+            elif abs(result_year - search_year) <= 2:
+                score += 500  # Jahr ±2 ist noch akzeptabel
     
     # Basis-Punktzahl: Dateigröße (größer = besser, normalisiert)
     size = movie_data.get("size") or 0
@@ -461,10 +578,10 @@ def score_movie(movie_data, prefer_language, prefer_audio_desc):
     
     return score
 
-def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="egal", notify_url=None, entry_link=None):
+def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="egal", notify_url=None, entry_link=None, year: Optional[int] = None, metadata: Dict = None):
     """
     Sucht nach einem Film in MediathekViewWeb und wählt die beste Fassung
-    basierend auf den Präferenzen aus.
+    basierend auf den Präferenzen und Titelübereinstimmung aus.
     
     Args:
         movie_title: Der Filmtitel zum Suchen
@@ -472,6 +589,8 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         prefer_audio_desc: "mit", "ohne" oder "egal"
         notify_url: Optional - Apprise-URL für Benachrichtigungen
         entry_link: Optional - Link zum Blog-Eintrag für Benachrichtigungen
+        year: Optional - Das Jahr des Films (für bessere Matching)
+        metadata: Optional - Dictionary mit 'provider_id' (tmdbid-XXX oder imdbid-XXX) für exaktes Matching
     """
     logging.info(f"Suche in MediathekViewWeb nach: '{movie_title}'")
     payload = {
@@ -509,7 +628,8 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         scored_results = []
         for result in results:
             try:
-                score = score_movie(result, prefer_language, prefer_audio_desc)
+                score = score_movie(result, prefer_language, prefer_audio_desc, 
+                                  search_title=movie_title, search_year=year, metadata=metadata)
                 scored_results.append((score, result))
             except Exception as e:
                 logging.debug(f"Fehler beim Bewerten eines Ergebnisses für '{movie_title}': {e}")
@@ -692,11 +812,12 @@ def main():
         entry_id, entry, entry_link = new_entries[i]
         movie_title, year = movie_data if isinstance(movie_data, tuple) else (movie_data, None)
         
+        # Hole Metadata VOR der Suche, damit wir sie für besseres Matching nutzen können
+        metadata = get_metadata(movie_title, year, args.tmdb_api_key, args.omdb_api_key)
+        
         result = search_mediathek(movie_title, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription, 
-                                 notify_url=args.notify, entry_link=entry_link)
+                                 notify_url=args.notify, entry_link=entry_link, year=year, metadata=metadata)
         if result:
-            # Hole Metadata für Dateinamen-Generierung
-            metadata = get_metadata(movie_title, year, args.tmdb_api_key, args.omdb_api_key)
             success, title, filepath = download_movie(result, args.download_dir, movie_title, metadata)
             # Markiere Eintrag als verarbeitet nach Download-Versuch
             if state_file:
