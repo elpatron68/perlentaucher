@@ -11,6 +11,8 @@ AUDIODESKRIPTION=${AUDIODESKRIPTION:-egal}
 NOTIFY=${NOTIFY:-}
 TMDB_API_KEY=${TMDB_API_KEY:-}
 OMDB_API_KEY=${OMDB_API_KEY:-}
+SERIEN_DOWNLOAD=${SERIEN_DOWNLOAD:-erste}
+SERIEN_DIR=${SERIEN_DIR:-${DOWNLOAD_DIR}}
 # State-Datei standardmäßig im Download-Verzeichnis speichern
 STATE_FILE=${STATE_FILE:-${DOWNLOAD_DIR}/.perlentaucher_state.json}
 
@@ -47,6 +49,12 @@ if [ "${METADATA_PROVIDER}" != "Keiner" ]; then
 else
     echo "Metadaten-Provider: Deaktiviert"
 fi
+echo "Serien-Download: ${SERIEN_DOWNLOAD}"
+if [ "${SERIEN_DIR}" != "${DOWNLOAD_DIR}" ]; then
+    echo "Serien-Verzeichnis: ${SERIEN_DIR}"
+else
+    echo "Serien-Verzeichnis: ${DOWNLOAD_DIR} (Standard)"
+fi
 echo "=========================================="
 echo ""
 
@@ -73,6 +81,12 @@ while true; do
         OMDB_API_KEY_ARGS="--omdb-api-key ${OMDB_API_KEY}"
     fi
     
+    SERIEN_DOWNLOAD_ARGS="--serien-download ${SERIEN_DOWNLOAD}"
+    SERIEN_DIR_ARGS=""
+    if [ "${SERIEN_DIR}" != "${DOWNLOAD_DIR}" ]; then
+        SERIEN_DIR_ARGS="--serien-dir ${SERIEN_DIR}"
+    fi
+    
     python perlentaucher.py \
         --download-dir "${DOWNLOAD_DIR}" \
         --limit "${LIMIT}" \
@@ -82,7 +96,9 @@ while true; do
         --state-file "${STATE_FILE}" \
         ${NOTIFY_ARGS} \
         ${TMDB_API_KEY_ARGS} \
-        ${OMDB_API_KEY_ARGS}
+        ${OMDB_API_KEY_ARGS} \
+        ${SERIEN_DOWNLOAD_ARGS} \
+        ${SERIEN_DIR_ARGS}
     
     EXIT_CODE=$?
     
