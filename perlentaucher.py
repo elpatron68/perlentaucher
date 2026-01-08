@@ -876,6 +876,35 @@ def extract_episode_info(movie_data, series_title: str) -> Tuple[Optional[int], 
         logging.debug(f"Episoden-Info gefunden (1x01 Format): S{season:02d}E{episode:02d}")
         return (season, episode)
     
+    # Pattern 6: Nur Episode-Nummer in Klammern (X/Y) ohne Staffel-Info - versuche aus Kontext zu erkennen
+    pattern6 = re.search(r'\((\d+)/\d+\)', text)
+    if pattern6:
+        episode = int(pattern6.group(1))
+        # Versuche Staffel aus Kontext zu erkennen
+        # Wenn "Staffel 1" oder "Saison 1" irgendwo im Text steht, verwende das
+        season_match = re.search(r'(?:[Ss]taffel|[Ss]aison)\s+(\d+)', text, re.IGNORECASE)
+        if season_match:
+            season = int(season_match.group(1))
+            logging.debug(f"Episoden-Info gefunden (X/Y Format mit Kontext): S{season:02d}E{episode:02d}")
+            return (season, episode)
+        # Fallback: Wenn keine Staffel-Info, aber Episode-Nummer gefunden, annehmen Staffel 1
+        logging.debug(f"Episoden-Info gefunden (X/Y Format ohne Staffel, annehme S01): S01E{episode:02d}")
+        return (1, episode)
+    
+    # Pattern 7: Episode X, Teil X, Folge X (ohne Staffel-Info)
+    pattern7 = re.search(r'(?:[Ee]pisode|[Tt]eil|[Ff]olge)\s+(\d+)', text, re.IGNORECASE)
+    if pattern7:
+        episode = int(pattern7.group(1))
+        # Versuche Staffel aus Kontext zu erkennen
+        season_match = re.search(r'(?:[Ss]taffel|[Ss]aison)\s+(\d+)', text, re.IGNORECASE)
+        if season_match:
+            season = int(season_match.group(1))
+            logging.debug(f"Episoden-Info gefunden (Episode/Teil/Folge mit Kontext): S{season:02d}E{episode:02d}")
+            return (season, episode)
+        # Fallback: Staffel 1 annehmen
+        logging.debug(f"Episoden-Info gefunden (Episode/Teil/Folge ohne Staffel, annehme S01): S01E{episode:02d}")
+        return (1, episode)
+    
     return (None, None)
 
 def format_episode_filename(series_title: str, season: Optional[int], episode: Optional[int], metadata: Dict) -> str:
@@ -1296,11 +1325,37 @@ def main():
                     downloaded_count = 0
                     failed_count = 0
                     
+                    # Analysiere gefundene Episoden nach Staffel
+                    episodes_by_season = {}
+                    for season, episode, _ in episodes_with_info:
+                        if season:
+                            if season not in episodes_by_season:
+                                episodes_by_season[season] = []
+                            episodes_by_season[season].append(episode)
+                    
+                    # Logge Episoden-Statistik
+                    logging.info(f"Gefundene Episoden für '{movie_title}': {total_episodes} Episoden")
+                    for season in sorted(episodes_by_season.keys()):
+                        episodes = sorted(episodes_by_season[season])
+                        missing = []
+                        if len(episodes) > 0:
+                            max_ep = max(episodes)
+                            for ep in range(1, max_ep + 1):
+                                if ep not in episodes:
+                                    missing.append(ep)
+                        if missing:
+                            logging.warning(f"Staffel {season}: Episoden {missing} fehlen (gefunden: {episodes})")
+                        else:
+                            logging.info(f"Staffel {season}: {len(episodes)} Episoden gefunden (E{min(episodes) if episodes else 0}-E{max(episodes) if episodes else 0})")
+                    
                     logging.info(f"Starte Download von {total_episodes} Episoden für '{movie_title}'")
                     
+                    # Zähle Episoden ohne Staffel/Episode-Info
+                    skipped_episodes = []
                     for season, episode_num, episode_data in episodes_with_info:
                         if season is None or episode_num is None:
-                            logging.warning(f"Überspringe Episode ohne Staffel/Episoden-Info: '{episode_data.get('title')}'")
+                            title = episode_data.get('title', 'Unbekannt')
+                            skipped_episodes.append(title)
                             continue
                         
                         success, title, filepath = download_content(episode_data, args.download_dir, movie_title, metadata,
@@ -1319,6 +1374,14 @@ def main():
                             save_processed_entry(state_file, episode_id, status=status, 
                                                 movie_title=f"{movie_title} S{season:02d}E{episode_num:02d}", 
                                                 filename=filename)
+                    
+                    # Logge übersprungene Episoden
+                    if skipped_episodes:
+                        logging.warning(f"{len(skipped_episodes)} Episoden konnten nicht verarbeitet werden (keine Staffel/Episode-Info):")
+                        for title in skipped_episodes[:10]:  # Zeige nur erste 10
+                            logging.warning(f"  - {title}")
+                        if len(skipped_episodes) > 10:
+                            logging.warning(f"  ... und {len(skipped_episodes) - 10} weitere")
                     
                     # Markiere Haupt-Eintrag als verarbeitet
                     if state_file:
