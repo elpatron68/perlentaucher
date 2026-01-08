@@ -8,3 +8,5 @@ test_downloads/
 run_perlentaucher.sh
 run_perlentaucher.bat
 run_perlentaucher_helper.py
+.env
+scripts/.env
