@@ -169,6 +169,16 @@ Das Quickstart-Script fragt dich nach folgenden Parametern:
 - Alternative Metadata-Provider
 - Registrierung: http://www.omdbapi.com/apikey.aspx
 
+### Serien-Download-Option
+- Optionen: `erste` (nur erste Episode), `staffel` (gesamte Staffel), `keine` (Serien überspringen)
+- Standard: `erste`
+- Bestimmt, wie mit TV-Serien umgegangen wird
+
+### Serien-Verzeichnis (optional)
+- Standard: Download-Verzeichnis
+- Basis-Pfad für Serien-Downloads
+- Episoden werden in Unterordnern `[Titel] (Jahr)/` gespeichert
+
 ## Konfigurationsdatei
 
 Die Konfiguration wird in `.perlentaucher_config.json` gespeichert:
@@ -184,7 +194,9 @@ Die Konfiguration wird in `.perlentaucher_config.json` gespeichert:
   "no_state": false,
   "notify": "",
   "tmdb_api_key": "",
-  "omdb_api_key": ""
+  "omdb_api_key": "",
+  "serien_download": "erste",
+  "serien_dir": "./downloads"
 }
 ```
 

@@ -7,14 +7,19 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 ## Features
 
 - Parst den RSS Feed der Mediathekperlen nach neuen Filmeinträgen.
-- Sucht automatisch nach dem Filmtitel.
+- Sucht automatisch nach dem Filmtitel oder Serientitel.
 - Lädt die beste Fassung basierend auf deinen Präferenzen herunter.
+- **Serien-Unterstützung**: Automatische Erkennung und Download von TV-Serien
+  - Optionen: Nur erste Episode, gesamte Staffel oder Serien überspringen
+  - Konfigurierbarer Basis-Pfad für Serien-Downloads
+  - Episoden werden in Unterordnern `[Titel] (Jahr)/` gespeichert
+  - Dateinamen im Format: `[Titel] (Jahr) - S01E01 [provider_id].ext`
 - Priorisierung nach Sprache (Deutsch/Englisch).
 - Priorisierung nach Audiodeskription (mit/ohne).
 - Speichert bereits verarbeitete Blog-Beiträge - verhindert doppelte Downloads.
 - Optionale Benachrichtigungen via Apprise (Email, Discord, Telegram, Slack, etc.).
 - Jellyfin/Plex-kompatible Dateinamen mit Jahr und Metadata Provider IDs (TMDB/OMDB).
-- Optionale Metadata Provider-Integration (TMDB/OMDB) für bessere Film-Erkennung.
+- Optionale Metadata Provider-Integration (TMDB/OMDB) für bessere Film- und Serien-Erkennung.
 - Konfigurierbarer Download-Ordner.
 - Logging.
 - Automatische Tests mit CI/CD-Pipeline (Codeberg Actions/Woodpecker CI).
@@ -68,6 +73,8 @@ python perlentaucher.py [Optionen]
 - `--notify`: Apprise-URL für Benachrichtigungen (optional). Unterstützt viele Dienste wie Email, Discord, Telegram, Slack, etc.
 - `--tmdb-api-key`: TMDB API-Key für Metadata-Abfrage (optional). Kann auch über Umgebungsvariable `TMDB_API_KEY` gesetzt werden.
 - `--omdb-api-key`: OMDb API-Key für Metadata-Abfrage (optional). Kann auch über Umgebungsvariable `OMDB_API_KEY` gesetzt werden.
+- `--serien-download`: Download-Verhalten für Serien (Standard: `erste`). Optionen: `erste` (nur erste Episode), `staffel` (gesamte Staffel), `keine` (Serien überspringen).
+- `--serien-dir`: Basis-Verzeichnis für Serien-Downloads (Standard: `--download-dir`). Episoden werden in Unterordnern `[Titel] (Jahr)/` gespeichert.
 
 ### Beispiele
 
@@ -111,16 +118,41 @@ Mit beiden Metadata Providern:
 python perlentaucher.py --tmdb-api-key "dein_tmdb_api_key" --omdb-api-key "dein_omdb_api_key"
 ```
 
+Serien-Downloads (nur erste Episode):
+```bash
+python perlentaucher.py --serien-download erste --serien-dir ./Serien
+```
+
+Serien-Downloads (gesamte Staffel):
+```bash
+python perlentaucher.py --serien-download staffel --serien-dir ./Serien
+```
+
+Serien überspringen:
+```bash
+python perlentaucher.py --serien-download keine
+```
+
 ### Dateinamen-Schema für Jellyfin/Plex
 
 Das Script generiert Dateinamen im Format, das von Jellyfin und Plex automatisch erkannt wird:
 
+**Filme:**
 - **Mit Jahr und Provider-ID**: `Movie Name (2022) [tmdbid-123456].mp4`
 - **Nur mit Jahr**: `Movie Name (2022).mp4`
 - **Nur mit Provider-ID**: `Movie Name [imdbid-tt1234567].mp4`
 - **Ohne Metadata**: `Movie Name.mp4` (Fallback)
 
-Das Jahr wird automatisch aus dem RSS-Feed-Titel extrahiert. Wenn API-Keys für TMDB oder OMDB angegeben werden, werden zusätzlich Metadata Provider IDs hinzugefügt, um die Film-Erkennung zu verbessern.
+**Serien:**
+- **Mit Episode-Info**: `[serien-dir]/[Titel] (Jahr)/[Titel] (Jahr) - S01E01 [tmdbid-123456].mp4`
+- **Beispiel**: `./Serien/Twin Peaks (1992)/Twin Peaks (1992) - S01E01 [tmdbid-1923].mp4`
+
+Das Jahr wird automatisch aus dem RSS-Feed-Titel extrahiert. Wenn API-Keys für TMDB oder OMDB angegeben werden, werden zusätzlich Metadata Provider IDs hinzugefügt, um die Film- und Serien-Erkennung zu verbessern.
+
+**Serien-Erkennung:**
+- Automatische Erkennung über RSS-Feed-Kategorie "TV-Serien"
+- Zusätzliche Prüfung über TMDB/OMDB Provider-IDs (wenn API-Keys vorhanden)
+- Titel-Muster-Erkennung als Fallback
 
 **API-Keys beschaffen:**
 - **TMDB**: Registriere dich auf [themoviedb.org](https://www.themoviedb.org/) und erstelle einen API-Key unter [Settings > API](https://www.themoviedb.org/settings/api)
@@ -130,9 +162,10 @@ Das Jahr wird automatisch aus dem RSS-Feed-Titel extrahiert. Wenn API-Keys für 
 
 Das Script unterstützt Benachrichtigungen via [Apprise](https://github.com/caronc/apprise), die über viele verschiedene Dienste gesendet werden können:
 
-- **Erfolgreiche Downloads**: Benachrichtigung mit Filmtitel, Dateipfad und Link zum Blog-Eintrag
+- **Erfolgreiche Downloads**: Benachrichtigung mit Filmtitel/Serientitel, Dateipfad und Link zum Blog-Eintrag
 - **Fehlgeschlagene Downloads**: Benachrichtigung bei Download-Fehlern
-- **Nicht gefundene Filme**: Benachrichtigung wenn ein Film nicht in der Mediathek gefunden wurde
+- **Nicht gefundene Filme/Serien**: Benachrichtigung wenn ein Film oder eine Serie nicht in der Mediathek gefunden wurde
+- **Staffel-Downloads**: Benachrichtigung mit Anzahl der heruntergeladenen Episoden und Fortschritt
 
 <img src="assets/perlentaucher-ntfy.png" alt="Screenshot ntfy-Benachrichtigungen" width="25%">
 

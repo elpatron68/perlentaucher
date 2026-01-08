@@ -144,6 +144,35 @@ docker run -d \
   perlentaucher
 ```
 
+Mit Serien-Download-Unterstützung (gesamte Staffel):
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  -v /pfad/zu/serien:/serien \
+  -e SERIEN_DOWNLOAD=staffel \
+  -e SERIEN_DIR=/serien \
+  perlentaucher
+```
+
+Mit Serien-Download-Unterstützung (nur erste Episode):
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  -e SERIEN_DOWNLOAD=erste \
+  perlentaucher
+```
+
+Serien überspringen:
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  -e SERIEN_DOWNLOAD=keine \
+  perlentaucher
+```
+
 ## Umgebungsvariablen
 
 - `INTERVAL_HOURS`: Stunden zwischen den Ausführungen (Standard: 12)
@@ -156,6 +185,8 @@ docker run -d \
 - `NOTIFY`: Apprise-URL für Benachrichtigungen (optional, z.B. `mailto://user:pass@example.com` oder `discord://webhook_id/webhook_token`)
 - `TMDB_API_KEY`: TMDB API-Key für Metadata-Abfrage (optional)
 - `OMDB_API_KEY`: OMDb API-Key für Metadata-Abfrage (optional)
+- `SERIEN_DOWNLOAD`: Download-Verhalten für Serien (Standard: `erste`). Optionen: `erste` (nur erste Episode), `staffel` (gesamte Staffel), `keine` (Serien überspringen)
+- `SERIEN_DIR`: Basis-Verzeichnis für Serien-Downloads im Container (Standard: `DOWNLOAD_DIR`). Episoden werden in Unterordnern `[Titel] (Jahr)/` gespeichert
 
 **Wichtig:** 
 - Verwende `-v` um ein Volume für die Downloads zu mounten, damit die Dateien auch nach dem Container-Stopp erhalten bleiben.
