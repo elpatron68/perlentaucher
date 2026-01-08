@@ -123,25 +123,50 @@ if ($remoteUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
             prerelease = $false
         } | ConvertTo-Json
         
+        $headers = @{
+            "Authorization" = "token $codebergToken"
+            "Content-Type" = "application/json"
+        }
+        
         try {
-            $headers = @{
-                "Authorization" = "token $codebergToken"
-                "Content-Type" = "application/json"
+            # Prüfe ob Release bereits existiert
+            $checkUrl = "$apiUrl/tags/$newTag"
+            try {
+                $existingRelease = Invoke-RestMethod -Uri $checkUrl -Method Get -Headers $headers -ErrorAction SilentlyContinue
+                if ($existingRelease) {
+                    Write-Host "⚠ Release für Tag $newTag existiert bereits." -ForegroundColor Yellow
+                    $update = Read-Host "Release aktualisieren? (j/n) [n]"
+                    if ($update -match '^[JjYy]$') {
+                        # Update Release
+                        $updateUrl = "$apiUrl/$($existingRelease.id)"
+                        $response = Invoke-RestMethod -Uri $updateUrl -Method Patch -Headers $headers -Body $releaseData -ErrorAction Stop
+                        Write-Host "✅ Release erfolgreich aktualisiert!" -ForegroundColor Green
+                        Write-Host "  URL: $($response.html_url)" -ForegroundColor Gray
+                    } else {
+                        Write-Host "Release wird nicht aktualisiert." -ForegroundColor Gray
+                        $response = $existingRelease
+                    }
+                }
             }
-            
-            $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $releaseData -ErrorAction Stop
-            
-            Write-Host "✅ Release erfolgreich erstellt!" -ForegroundColor Green
-            Write-Host "  URL: $($response.html_url)" -ForegroundColor Gray
+            catch {
+                # Release existiert nicht, erstelle neues Release
+                $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $releaseData -ErrorAction Stop
+                Write-Host "✅ Release erfolgreich erstellt!" -ForegroundColor Green
+                Write-Host "  URL: $($response.html_url)" -ForegroundColor Gray
+            }
         }
         catch {
-            Write-Host "⚠ Fehler beim Erstellen des Releases über API:" -ForegroundColor Yellow
+            Write-Host "⚠ Fehler beim Erstellen/Aktualisieren des Releases über API:" -ForegroundColor Yellow
             Write-Host "  $($_.Exception.Message)" -ForegroundColor Yellow
             if ($_.ErrorDetails.Message) {
                 Write-Host "  Details: $($_.ErrorDetails.Message)" -ForegroundColor Yellow
             }
+            if ($_.Exception.Response.StatusCode -eq 409) {
+                Write-Host "  Release für diesen Tag existiert bereits." -ForegroundColor Yellow
+            }
             Write-Host "  Release kann manuell erstellt werden unter:" -ForegroundColor Yellow
             Write-Host "  https://codeberg.org/$repoOwner/$repoName/releases/new" -ForegroundColor Gray
+            $response = $null
         }
     } else {
         Write-Host "Codeberg API Token nicht angegeben. Release wird übersprungen." -ForegroundColor Yellow
@@ -195,3 +220,6 @@ Write-Host "`n✅ Erfolgreich abgeschlossen!" -ForegroundColor Green
 Write-Host "  Tag: $newTag" -ForegroundColor Gray
 Write-Host "  Docker-Image: $registryImage" -ForegroundColor Gray
 Write-Host "  Docker-Image (latest): $registryLatest" -ForegroundColor Gray
+if ($codebergToken -and $response) {
+    Write-Host "  Release: $($response.html_url)" -ForegroundColor Gray
+}
