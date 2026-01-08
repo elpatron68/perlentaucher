@@ -109,11 +109,16 @@ Siehe [Changelog](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag) 
         # Erstelle Release über Codeberg/Gitea API
         api_url="https://codeberg.org/api/v1/repos/$repo_owner/$repo_name/releases"
         
+        # Escape JSON-String für release_body (ohne jq)
+        release_body_escaped=$(echo "$release_body" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+        
         # Prüfe ob Release bereits existiert
         check_url="$api_url/tags/$new_tag"
-        existing_release=$(curl -s -H "Authorization: token $codeberg_token" "$check_url" 2>/dev/null)
+        check_response=$(curl -s -w "\n%{http_code}" -H "Authorization: token $codeberg_token" "$check_url" 2>/dev/null)
+        check_http_code=$(echo "$check_response" | tail -n1)
+        existing_release=$(echo "$check_response" | head -n-1)
         
-        if [ -n "$existing_release" ] && [ "$existing_release" != "null" ]; then
+        if [ "$check_http_code" = "200" ] && [ -n "$existing_release" ] && [ "$existing_release" != "null" ]; then
             echo "⚠ Release für Tag $new_tag existiert bereits."
             read -p "Release aktualisieren? (j/n) [n]: " update_release
             if [[ $update_release =~ ^[JjYy]$ ]]; then
@@ -121,10 +126,11 @@ Siehe [Changelog](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag) 
                 release_id=$(echo "$existing_release" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
                 if [ -n "$release_id" ]; then
                     update_url="$api_url/$release_id"
+                    json_data="{\"tag_name\":\"$new_tag\",\"name\":\"Release $new_tag\",\"body\":\"$release_body_escaped\",\"draft\":false,\"prerelease\":false}"
                     response=$(curl -s -w "\n%{http_code}" -X PATCH \
                         -H "Authorization: token $codeberg_token" \
                         -H "Content-Type: application/json" \
-                        -d "{\"tag_name\":\"$new_tag\",\"name\":\"Release $new_tag\",\"body\":$(echo "$release_body" | jq -Rs .),\"draft\":false,\"prerelease\":false}" \
+                        -d "$json_data" \
                         "$update_url" 2>/dev/null)
                     http_code=$(echo "$response" | tail -n1)
                     if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
@@ -142,10 +148,11 @@ Siehe [Changelog](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag) 
             fi
         else
             # Erstelle neues Release
+            json_data="{\"tag_name\":\"$new_tag\",\"name\":\"Release $new_tag\",\"body\":\"$release_body_escaped\",\"draft\":false,\"prerelease\":false}"
             response=$(curl -s -w "\n%{http_code}" -X POST \
                 -H "Authorization: token $codeberg_token" \
                 -H "Content-Type: application/json" \
-                -d "{\"tag_name\":\"$new_tag\",\"name\":\"Release $new_tag\",\"body\":$(echo "$release_body" | jq -Rs .),\"draft\":false,\"prerelease\":false}" \
+                -d "$json_data" \
                 "$api_url" 2>/dev/null)
             http_code=$(echo "$response" | tail -n1)
             if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
