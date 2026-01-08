@@ -295,6 +295,27 @@ $tmdbApiKey = Read-Host "TMDB API-Key (optional, leer lassen zum Überspringen)"
 Write-Host ""
 $omdbApiKey = Read-Host "OMDb API-Key (optional, leer lassen zum Überspringen)"
 
+# Serien-Download
+Write-Host ""
+Write-Host "Serien-Download-Option:"
+Write-Host "  1) erste (nur erste Episode, Standard)"
+Write-Host "  2) staffel (gesamte Staffel)"
+Write-Host "  3) keine (Serien überspringen)"
+$serienDownloadChoice = Read-Host "Auswahl [1]"
+switch ($serienDownloadChoice) {
+    "1" { $serienDownload = "erste" }
+    "2" { $serienDownload = "staffel" }
+    "3" { $serienDownload = "keine" }
+    default { $serienDownload = "erste" }
+}
+
+# Serien-Verzeichnis
+Write-Host ""
+$serienDir = Read-Host "Serien-Verzeichnis (optional, Standard: Download-Verzeichnis, leer lassen für Standard)"
+if ([string]::IsNullOrWhiteSpace($serienDir)) {
+    $serienDir = $downloadDir
+}
+
 # Erstelle Config-Datei
 Write-Host ""
 Write-Host "Erstelle Konfigurationsdatei..."
@@ -311,6 +332,8 @@ $config = @{
     notify = $notify
     tmdb_api_key = $tmdbApiKey
     omdb_api_key = $omdbApiKey
+    serien_download = $serienDownload
+    serien_dir = $serienDir
 }
 
 try {
@@ -382,6 +405,20 @@ try:
     if config.get('omdb_api_key'):
         args.append("--omdb-api-key")
         args.append(config['omdb_api_key'])
+    
+    # Serien-Download-Option
+    serien_download = config.get('serien_download', 'erste')
+    args.append("--serien-download")
+    args.append(serien_download)
+    
+    # Serien-Verzeichnis nur hinzufügen, wenn es vom Download-Verzeichnis abweicht
+    import os
+    download_dir_normalized = os.path.normpath(config['download_dir'])
+    serien_dir = config.get('serien_dir', config['download_dir'])
+    serien_dir_normalized = os.path.normpath(serien_dir)
+    if download_dir_normalized != serien_dir_normalized:
+        args.append("--serien-dir")
+        args.append(serien_dir)
     
     print(' '.join(f'"{arg}"' if ' ' in arg or arg.startswith('--') == False else arg for arg in args))
 except Exception as e:

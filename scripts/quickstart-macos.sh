@@ -230,6 +230,27 @@ read -p "TMDB API-Key (optional, leer lassen zum Überspringen): " tmdb_api_key
 echo ""
 read -p "OMDb API-Key (optional, leer lassen zum Überspringen): " omdb_api_key
 
+# Serien-Download
+echo ""
+echo "Serien-Download-Option:"
+echo "  1) erste (nur erste Episode, Standard)"
+echo "  2) staffel (gesamte Staffel)"
+echo "  3) keine (Serien überspringen)"
+read -p "Auswahl [1]: " serien_download_choice
+case $serien_download_choice in
+    1) serien_download="erste" ;;
+    2) serien_download="staffel" ;;
+    3) serien_download="keine" ;;
+    *) serien_download="erste" ;;
+esac
+
+# Serien-Verzeichnis
+echo ""
+read -p "Serien-Verzeichnis (optional, Standard: Download-Verzeichnis, leer lassen für Standard): " serien_dir
+if [ -z "$serien_dir" ]; then
+    serien_dir="$download_dir"
+fi
+
 # Erstelle Config-Datei
 echo ""
 echo "Erstelle Konfigurationsdatei..."
@@ -246,7 +267,9 @@ cat > "$config_file" <<EOF
   "no_state": $no_state,
   "notify": "$notify",
   "tmdb_api_key": "$tmdb_api_key",
-  "omdb_api_key": "$omdb_api_key"
+  "omdb_api_key": "$omdb_api_key",
+  "serien_download": "$serien_download",
+  "serien_dir": "$serien_dir"
 }
 EOF
 
@@ -293,9 +316,11 @@ no_state=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['no_st
 notify=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['notify'])")
 tmdb_api_key=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['tmdb_api_key'])")
 omdb_api_key=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['omdb_api_key'])")
+serien_download=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['serien_download'])")
+serien_dir=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE'))['serien_dir'])")
 
 # Baue Argumente
-ARGS="--download-dir \"$download_dir\" --limit $limit --loglevel $loglevel --sprache $sprache --audiodeskription $audiodeskription"
+ARGS="--download-dir \"$download_dir\" --limit $limit --loglevel $loglevel --sprache $sprache --audiodeskription $audiodeskription --serien-download $serien_download"
 
 if [ "$no_state" = "true" ]; then
     ARGS="$ARGS --no-state"
@@ -313,6 +338,13 @@ fi
 
 if [ -n "$omdb_api_key" ]; then
     ARGS="$ARGS --omdb-api-key \"$omdb_api_key\""
+fi
+
+# Serien-Verzeichnis nur hinzufügen, wenn es vom Download-Verzeichnis abweicht
+download_dir_normalized=$(python3 -c "import os; print(os.path.normpath('$download_dir'))")
+serien_dir_normalized=$(python3 -c "import os; print(os.path.normpath('$serien_dir'))")
+if [ "$download_dir_normalized" != "$serien_dir_normalized" ]; then
+    ARGS="$ARGS --serien-dir \"$serien_dir\""
 fi
 
 # Starte Perlentaucher
