@@ -81,13 +81,33 @@ if [[ $remote_url =~ codeberg\.org[/:]([^/]+)/([^/]+?)(\.git)?$ ]]; then
     
     echo "Repository: $repo_owner/$repo_name"
     
-    # Hole Codeberg API Token (aus Umgebungsvariable oder interaktiv)
-    codeberg_token="${CODEBERG_TOKEN:-}"
+    # Hole Codeberg API Token (aus .env Datei, Umgebungsvariable oder interaktiv)
+    codeberg_token=""
+    
+    # Versuche .env Datei im Scripts-Ordner zu lesen
+    script_dir="$(cd "$(dirname "$0")" && pwd)"
+    env_file="$script_dir/.env"
+    if [ -f "$env_file" ]; then
+        echo "Lese .env Datei: $env_file"
+        # Lese CODEBERG_TOKEN aus .env (ignoriere Kommentare und Leerzeilen)
+        codeberg_token=$(grep -E '^\s*CODEBERG_TOKEN\s*=' "$env_file" | head -1 | sed 's/^[^=]*=\s*//' | sed 's/\s*#.*$//' | sed "s/^['\"]//" | sed "s/['\"]$//" | tr -d ' ')
+        if [ -n "$codeberg_token" ]; then
+            echo "Token aus .env Datei geladen"
+        fi
+    fi
+    
+    # Fallback auf Umgebungsvariable
     if [ -z "$codeberg_token" ]; then
-        echo "Codeberg API Token nicht in Umgebungsvariable CODEBERG_TOKEN gefunden."
+        codeberg_token="${CODEBERG_TOKEN:-}"
+    fi
+    
+    # Fallback auf interaktive Eingabe
+    if [ -z "$codeberg_token" ]; then
+        echo "Codeberg API Token nicht gefunden."
         echo "Hinweis: Erstelle einen Personal Access Token unter:"
         echo "  https://codeberg.org/user/settings/applications"
         echo "  Benötigte Scopes: 'public_repo' oder 'repo' (für private Repos)"
+        echo "  Oder speichere Token in: $env_file"
         read -p "Codeberg API Token (oder Enter zum Überspringen): " codeberg_token
     fi
     

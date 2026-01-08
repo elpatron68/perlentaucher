@@ -90,13 +90,33 @@ if ($remoteUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
     
     Write-Host "Repository: $repoOwner/$repoName" -ForegroundColor Gray
     
-    # Hole Codeberg API Token (aus Umgebungsvariable oder interaktiv)
-    $codebergToken = $env:CODEBERG_TOKEN
+    # Hole Codeberg API Token (aus .env Datei, Umgebungsvariable oder interaktiv)
+    $codebergToken = $null
+    
+    # Versuche .env Datei im Scripts-Ordner zu lesen
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $envFile = Join-Path $scriptDir ".env"
+    if (Test-Path $envFile) {
+        Write-Host "Lese .env Datei: $envFile" -ForegroundColor Gray
+        $envContent = Get-Content $envFile -Raw
+        if ($envContent -match '(?m)^\s*CODEBERG_TOKEN\s*=\s*(.+?)(?:\s*$|\s*#)') {
+            $codebergToken = $matches[1].Trim().Trim('"').Trim("'")
+            Write-Host "Token aus .env Datei geladen" -ForegroundColor Gray
+        }
+    }
+    
+    # Fallback auf Umgebungsvariable
     if (-not $codebergToken) {
-        Write-Host "Codeberg API Token nicht in Umgebungsvariable CODEBERG_TOKEN gefunden." -ForegroundColor Yellow
+        $codebergToken = $env:CODEBERG_TOKEN
+    }
+    
+    # Fallback auf interaktive Eingabe
+    if (-not $codebergToken) {
+        Write-Host "Codeberg API Token nicht gefunden." -ForegroundColor Yellow
         Write-Host "Hinweis: Erstelle einen Personal Access Token unter:" -ForegroundColor Yellow
         Write-Host "  https://codeberg.org/user/settings/applications" -ForegroundColor Gray
         Write-Host "  Benötigte Scopes: 'public_repo' oder 'repo' (für private Repos)" -ForegroundColor Gray
+        Write-Host "  Oder speichere Token in: $envFile" -ForegroundColor Gray
         $codebergToken = Read-Host "Codeberg API Token (oder Enter zum Überspringen)"
     }
     
