@@ -978,7 +978,7 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
         "sortOrder": "desc",
         "future": False,
         "offset": 0,
-        "size": 100  # Mehr Ergebnisse für Serien (können viele Episoden haben)
+        "size": 500  # Mehr Ergebnisse für Serien (können viele Episoden haben)
     }
     
     try:
@@ -1269,13 +1269,27 @@ def main():
                     # Bestimme series_base_dir
                     series_base_dir = args.serien_dir if args.serien_dir else args.download_dir
                     
-                    # Sortiere Episoden nach Staffel/Episode
-                    episodes_with_info = []
+                    # Sortiere Episoden nach Staffel/Episode und dedupliziere
+                    # Verwende Dictionary um nur die beste Version jeder Episode zu behalten
+                    episodes_dict = {}  # Key: (season, episode), Value: (score, episode_data)
+                    
+                    # Bewerte alle Episoden und behalte nur die beste Version jeder Episode
                     for episode_data in episodes:
                         season, episode_num = extract_episode_info(episode_data, movie_title)
-                        episodes_with_info.append((season, episode_num, episode_data))
+                        if season is None or episode_num is None:
+                            continue
+                        
+                        # Berechne Score für diese Episode
+                        score = score_movie(episode_data, args.sprache, args.audiodeskription,
+                                          search_title=movie_title, search_year=year, metadata=metadata)
+                        
+                        episode_key = (season, episode_num)
+                        # Behalte nur die Episode mit dem höchsten Score
+                        if episode_key not in episodes_dict or score > episodes_dict[episode_key][0]:
+                            episodes_dict[episode_key] = (score, episode_data)
                     
-                    # Sortiere: zuerst nach Staffel, dann nach Episode (None wird als 0 behandelt für Sortierung)
+                    # Konvertiere Dictionary zu Liste und sortiere
+                    episodes_with_info = [(s, e, data) for (s, e), (score, data) in episodes_dict.items()]
                     episodes_with_info.sort(key=lambda x: (x[0] or 0, x[1] or 0))
                     
                     total_episodes = len(episodes_with_info)
