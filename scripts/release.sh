@@ -90,7 +90,8 @@ if [[ $remote_url =~ codeberg\.org[/:]([^/]+)/([^/]+?)(\.git)?$ ]]; then
     if [ -f "$env_file" ]; then
         echo "Lese .env Datei: $env_file"
         # Lese CODEBERG_TOKEN aus .env (ignoriere Kommentare und Leerzeilen)
-        codeberg_token=$(grep -E '^\s*CODEBERG_TOKEN\s*=' "$env_file" | head -1 | sed 's/^[^=]*=\s*//' | sed 's/\s*#.*$//' | sed "s/^['\"]//" | sed "s/['\"]$//" | tr -d ' ')
+        # macOS-kompatibel: verwende awk statt mehrfache sed-Befehle
+        codeberg_token=$(grep -E '^\s*CODEBERG_TOKEN\s*=' "$env_file" | head -1 | awk -F'=' '{print $2}' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/^["'\'']//' | sed 's/["'\'']$//' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
         if [ -n "$codeberg_token" ]; then
             echo "Token aus .env Datei geladen"
         fi
@@ -130,7 +131,8 @@ Siehe [Changelog](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag) 
         api_url="https://codeberg.org/api/v1/repos/$repo_owner/$repo_name/releases"
         
         # Escape JSON-String für release_body (ohne jq)
-        release_body_escaped=$(echo "$release_body" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+        # macOS-kompatibel: verwende tr für Newline-Ersetzung statt sed multiline
+        release_body_escaped=$(echo "$release_body" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' '|' | sed 's/|/\\n/g')
         
         # Prüfe ob Release bereits existiert
         check_url="$api_url/tags/$new_tag"
