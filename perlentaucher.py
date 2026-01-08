@@ -78,16 +78,18 @@ def load_state_file(state_file):
             logging.warning(f"Fehler beim Laden der Status-Datei: {e}")
     return {'entries': {}, 'last_updated': datetime.now().isoformat()}
 
-def save_processed_entry(state_file, entry_id, status=None, movie_title=None, filename=None):
+def save_processed_entry(state_file, entry_id, status=None, movie_title=None, filename=None, is_series=False, episodes=None):
     """
     Speichert einen Eintrag als verarbeitet mit Status und weiteren Details.
     
     Args:
         state_file: Pfad zur State-Datei
         entry_id: Eindeutige ID des RSS-Eintrags
-        status: Status des Eintrags ('download_success', 'download_failed', 'not_found', 'title_extraction_failed')
-        movie_title: Filmtitel (optional)
+        status: Status des Eintrags ('download_success', 'download_failed', 'not_found', 'title_extraction_failed', 'skipped')
+        movie_title: Filmtitel oder Serientitel (optional)
         filename: Dateiname der heruntergeladenen Datei (optional)
+        is_series: True wenn es sich um eine Serie handelt (optional)
+        episodes: Liste von heruntergeladenen Episoden (z.B. ["S01E01", "S01E02"]) (optional)
     """
     data = load_state_file(state_file)
     
@@ -104,6 +106,10 @@ def save_processed_entry(state_file, entry_id, status=None, movie_title=None, fi
         entry_data['movie_title'] = movie_title
     if filename:
         entry_data['filename'] = filename
+    if is_series:
+        entry_data['is_series'] = True
+    if episodes:
+        entry_data['episodes'] = episodes
     
     data['entries'][entry_id] = entry_data
     data['last_updated'] = datetime.now().isoformat()
@@ -140,107 +146,182 @@ def extract_year_from_title(title: str) -> Optional[int]:
             pass
     return None
 
-def search_tmdb(movie_title: str, year: Optional[int], api_key: str) -> Optional[Dict]:
+def search_tmdb(movie_title: str, year: Optional[int], api_key: str, search_type: str = "both") -> Optional[Dict]:
     """
-    Sucht nach einem Film in The Movie Database (TMDB).
+    Sucht nach einem Film oder einer Serie in The Movie Database (TMDB).
     
     Args:
-        movie_title: Der Filmtitel
-        year: Optional - Das Jahr des Films
+        movie_title: Der Filmtitel oder Serientitel
+        year: Optional - Das Jahr
         api_key: TMDB API-Key
+        search_type: "movie", "tv", oder "both" (Standard: "both")
         
     Returns:
-        Dictionary mit 'tmdb_id' und 'year' oder None bei Fehler
+        Dictionary mit 'tmdb_id', 'year' und 'content_type' oder None bei Fehler
     """
     if not api_key:
         return None
     
-    try:
-        url = "https://api.themoviedb.org/3/search/movie"
-        params = {
-            "api_key": api_key,
-            "query": movie_title,
-            "language": "de-DE"
-        }
-        if year:
-            params["year"] = year
-        
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        results = data.get("results", [])
-        if results:
-            # Nimm das erste Ergebnis (bestes Match)
-            first_result = results[0]
-            tmdb_id = first_result.get("id")
-            result_year = first_result.get("release_date", "")[:4] if first_result.get("release_date") else None
+    # Suche nach Film
+    if search_type in ["movie", "both"]:
+        try:
+            url = "https://api.themoviedb.org/3/search/movie"
+            params = {
+                "api_key": api_key,
+                "query": movie_title,
+                "language": "de-DE"
+            }
+            if year:
+                params["year"] = year
             
-            if tmdb_id:
-                logging.debug(f"TMDB Match gefunden: '{movie_title}' -> tmdbid-{tmdb_id}")
-                return {
-                    "tmdb_id": tmdb_id,
-                    "year": int(result_year) if result_year and result_year.isdigit() else year
-                }
-    except requests.RequestException as e:
-        logging.debug(f"TMDB API-Fehler für '{movie_title}': {e}")
-    except Exception as e:
-        logging.debug(f"Unerwarteter Fehler bei TMDB-Suche für '{movie_title}': {e}")
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            results = data.get("results", [])
+            if results:
+                first_result = results[0]
+                tmdb_id = first_result.get("id")
+                result_year = first_result.get("release_date", "")[:4] if first_result.get("release_date") else None
+                
+                if tmdb_id:
+                    logging.debug(f"TMDB Film-Match gefunden: '{movie_title}' -> tmdbid-{tmdb_id}")
+                    return {
+                        "tmdb_id": tmdb_id,
+                        "year": int(result_year) if result_year and result_year.isdigit() else year,
+                        "content_type": "movie"
+                    }
+        except requests.RequestException as e:
+            logging.debug(f"TMDB API-Fehler (Film) für '{movie_title}': {e}")
+        except Exception as e:
+            logging.debug(f"Unerwarteter Fehler bei TMDB-Suche (Film) für '{movie_title}': {e}")
+    
+    # Suche nach Serie
+    if search_type in ["tv", "both"]:
+        try:
+            url = "https://api.themoviedb.org/3/search/tv"
+            params = {
+                "api_key": api_key,
+                "query": movie_title,
+                "language": "de-DE"
+            }
+            if year:
+                params["first_air_date_year"] = year
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            results = data.get("results", [])
+            if results:
+                first_result = results[0]
+                tmdb_id = first_result.get("id")
+                result_year = first_result.get("first_air_date", "")[:4] if first_result.get("first_air_date") else None
+                
+                if tmdb_id:
+                    logging.debug(f"TMDB Serie-Match gefunden: '{movie_title}' -> tmdbid-{tmdb_id}")
+                    return {
+                        "tmdb_id": tmdb_id,
+                        "year": int(result_year) if result_year and result_year.isdigit() else year,
+                        "content_type": "tv"
+                    }
+        except requests.RequestException as e:
+            logging.debug(f"TMDB API-Fehler (Serie) für '{movie_title}': {e}")
+        except Exception as e:
+            logging.debug(f"Unerwarteter Fehler bei TMDB-Suche (Serie) für '{movie_title}': {e}")
     
     return None
 
-def search_omdb(movie_title: str, year: Optional[int], api_key: str) -> Optional[Dict]:
+def search_omdb(movie_title: str, year: Optional[int], api_key: str, search_type: str = "both") -> Optional[Dict]:
     """
-    Sucht nach einem Film in OMDb API.
+    Sucht nach einem Film oder einer Serie in OMDb API.
     
     Args:
-        movie_title: Der Filmtitel
-        year: Optional - Das Jahr des Films
+        movie_title: Der Filmtitel oder Serientitel
+        year: Optional - Das Jahr
         api_key: OMDb API-Key
+        search_type: "movie", "series", oder "both" (Standard: "both")
         
     Returns:
-        Dictionary mit 'imdb_id' und 'year' oder None bei Fehler
+        Dictionary mit 'imdb_id', 'year' und 'content_type' oder None bei Fehler
     """
     if not api_key:
         return None
     
-    try:
-        url = "http://www.omdbapi.com/"
-        params = {
-            "apikey": api_key,
-            "t": movie_title,
-            "type": "movie"
-        }
-        if year:
-            params["y"] = year
-        
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get("Response") == "True" and data.get("imdbID"):
-            imdb_id = data.get("imdbID")
-            result_year = data.get("Year")
+    # Suche nach Film
+    if search_type in ["movie", "both"]:
+        try:
+            url = "http://www.omdbapi.com/"
+            params = {
+                "apikey": api_key,
+                "t": movie_title,
+                "type": "movie"
+            }
+            if year:
+                params["y"] = year
             
-            if imdb_id:
-                logging.debug(f"OMDB Match gefunden: '{movie_title}' -> {imdb_id}")
-                return {
-                    "imdb_id": imdb_id,
-                    "year": int(result_year) if result_year and result_year.isdigit() else year
-                }
-    except requests.RequestException as e:
-        logging.debug(f"OMDB API-Fehler für '{movie_title}': {e}")
-    except Exception as e:
-        logging.debug(f"Unerwarteter Fehler bei OMDB-Suche für '{movie_title}': {e}")
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("Response") == "True" and data.get("imdbID"):
+                content_type = data.get("Type", "").lower()
+                imdb_id = data.get("imdbID")
+                result_year = data.get("Year")
+                
+                if imdb_id:
+                    logging.debug(f"OMDB Film-Match gefunden: '{movie_title}' -> {imdb_id}")
+                    return {
+                        "imdb_id": imdb_id,
+                        "year": int(result_year) if result_year and result_year.isdigit() else year,
+                        "content_type": "movie" if content_type == "movie" else "movie"
+                    }
+        except requests.RequestException as e:
+            logging.debug(f"OMDB API-Fehler (Film) für '{movie_title}': {e}")
+        except Exception as e:
+            logging.debug(f"Unerwarteter Fehler bei OMDB-Suche (Film) für '{movie_title}': {e}")
+    
+    # Suche nach Serie
+    if search_type in ["series", "both"]:
+        try:
+            url = "http://www.omdbapi.com/"
+            params = {
+                "apikey": api_key,
+                "t": movie_title,
+                "type": "series"
+            }
+            if year:
+                params["y"] = year
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("Response") == "True" and data.get("imdbID"):
+                content_type = data.get("Type", "").lower()
+                imdb_id = data.get("imdbID")
+                result_year = data.get("Year")
+                
+                if imdb_id:
+                    logging.debug(f"OMDB Serie-Match gefunden: '{movie_title}' -> {imdb_id}")
+                    return {
+                        "imdb_id": imdb_id,
+                        "year": int(result_year) if result_year and result_year.isdigit() else year,
+                        "content_type": "tv" if content_type == "series" else "tv"
+                    }
+        except requests.RequestException as e:
+            logging.debug(f"OMDB API-Fehler (Serie) für '{movie_title}': {e}")
+        except Exception as e:
+            logging.debug(f"Unerwarteter Fehler bei OMDB-Suche (Serie) für '{movie_title}': {e}")
     
     return None
 
 def get_metadata(movie_title: str, year: Optional[int], tmdb_api_key: Optional[str], omdb_api_key: Optional[str]) -> Dict:
     """
-    Holt Metadata für einen Film von TMDB oder OMDB.
+    Holt Metadata für einen Film oder eine Serie von TMDB oder OMDB.
     
     Args:
-        movie_title: Der Filmtitel
+        movie_title: Der Filmtitel oder Serientitel
         year: Optional - Das Jahr (aus RSS-Feed extrahiert)
         tmdb_api_key: Optional - TMDB API-Key
         omdb_api_key: Optional - OMDb API-Key
@@ -249,17 +330,20 @@ def get_metadata(movie_title: str, year: Optional[int], tmdb_api_key: Optional[s
         Dictionary mit:
         - 'year': Jahr (aus RSS-Feed oder Provider)
         - 'provider_id': String im Format '[tmdbid-123]' oder '[imdbid-tt123456]' oder None
+        - 'content_type': "movie", "tv", oder "unknown"
     """
     result = {
         "year": year,
-        "provider_id": None
+        "provider_id": None,
+        "content_type": "unknown"
     }
     
     # Versuche zuerst TMDB
     if tmdb_api_key:
-        tmdb_result = search_tmdb(movie_title, year, tmdb_api_key)
+        tmdb_result = search_tmdb(movie_title, year, tmdb_api_key, search_type="both")
         if tmdb_result:
             result["year"] = tmdb_result.get("year") or year
+            result["content_type"] = tmdb_result.get("content_type", "unknown")
             tmdb_id = tmdb_result.get("tmdb_id")
             if tmdb_id:
                 result["provider_id"] = f"[tmdbid-{tmdb_id}]"
@@ -267,9 +351,10 @@ def get_metadata(movie_title: str, year: Optional[int], tmdb_api_key: Optional[s
     
     # Fallback: Versuche OMDB
     if omdb_api_key:
-        omdb_result = search_omdb(movie_title, year, omdb_api_key)
+        omdb_result = search_omdb(movie_title, year, omdb_api_key, search_type="both")
         if omdb_result:
             result["year"] = omdb_result.get("year") or year
+            result["content_type"] = omdb_result.get("content_type", "unknown")
             imdb_id = omdb_result.get("imdb_id")
             if imdb_id:
                 result["provider_id"] = f"[imdbid-{imdb_id}]"
@@ -316,6 +401,49 @@ def send_notification(apprise_url, title, body, notification_type="info"):
             logging.warning(f"Fehler beim Senden der Benachrichtigung: {title}")
     except Exception as e:
         logging.error(f"Fehler beim Senden der Benachrichtigung: {e}")
+
+def is_series(entry, metadata: Optional[Dict] = None) -> bool:
+    """
+    Prüft, ob ein RSS-Feed-Eintrag eine Serie ist.
+    
+    Args:
+        entry: RSS-Feed-Eintrag
+        metadata: Optional - Metadata-Dictionary mit 'content_type' und 'provider_id'
+        
+    Returns:
+        True wenn es sich um eine Serie handelt, sonst False
+    """
+    # Priorität 1: RSS-Feed-Kategorie "TV-Serien"
+    categories = entry.get('tags', [])
+    if isinstance(categories, list):
+        for tag in categories:
+            if isinstance(tag, dict):
+                tag_term = tag.get('term', '').lower()
+            else:
+                tag_term = str(tag).lower()
+            if 'tv-serie' in tag_term or 'serie' in tag_term:
+                logging.debug(f"Serie erkannt über RSS-Kategorie: {tag_term}")
+                return True
+    
+    # Priorität 2: Provider-ID-Prüfung (wenn Metadata verfügbar)
+    if metadata:
+        content_type = metadata.get("content_type", "unknown")
+        if content_type == "tv":
+            logging.debug(f"Serie erkannt über Provider-ID: {metadata.get('provider_id')}")
+            return True
+        # Wenn es ein Film ist, ist es keine Serie
+        elif content_type == "movie":
+            return False
+    
+    # Priorität 3: Titel-Muster-Prüfung
+    title = entry.get('title', '').lower()
+    series_indicators = ['serie', 'series', 'staffel', 'folge', 'episode']
+    for indicator in series_indicators:
+        if indicator in title:
+            logging.debug(f"Serie erkannt über Titel-Muster: '{indicator}' in '{title}'")
+            return True
+    
+    return False
 
 def parse_rss_feed(limit, state_file=None):
     logging.info(f"Parse RSS-Feed: {RSS_FEED_URL}")
@@ -676,29 +804,96 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         logging.error(f"Unerwarteter Fehler bei der Suche nach '{movie_title}': {e}")
         return None
 
-def download_movie(movie_data, download_dir, movie_title: str, metadata: Dict):
+def extract_episode_info(movie_data, series_title: str) -> Tuple[Optional[int], Optional[int]]:
     """
-    Lädt einen Film herunter.
+    Extrahiert Staffel- und Episoden-Nummer aus MediathekViewWeb-Daten.
     
     Args:
         movie_data: Die Filmdaten von MediathekViewWeb
-        download_dir: Download-Verzeichnis
-        movie_title: Der ursprüngliche Filmtitel aus dem RSS-Feed
-        metadata: Dictionary mit 'year' und 'provider_id' (von get_metadata())
-    
+        series_title: Der Serientitel (für Filterung)
+        
     Returns:
-        tuple: (success: bool, title: str, filepath: str)
+        Tuple (season, episode) oder (None, None) wenn nicht gefunden
     """
-    url = movie_data.get("url_video")
-    title = movie_data.get("title")
+    title = movie_data.get("title", "")
+    topic = movie_data.get("topic", "")
+    description = movie_data.get("description", "")
     
-    # Verwende den ursprünglichen Filmtitel aus RSS-Feed für Dateinamen
-    base_title = movie_title
+    text = f"{title} {topic} {description}"
     
+    # Pattern 1: S01E01, S1E1, S 01 E 01
+    pattern1 = re.search(r'[Ss](\d+)[\s]*[Ee](\d+)', text)
+    if pattern1:
+        season = int(pattern1.group(1))
+        episode = int(pattern1.group(2))
+        logging.debug(f"Episoden-Info gefunden (S01E01 Format): S{season:02d}E{episode:02d}")
+        return (season, episode)
+    
+    # Pattern 2: Staffel 1 Episode 1, Staffel 1, Episode 1
+    pattern2 = re.search(r'[Ss]taffel\s+(\d+)[\s,]*[Ee]pisode\s+(\d+)', text, re.IGNORECASE)
+    if pattern2:
+        season = int(pattern2.group(1))
+        episode = int(pattern2.group(2))
+        logging.debug(f"Episoden-Info gefunden (Staffel/Episode Format): S{season:02d}E{episode:02d}")
+        return (season, episode)
+    
+    # Pattern 2a: Saison 1 (1/8), Staffel 1 (1/8), Saison 1 (1/30) - französisches/deutsches Format
+    pattern2a = re.search(r'(?:[Ss]aison|[Ss]taffel)\s+(\d+)\s*\((\d+)/\d+\)', text, re.IGNORECASE)
+    if pattern2a:
+        season = int(pattern2a.group(1))
+        episode = int(pattern2a.group(2))
+        logging.debug(f"Episoden-Info gefunden (Saison/Staffel X (Y/Z) Format): S{season:02d}E{episode:02d}")
+        return (season, episode)
+    
+    # Pattern 2b: The Return (1/18), (1/18) - Format ohne Staffel-Nummer (Staffel wird als 3 angenommen für "The Return")
+    pattern2b = re.search(r'\((\d+)/\d+\)', text)
+    if pattern2b and ('return' in text.lower() or 'the return' in text.lower()):
+        episode = int(pattern2b.group(1))
+        # "The Return" ist Staffel 3
+        season = 3
+        logging.debug(f"Episoden-Info gefunden (The Return Format): S{season:02d}E{episode:02d}")
+        return (season, episode)
+    
+    # Pattern 3: Folge 1, Folge 01 (nur Episode, Staffel wird als 1 angenommen)
+    pattern3 = re.search(r'[Ff]olge\s+(\d+)', text)
+    if pattern3:
+        episode = int(pattern3.group(1))
+        logging.debug(f"Episoden-Info gefunden (Folge Format): S01E{episode:02d}")
+        return (1, episode)
+    
+    # Pattern 4: Episode 1, Episode 01 (nur Episode, Staffel wird als 1 angenommen)
+    pattern4 = re.search(r'[Ee]pisode\s+(\d+)', text)
+    if pattern4:
+        episode = int(pattern4.group(1))
+        logging.debug(f"Episoden-Info gefunden (Episode Format): S01E{episode:02d}")
+        return (1, episode)
+    
+    # Pattern 5: 1x01, 1.01
+    pattern5 = re.search(r'(\d+)[x.](\d+)', text)
+    if pattern5:
+        season = int(pattern5.group(1))
+        episode = int(pattern5.group(2))
+        logging.debug(f"Episoden-Info gefunden (1x01 Format): S{season:02d}E{episode:02d}")
+        return (season, episode)
+    
+    return (None, None)
+
+def format_episode_filename(series_title: str, season: Optional[int], episode: Optional[int], metadata: Dict) -> str:
+    """
+    Generiert Dateinamen für eine Episode im Format 'Serientitel (Jahr) - S01E01 [provider_id].ext'
+    
+    Args:
+        series_title: Der Serientitel
+        season: Staffel-Nummer
+        episode: Episoden-Nummer
+        metadata: Dictionary mit 'year' und 'provider_id'
+        
+    Returns:
+        Dateiname ohne Extension
+    """
     # Clean filename - entferne problematische Zeichen
-    safe_title = re.sub(r'[<>:"/\\|?*]', '_', base_title)
+    safe_title = re.sub(r'[<>:"/\\|?*]', '_', series_title)
     
-    # Baue Dateinamen im Jellyfin/Plex-Format: "Movie Name (year) [provider_id].ext"
     filename_parts = [safe_title]
     
     # Füge Jahr hinzu, falls vorhanden
@@ -706,13 +901,208 @@ def download_movie(movie_data, download_dir, movie_title: str, metadata: Dict):
     if year:
         filename_parts.append(f"({year})")
     
+    # Füge Staffel/Episode hinzu
+    if season is not None and episode is not None:
+        filename_parts.append(f"- S{season:02d}E{episode:02d}")
+    elif episode is not None:
+        filename_parts.append(f"- E{episode:02d}")
+    
     # Füge Provider-ID hinzu, falls vorhanden
     provider_id = metadata.get("provider_id")
     if provider_id:
         filename_parts.append(provider_id)
     
-    # Baue Dateinamen zusammen
-    base_filename = " ".join(filename_parts)
+    return " ".join(filename_parts)
+
+def get_series_directory(series_base_dir: str, series_title: str, year: Optional[int]) -> str:
+    """
+    Erstellt und gibt den Serien-Unterordner zurück.
+    
+    Args:
+        series_base_dir: Basis-Verzeichnis für Serien (aus --serien-dir oder --download-dir)
+        series_title: Der Serientitel
+        year: Optional - Das Jahr der Serie
+        
+    Returns:
+        Pfad zum Serien-Unterordner: series_base_dir/[Titel] (Jahr)/
+    """
+    # Clean title - entferne problematische Zeichen
+    safe_title = re.sub(r'[<>:"/\\|?*]', '_', series_title)
+    
+    # Baue Unterordner-Namen: [Titel] (Jahr)
+    dir_parts = [safe_title]
+    if year:
+        dir_parts.append(f"({year})")
+    
+    dir_name = " ".join(dir_parts)
+    series_dir = os.path.join(series_base_dir, dir_name)
+    
+    # Erstelle Verzeichnis falls nicht vorhanden
+    if not os.path.exists(series_dir):
+        try:
+            os.makedirs(series_dir)
+            logging.info(f"Serien-Verzeichnis erstellt: {series_dir}")
+        except OSError as e:
+            logging.error(f"Konnte Serien-Verzeichnis nicht erstellen {series_dir}: {e}")
+            raise
+    
+    return series_dir
+
+def search_mediathek_series(series_title: str, prefer_language: str = "deutsch", prefer_audio_desc: str = "egal", 
+                            notify_url: Optional[str] = None, entry_link: Optional[str] = None, 
+                            year: Optional[int] = None, metadata: Optional[Dict] = None) -> list:
+    """
+    Sucht nach allen Episoden einer Serie in MediathekViewWeb.
+    
+    Args:
+        series_title: Der Serientitel
+        prefer_language: "deutsch", "englisch" oder "egal"
+        prefer_audio_desc: "mit", "ohne" oder "egal"
+        notify_url: Optional - Apprise-URL für Benachrichtigungen
+        entry_link: Optional - Link zum Blog-Eintrag
+        year: Optional - Das Jahr der Serie
+        metadata: Optional - Dictionary mit 'provider_id' und 'content_type'
+        
+    Returns:
+        Liste von Episoden-Daten (sortiert nach Score), oder leere Liste wenn keine gefunden
+    """
+    logging.info(f"Suche in MediathekViewWeb nach Serie: '{series_title}'")
+    payload = {
+        "queries": [
+            {
+                "fields": ["title", "topic"],
+                "query": series_title
+            }
+        ],
+        "sortBy": "size",
+        "sortOrder": "desc",
+        "future": False,
+        "offset": 0,
+        "size": 100  # Mehr Ergebnisse für Serien (können viele Episoden haben)
+    }
+    
+    try:
+        response = requests.post(MVW_API_URL, json=payload, headers={"Content-Type": "text/plain"}, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        results = data.get("result", {}).get("results", [])
+        if not results:
+            logging.warning(f"Keine Ergebnisse gefunden für Serie '{series_title}'")
+            if notify_url and APPRISE_AVAILABLE:
+                body = f"Keine Ergebnisse in der Mediathek gefunden:\n\n"
+                body += f"📺 {series_title}\n"
+                if entry_link:
+                    body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                send_notification(notify_url, "Serie nicht gefunden", body, "warning")
+            return []
+        
+        # Filtere Ergebnisse: Nur die, die den Serientitel enthalten
+        series_title_lower = series_title.lower()
+        filtered_results = []
+        for result in results:
+            title = result.get("title", "").lower()
+            topic = result.get("topic", "").lower()
+            # Prüfe ob Serientitel im Titel oder Topic enthalten ist
+            if series_title_lower in title or series_title_lower in topic:
+                filtered_results.append(result)
+        
+        if not filtered_results:
+            logging.warning(f"Keine Episoden für Serie '{series_title}' gefunden")
+            if notify_url and APPRISE_AVAILABLE:
+                body = f"Keine Episoden für Serie gefunden:\n\n"
+                body += f"📺 {series_title}\n"
+                if entry_link:
+                    body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                send_notification(notify_url, "Keine Episoden gefunden", body, "warning")
+            return []
+        
+        # Bewerte alle Episoden
+        scored_results = []
+        for result in filtered_results:
+            try:
+                score = score_movie(result, prefer_language, prefer_audio_desc,
+                                  search_title=series_title, search_year=year, metadata=metadata)
+                scored_results.append((score, result))
+            except Exception as e:
+                logging.debug(f"Fehler beim Bewerten einer Episode für '{series_title}': {e}")
+                continue
+        
+        if not scored_results:
+            logging.warning(f"Keine gültigen Episoden für '{series_title}' gefunden")
+            return []
+        
+        # Sortiere nach Punktzahl (höchste zuerst)
+        scored_results.sort(key=lambda x: x[0], reverse=True)
+        
+        # Extrahiere nur die Episoden-Daten (ohne Score)
+        episodes = [result for score, result in scored_results]
+        
+        logging.info(f"{len(episodes)} Episoden für Serie '{series_title}' gefunden")
+        return episodes
+        
+    except requests.RequestException as e:
+        logging.error(f"Netzwerkfehler bei der Suche nach Serie '{series_title}': {e}")
+        return []
+    except (KeyError, ValueError, TypeError) as e:
+        logging.error(f"Ungültige Antwort von MediathekViewWeb für Serie '{series_title}': {e}")
+        return []
+    except Exception as e:
+        logging.error(f"Unerwarteter Fehler bei der Suche nach Serie '{series_title}': {e}")
+        return []
+
+def download_content(movie_data, download_dir, content_title: str, metadata: Dict, is_series: bool = False, 
+                     series_base_dir: Optional[str] = None, season: Optional[int] = None, 
+                     episode: Optional[int] = None):
+    """
+    Lädt einen Film oder eine Episode herunter.
+    
+    Args:
+        movie_data: Die Filmdaten von MediathekViewWeb
+        download_dir: Download-Verzeichnis (für Filme) oder Basis-Verzeichnis (für Serien)
+        content_title: Der ursprüngliche Filmtitel oder Serientitel aus dem RSS-Feed
+        metadata: Dictionary mit 'year' und 'provider_id' (von get_metadata())
+        is_series: True wenn es sich um eine Serie handelt
+        series_base_dir: Optional - Basis-Verzeichnis für Serien (wenn is_series=True)
+        season: Optional - Staffel-Nummer (für Serien)
+        episode: Optional - Episoden-Nummer (für Serien)
+    
+    Returns:
+        tuple: (success: bool, title: str, filepath: str)
+    """
+    url = movie_data.get("url_video")
+    title = movie_data.get("title")
+    
+    # Bestimme Ziel-Verzeichnis
+    if is_series and series_base_dir:
+        # Für Serien: Verwende series_base_dir und erstelle Unterordner
+        target_dir = get_series_directory(series_base_dir, content_title, metadata.get("year"))
+        # Generiere Episode-Dateinamen
+        base_filename = format_episode_filename(content_title, season, episode, metadata)
+    else:
+        # Für Filme: Verwende download_dir direkt
+        target_dir = download_dir
+        # Verwende den ursprünglichen Filmtitel aus RSS-Feed für Dateinamen
+        base_title = content_title
+        
+        # Clean filename - entferne problematische Zeichen
+        safe_title = re.sub(r'[<>:"/\\|?*]', '_', base_title)
+        
+        # Baue Dateinamen im Jellyfin/Plex-Format: "Movie Name (year) [provider_id].ext"
+        filename_parts = [safe_title]
+        
+        # Füge Jahr hinzu, falls vorhanden
+        year = metadata.get("year")
+        if year:
+            filename_parts.append(f"({year})")
+        
+        # Füge Provider-ID hinzu, falls vorhanden
+        provider_id = metadata.get("provider_id")
+        if provider_id:
+            filename_parts.append(provider_id)
+        
+        # Baue Dateinamen zusammen
+        base_filename = " ".join(filename_parts)
     
     # Try to guess extension
     ext = "mp4"
@@ -720,7 +1110,7 @@ def download_movie(movie_data, download_dir, movie_title: str, metadata: Dict):
     if url.endswith(".mp4"): ext = "mp4"
     
     filename = f"{base_filename}.{ext}"
-    filepath = os.path.join(download_dir, filename)
+    filepath = os.path.join(target_dir, filename)
 
     if os.path.exists(filepath):
         file_size = os.path.getsize(filepath)
@@ -776,6 +1166,10 @@ def main():
                        help="TMDB API-Key für Metadata-Abfrage (optional, kann auch über Umgebungsvariable TMDB_API_KEY gesetzt werden)")
     parser.add_argument("--omdb-api-key", default=None,
                        help="OMDb API-Key für Metadata-Abfrage (optional, kann auch über Umgebungsvariable OMDB_API_KEY gesetzt werden)")
+    parser.add_argument("--serien-download", default="erste", choices=["erste", "staffel", "keine"],
+                       help="Download-Verhalten für Serien: 'erste' (nur erste Episode), 'staffel' (gesamte Staffel), 'keine' (überspringen)")
+    parser.add_argument("--serien-dir", default=None,
+                       help="Basis-Verzeichnis für Serien-Downloads (Standard: --download-dir). Episoden werden in Unterordnern [Titel] (Jahr)/ gespeichert")
     
     args = parser.parse_args()
     
@@ -815,39 +1209,163 @@ def main():
         # Hole Metadata VOR der Suche, damit wir sie für besseres Matching nutzen können
         metadata = get_metadata(movie_title, year, args.tmdb_api_key, args.omdb_api_key)
         
-        result = search_mediathek(movie_title, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription, 
-                                 notify_url=args.notify, entry_link=entry_link, year=year, metadata=metadata)
-        if result:
-            success, title, filepath = download_movie(result, args.download_dir, movie_title, metadata)
-            # Markiere Eintrag als verarbeitet nach Download-Versuch
-            if state_file:
-                status = 'download_success' if success else 'download_failed'
-                filename = os.path.basename(filepath) if filepath else None
-                save_processed_entry(state_file, entry_id, status=status, movie_title=movie_title, filename=filename)
-                logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}' (Status: {status})")
-            
-            # Benachrichtigung senden
-            if args.notify:
-                if success:
-                    body = f"Film erfolgreich heruntergeladen:\n\n"
-                    body += f"📽️ {title}\n"
-                    body += f"💾 {filepath}\n"
-                    if entry_link:
-                        body += f"\n🔗 Blog-Eintrag: {entry_link}"
-                    send_notification(args.notify, "Download erfolgreich", body, "success")
+        # Prüfe ob es sich um eine Serie handelt
+        is_series_entry = is_series(entry, metadata)
+        
+        # Verarbeite basierend auf Serien-Download-Option
+        if is_series_entry:
+            if args.serien_download == "keine":
+                logging.info(f"Überspringe Serie '{movie_title}' (--serien-download=keine)")
+                if state_file:
+                    save_processed_entry(state_file, entry_id, status='skipped', movie_title=movie_title, is_series=True)
+                continue
+            elif args.serien_download == "erste":
+                # Lade nur erste Episode (aktuelles Verhalten)
+                result = search_mediathek(movie_title, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription, 
+                                         notify_url=args.notify, entry_link=entry_link, year=year, metadata=metadata)
+                if result:
+                    # Extrahiere Episode-Info für Dateinamen
+                    season, episode = extract_episode_info(result, movie_title)
+                    # Bestimme series_base_dir
+                    series_base_dir = args.serien_dir if args.serien_dir else args.download_dir
+                    success, title, filepath = download_content(result, args.download_dir, movie_title, metadata, 
+                                                               is_series=True, series_base_dir=series_base_dir,
+                                                               season=season, episode=episode)
+                    # Markiere Eintrag als verarbeitet nach Download-Versuch
+                    if state_file:
+                        status = 'download_success' if success else 'download_failed'
+                        filename = os.path.basename(filepath) if filepath else None
+                        save_processed_entry(state_file, entry_id, status=status, movie_title=movie_title, 
+                                           filename=filename, is_series=True)
+                        logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}' (Status: {status})")
+                    
+                    # Benachrichtigung senden
+                    if args.notify:
+                        if success:
+                            body = f"Episode erfolgreich heruntergeladen:\n\n"
+                            body += f"📺 {title}\n"
+                            body += f"💾 {filepath}\n"
+                            if entry_link:
+                                body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                            send_notification(args.notify, "Download erfolgreich", body, "success")
+                        else:
+                            body = f"Download fehlgeschlagen:\n\n"
+                            body += f"📺 {title}\n"
+                            if entry_link:
+                                body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                            send_notification(args.notify, "Download fehlgeschlagen", body, "error")
                 else:
-                    body = f"Download fehlgeschlagen:\n\n"
-                    body += f"📽️ {title}\n"
-                    if entry_link:
-                        body += f"\n🔗 Blog-Eintrag: {entry_link}"
-                    send_notification(args.notify, "Download fehlgeschlagen", body, "error")
+                    logging.warning(f"Überspringe Serie '{movie_title}' - nicht in der Mediathek gefunden.")
+                    if state_file:
+                        save_processed_entry(state_file, entry_id, status='not_found', movie_title=movie_title, is_series=True)
+                    continue
+            elif args.serien_download == "staffel":
+                # Lade alle Episoden der Staffel
+                episodes = search_mediathek_series(movie_title, prefer_language=args.sprache, 
+                                                  prefer_audio_desc=args.audiodeskription,
+                                                  notify_url=args.notify, entry_link=entry_link, 
+                                                  year=year, metadata=metadata)
+                if episodes:
+                    # Bestimme series_base_dir
+                    series_base_dir = args.serien_dir if args.serien_dir else args.download_dir
+                    
+                    # Sortiere Episoden nach Staffel/Episode
+                    episodes_with_info = []
+                    for episode_data in episodes:
+                        season, episode_num = extract_episode_info(episode_data, movie_title)
+                        episodes_with_info.append((season, episode_num, episode_data))
+                    
+                    # Sortiere: zuerst nach Staffel, dann nach Episode (None wird als 0 behandelt für Sortierung)
+                    episodes_with_info.sort(key=lambda x: (x[0] or 0, x[1] or 0))
+                    
+                    total_episodes = len(episodes_with_info)
+                    downloaded_count = 0
+                    failed_count = 0
+                    
+                    logging.info(f"Starte Download von {total_episodes} Episoden für '{movie_title}'")
+                    
+                    for season, episode_num, episode_data in episodes_with_info:
+                        if season is None or episode_num is None:
+                            logging.warning(f"Überspringe Episode ohne Staffel/Episoden-Info: '{episode_data.get('title')}'")
+                            continue
+                        
+                        success, title, filepath = download_content(episode_data, args.download_dir, movie_title, metadata,
+                                                                     is_series=True, series_base_dir=series_base_dir,
+                                                                     season=season, episode=episode_num)
+                        if success:
+                            downloaded_count += 1
+                        else:
+                            failed_count += 1
+                        
+                        # Markiere Episode in State-Datei
+                        if state_file:
+                            episode_id = f"{entry_id}_S{season:02d}E{episode_num:02d}"
+                            status = 'download_success' if success else 'download_failed'
+                            filename = os.path.basename(filepath) if filepath else None
+                            save_processed_entry(state_file, episode_id, status=status, 
+                                                movie_title=f"{movie_title} S{season:02d}E{episode_num:02d}", 
+                                                filename=filename)
+                    
+                    # Markiere Haupt-Eintrag als verarbeitet
+                    if state_file:
+                        status = 'download_success' if downloaded_count > 0 else 'download_failed'
+                        episodes_list = [f"S{s:02d}E{e:02d}" for s, e, _ in episodes_with_info if s is not None and e is not None]
+                        save_processed_entry(state_file, entry_id, status=status, movie_title=movie_title, 
+                                            is_series=True, episodes=episodes_list)
+                    
+                    # Benachrichtigung für Staffel-Download
+                    if args.notify:
+                        body = f"Staffel-Download abgeschlossen:\n\n"
+                        body += f"📺 {movie_title}\n"
+                        body += f"✅ {downloaded_count}/{total_episodes} Episoden erfolgreich\n"
+                        if failed_count > 0:
+                            body += f"❌ {failed_count} Episoden fehlgeschlagen\n"
+                        if entry_link:
+                            body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                        notification_type = "success" if failed_count == 0 else "warning"
+                        send_notification(args.notify, "Staffel-Download abgeschlossen", body, notification_type)
+                    
+                    continue
+                else:
+                    # Keine Episoden gefunden
+                    if state_file:
+                        save_processed_entry(state_file, entry_id, status='not_found', movie_title=movie_title, is_series=True)
+                    continue
         else:
-            logging.warning(f"Überspringe '{movie_title}' - nicht in der Mediathek gefunden.")
-            # Auch nicht gefundene Filme als verarbeitet markieren, damit sie nicht immer wieder versucht werden
-            if state_file:
-                save_processed_entry(state_file, entry_id, status='not_found', movie_title=movie_title)
-                logging.debug(f"Eintrag als verarbeitet markiert (Film nicht gefunden): '{entry.title}'")
-            # Hinweis: Benachrichtigung wird bereits in search_mediathek() gesendet
+            # Normale Film-Verarbeitung
+            result = search_mediathek(movie_title, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription, 
+                                     notify_url=args.notify, entry_link=entry_link, year=year, metadata=metadata)
+            if result:
+                success, title, filepath = download_content(result, args.download_dir, movie_title, metadata, is_series=False)
+                # Markiere Eintrag als verarbeitet nach Download-Versuch
+                if state_file:
+                    status = 'download_success' if success else 'download_failed'
+                    filename = os.path.basename(filepath) if filepath else None
+                    save_processed_entry(state_file, entry_id, status=status, movie_title=movie_title, filename=filename)
+                    logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}' (Status: {status})")
+                
+                # Benachrichtigung senden
+                if args.notify:
+                    if success:
+                        body = f"Film erfolgreich heruntergeladen:\n\n"
+                        body += f"📽️ {title}\n"
+                        body += f"💾 {filepath}\n"
+                        if entry_link:
+                            body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                        send_notification(args.notify, "Download erfolgreich", body, "success")
+                    else:
+                        body = f"Download fehlgeschlagen:\n\n"
+                        body += f"📽️ {title}\n"
+                        if entry_link:
+                            body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                        send_notification(args.notify, "Download fehlgeschlagen", body, "error")
+            else:
+                logging.warning(f"Überspringe '{movie_title}' - nicht in der Mediathek gefunden.")
+                # Auch nicht gefundene Filme als verarbeitet markieren, damit sie nicht immer wieder versucht werden
+                if state_file:
+                    save_processed_entry(state_file, entry_id, status='not_found', movie_title=movie_title)
+                    logging.debug(f"Eintrag als verarbeitet markiert (Film nicht gefunden): '{entry.title}'")
+                # Hinweis: Benachrichtigung wird bereits in search_mediathek() gesendet
 
 if __name__ == "__main__":
     main()
