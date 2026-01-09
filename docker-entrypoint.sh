@@ -61,6 +61,59 @@ echo ""
 # Erstelle Download-Verzeichnis falls nicht vorhanden
 mkdir -p "${DOWNLOAD_DIR}"
 
+# Update-Prüfung beim Start
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Prüfe auf Updates..."
+if python -c "
+import sys
+import requests
+import semver
+
+try:
+    # Lese aktuelle Version aus _version.py
+    from _version import __version__
+    current_version = __version__
+    
+    # API-Aufruf zur Codeberg/Gitea API
+    response = requests.get(
+        'https://codeberg.org/api/v1/repos/elpatron/Perlentaucher/releases/latest',
+        timeout=5
+    )
+    response.raise_for_status()
+    data = response.json()
+    
+    # Extrahiere Version aus tag_name
+    latest_tag_raw = data.get('tag_name', '')
+    if not latest_tag_raw:
+        print('⚠️  Update-Prüfung fehlgeschlagen: Keine Version gefunden')
+        sys.exit(0)
+    
+    # Entferne 'v' Präfix für semver-Vergleich
+    latest_tag_clean = latest_tag_raw.lstrip('v')
+    current_clean = current_version.lstrip('v')
+    
+    # Überspringe Prüfung wenn aktuelle Version 'unknown' ist
+    if current_clean == 'unknown' or not latest_tag_clean:
+        print('⚠️  Update-Prüfung übersprungen: Ungültige Version')
+        sys.exit(0)
+    
+    # Versionsvergleich mit semver
+    comparison = semver.compare(current_clean, latest_tag_clean)
+    if comparison < 0:
+        print('⚠️  Eine neuere Version ist verfügbar: ' + latest_tag_raw + ' (aktuell: v' + current_version + ')')
+        print('   Download: https://codeberg.org/elpatron/Perlentaucher/releases/tag/' + latest_tag_raw)
+    elif comparison == 0:
+        print('✅ Auf dem neuesten Stand: v' + current_version)
+    # Wenn comparison > 0, ist die aktuelle Version neuer (z.B. Entwicklung), keine Meldung nötig
+except Exception as e:
+    # Stillschweigend überspringen bei Fehlern
+    pass
+" 2>/dev/null; then
+    echo ""
+else
+    echo "⚠️  Update-Prüfung fehlgeschlagen (keine Internetverbindung oder API-Fehler)"
+    echo ""
+fi
+
 # Endlosschleife
 while true; do
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Starte Download-Zyklus..."

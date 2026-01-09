@@ -6,6 +6,7 @@ import sys
 import requests
 import feedparser
 import json
+import semver
 from datetime import datetime
 from typing import Optional, Dict, Tuple
 
@@ -33,6 +34,50 @@ def setup_logging(level_name):
         level=level,
         datefmt='%Y-%m-%d %H:%M:%S'
     )
+
+def check_for_updates(current_version: str) -> None:
+    """
+    Prüft, ob eine neuere Version auf Codeberg verfügbar ist.
+    Gibt eine Logging-Meldung aus, wenn eine neuere Version gefunden wird.
+    
+    Args:
+        current_version: Die aktuelle Version des Scripts
+    """
+    try:
+        # API-Aufruf zur Codeberg/Gitea API
+        response = requests.get(
+            "https://codeberg.org/api/v1/repos/elpatron/Perlentaucher/releases/latest",
+            timeout=5
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        # Extrahiere Version aus tag_name
+        latest_tag_raw = data.get('tag_name', '')
+        if not latest_tag_raw:
+            return
+        
+        # Entferne "v" Präfix für semver-Vergleich
+        latest_tag_clean = latest_tag_raw.lstrip('v')
+        current_clean = current_version.lstrip('v')
+        
+        # Überspringe Prüfung wenn aktuelle Version "unknown" ist
+        if current_clean == "unknown" or not latest_tag_clean:
+            return
+        
+        # Versionsvergleich mit semver
+        comparison = semver.compare(current_clean, latest_tag_clean)
+        if comparison < 0:
+            # Neuere Version verfügbar
+            logging.info(f"⚠️  Eine neuere Version ist verfügbar: {latest_tag_raw} (aktuell: v{current_version})")
+            logging.info(f"   Download: https://codeberg.org/elpatron/Perlentaucher/releases/tag/{latest_tag_raw}")
+        elif comparison == 0:
+            # Aktuelle Version ist die neueste
+            logging.info(f"✅ Auf dem neuesten Stand: v{current_version}")
+        # Wenn comparison > 0, ist die aktuelle Version neuer (z.B. Entwicklung), keine Meldung nötig
+    except Exception:
+        # Stillschweigend überspringen bei Fehlern (keine Internetverbindung, API-Fehler, etc.)
+        pass
 
 def load_processed_entries(state_file):
     """
@@ -1210,6 +1255,9 @@ def main():
     
     # Version beim Start ausgeben
     logging.info(f"Perlentaucher v{__version__}")
+    
+    # Prüfe auf Updates
+    check_for_updates(__version__)
     
     if not os.path.exists(args.download_dir):
         try:
