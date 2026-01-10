@@ -267,7 +267,7 @@ class MainWindow(QMainWindow):
         <p>Version {version}</p>
         <p>Eine grafische Benutzeroberfläche für Perlentaucher.</p>
         <p>Automatischer Download von Film-Empfehlungen aus dem RSS-Feed Mediathekperlen.</p>
-        <p><a href="https://codeberg.org/elpatron/Perlentaucher">GitHub Repository</a></p>
+        <p><a href="https://codeberg.org/elpatron/Perlentaucher">Codeberg Repository</a></p>
         <p>Lizenz: MIT</p>
         """
         
