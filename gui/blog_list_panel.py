@@ -238,58 +238,60 @@ class BlogListPanel(QWidget):
             logging.info(f"RSS-Feed liefert {total_entries_from_feed} Einträge vom Feed-Server")
             
             # Filtere nach Datum wenn days angegeben
+            # WICHTIG: Wenn der Feed selbst nur wenige Einträge liefert (<=15),
+            # zeige ALLE verfügbaren Einträge, da Server-Begrenzung bereits Filterung ist
+            status_text = None  # Initialisiere Variable
+            
             if days and days > 0:
-                feed_entries = self._filter_entries_by_date(feed.entries, days)
-                filtered_count = len(feed_entries)
+                feed_entries_filtered = self._filter_entries_by_date(feed.entries, days)
+                filtered_count = len(feed_entries_filtered)
                 removed_count = total_entries_from_feed - filtered_count
                 
-                status_text = f"Feed: {total_entries_from_feed} total → {filtered_count} in den letzten {days} Tagen"
-                if removed_count > 0:
-                    status_text += f" ({removed_count} älter herausgefiltert)"
-                
-                # Warnung wenn alle Einträge herausgefiltert wurden
-                if filtered_count == 0 and total_entries_from_feed > 0:
-                    status_text += f" ⚠️ Alle Einträge älter als {days} Tage!"
-                    QMessageBox.information(
-                        self,
-                        "Keine Einträge in Zeitraum",
-                        f"Alle {total_entries_from_feed} Einträge vom Feed sind älter als {days} Tage.\n\n"
-                        f"Nutzen Sie 'Ältere Einträge nachladen...' und geben Sie mehr Tage ein "
-                        f"(oder lassen Sie das Feld leer für alle Einträge)."
+                # Wenn Feed nur wenige Einträge liefert, zeige alle (Server-Begrenzung ist bereits Filterung)
+                if total_entries_from_feed <= 15:
+                    # Zeige alle verfügbaren Einträge, da Feed selbst schon begrenzt ist
+                    logging.info(
+                        f"Feed liefert nur {total_entries_from_feed} Einträge (Server-Begrenzung). "
+                        f"Zeige alle verfügbaren Einträge."
                     )
+                    feed_entries = feed.entries  # Zeige alle verfügbaren
+                    filtered_count = total_entries_from_feed
+                    removed_count = 0
+                    status_text = f"Feed: {total_entries_from_feed} Einträge (alle verfügbaren - Server-Begrenzung)"
+                else:
+                    # Normale Filterung wenn Feed viele Einträge liefert
+                    feed_entries = feed_entries_filtered
+                    status_text = f"Feed: {total_entries_from_feed} total → {filtered_count} in den letzten {days} Tagen"
+                    if removed_count > 0:
+                        status_text += f" ({removed_count} älter herausgefiltert)"
+                    
+                    # Warnung wenn alle Einträge herausgefiltert wurden (nur wenn Feed viele liefert)
+                    if filtered_count == 0 and total_entries_from_feed > 0:
+                        status_text += f" ⚠️ Alle Einträge älter als {days} Tage!"
+                        QMessageBox.information(
+                            self,
+                            "Keine Einträge in Zeitraum",
+                            f"Alle {total_entries_from_feed} Einträge vom Feed sind älter als {days} Tage.\n\n"
+                            f"Nutzen Sie 'Ältere Einträge nachladen...' und geben Sie mehr Tage ein "
+                            f"(oder lassen Sie das Feld leer für alle Einträge)."
+                        )
                 
                 self.status_label.setText(status_text)
                 logging.info(f"Nach {days}-Tage-Filter: {filtered_count} Einträge (von {total_entries_from_feed} total, {removed_count} entfernt)")
                 
-                # Hinweis wenn der Feed selbst nur wenige Einträge zurückgibt
-                if total_entries_from_feed <= 15:
-                    if filtered_count < total_entries_from_feed:
-                        # Einige wurden herausgefiltert - zeige Hinweis
-                        logging.info(
-                            f"RSS-Feed liefert nur {total_entries_from_feed} Einträge (wahrscheinlich Server-Begrenzung). "
-                            f"{filtered_count} innerhalb von {days} Tagen, {removed_count} älter."
-                        )
-                    else:
-                        # Alle Einträge sind innerhalb des Zeitraums
-                        logging.info(
-                            f"RSS-Feed liefert nur {total_entries_from_feed} Einträge (wahrscheinlich Server-Begrenzung). "
-                            f"Alle sind innerhalb der letzten {days} Tage."
-                        )
-                    
-                    # Wenn sehr wenige Einträge, zeige Hinweis-Dialog (nur beim ersten Laden)
-                    # WordPress RSS-Feeds sind standardmäßig auf 10-20 Einträge begrenzt
-                    if total_entries_from_feed <= 15 and not append:
-                        QMessageBox.information(
-                            self,
-                            "Hinweis: RSS-Feed Begrenzung",
-                            f"Der RSS-Feed liefert nur {total_entries_from_feed} Einträge.\n\n"
-                            f"Dies ist eine Begrenzung auf Server-Seite (typisch für WordPress-RSS-Feeds).\n"
-                            f"Der Feed-Administrator kann dies bis max. 50 erhöhen.\n\n"
-                            f"Aktuell werden {filtered_count} Einträge der letzten {days} Tage angezeigt.\n\n"
-                            f"Nutzen Sie 'Ältere Einträge nachladen...' um alle verfügbaren Einträge "
-                            f"zu sehen (auch älter als 30 Tage, falls vorhanden).",
-                            QMessageBox.StandardButton.Ok
-                        )
+                # Hinweis-Dialog nur wenn Feed begrenzt ist UND beim ersten Laden (nicht append)
+                if total_entries_from_feed <= 15 and not append:
+                    QMessageBox.information(
+                        self,
+                        "Hinweis: RSS-Feed Begrenzung",
+                        f"Der RSS-Feed liefert nur {total_entries_from_feed} Einträge.\n\n"
+                        f"Dies ist eine Begrenzung auf Server-Seite (WordPress-RSS-Feeds sind "
+                        f"standardmäßig auf 10-20 Einträge begrenzt).\n\n"
+                        f"Es werden alle verfügbaren Einträge angezeigt.\n\n"
+                        f"Um mehr Einträge zu sehen, müsste der Feed-Administrator das Limit "
+                        f"erhöhen (bis max. 50 möglich).",
+                        QMessageBox.StandardButton.Ok
+                    )
             else:
                 feed_entries = feed.entries
                 self.status_label.setText(f"Feed: {total_entries_from_feed} Einträge total (keine Datums-Filterung)")
