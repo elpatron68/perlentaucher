@@ -444,6 +444,26 @@ class BlogListPanel(QWidget):
                 entry_id = get_entry_attr(entry, 'id') or get_entry_attr(entry, 'link') or get_entry_attr(entry, 'title', '')
                 is_processed = entry_id in processed_entries
                 
+                # WICHTIG: Prüfe ob es sich um eine Film-Empfehlung handelt
+                # Überspringe Nicht-Film-Empfehlungen (z.B. "In eigener Sache" Beiträge)
+                # Erstelle kompatibles Entry-Objekt für is_movie_recommendation()
+                entry_dict = make_entry_compatible(entry)
+                if not core.is_movie_recommendation(entry_dict):
+                    # Nicht-Film-Empfehlung, überspringe
+                    logging.debug(f"Nicht-Film-Empfehlung erkannt, überspringe: '{entry_dict.get('title', '')}'")
+                    # Markiere als übersprungen in State-Datei (verhindert erneute Prüfung)
+                    if config.get('state_file'):
+                        try:
+                            core.save_processed_entry(
+                                config.get('state_file'),
+                                entry_id,
+                                status='skipped',
+                                movie_title=entry_dict.get('title', '')
+                            )
+                        except Exception as e:
+                            logging.debug(f"Fehler beim Markieren als übersprungen: {e}")
+                    continue
+                
                 # Extrahiere Filmtitel
                 title = get_entry_attr(entry, 'title', '')
                 movie_title = None
@@ -472,8 +492,7 @@ class BlogListPanel(QWidget):
                     status = status_map.get(entry_state.get('status', 'unknown'), 'Verarbeitet')
                 
                 # Prüfe ob es eine Serie ist
-                # Erstelle kompatibles Entry-Objekt für is_series()
-                entry_dict = make_entry_compatible(entry)
+                # Verwende bereits erstelltes entry_dict
                 metadata = {}  # Wird später gefüllt wenn Metadata verfügbar ist
                 is_series = core.is_series(entry_dict, metadata)
                 

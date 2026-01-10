@@ -447,6 +447,68 @@ def send_notification(apprise_url, title, body, notification_type="info"):
     except Exception as e:
         logging.error(f"Fehler beim Senden der Benachrichtigung: {e}")
 
+def is_movie_recommendation(entry) -> bool:
+    """
+    Prüft, ob ein RSS-Feed-Eintrag eine Film-Empfehlung ist (kein "In eigener Sache" o.ä.).
+    
+    Vereinfachte Logik basierend auf Tags:
+    - Film-Empfehlungen haben das Tag "Mediathekperlen" UND keine Nicht-Film-Tags (z.B. "In eigener Sache", "Blog")
+    - Nicht-Film-Empfehlungen haben zwar auch "Mediathekperlen", aber zusätzlich spezielle Tags wie "In eigener Sache", "Blog", etc.
+    
+    Args:
+        entry: RSS-Feed-Eintrag (Dictionary-ähnlich mit .get() Methode)
+        
+    Returns:
+        True wenn es sich um eine Film-Empfehlung handelt, sonst False
+    """
+    # Extrahiere Tags/Kategorien aus dem Eintrag
+    categories = entry.get('tags', [])
+    if not isinstance(categories, list):
+        categories = []
+    
+    # Sammle alle Tag-Terms (lowercase für Vergleich)
+    tag_terms = []
+    has_mediathekperlen = False
+    
+    for tag in categories:
+        if isinstance(tag, dict):
+            tag_term = tag.get('term', '').strip()
+        else:
+            tag_term = str(tag).strip()
+        if tag_term:
+            tag_lower = tag_term.lower()
+            tag_terms.append(tag_lower)
+            # Prüfe ob "Mediathekperlen" Tag vorhanden ist
+            if tag_lower == 'mediathekperlen':
+                has_mediathekperlen = True
+    
+    # Wenn kein "Mediathekperlen" Tag vorhanden ist, ist es keine Film-Empfehlung
+    if not has_mediathekperlen:
+        logging.debug(f"Kein 'Mediathekperlen' Tag gefunden, behandle als Nicht-Film-Empfehlung")
+        return False
+    
+    # Prüfe auf Tags, die auf Nicht-Film-Empfehlungen hinweisen
+    # Diese Tags sollten bei Film-Empfehlungen NICHT vorhanden sein
+    non_movie_tags = [
+        'in eigener sache',
+        'blog',
+        'weihnachten',
+        'nachruf',
+        'ankündigung',
+        'ankuendigung'
+    ]
+    
+    for tag_term in tag_terms:
+        for non_movie_tag in non_movie_tags:
+            if non_movie_tag in tag_term:
+                logging.debug(f"Nicht-Film-Empfehlung erkannt: Tag '{tag_term}' enthält '{non_movie_tag}'")
+                return False
+    
+    # Wenn "Mediathekperlen" vorhanden ist und keine Nicht-Film-Tags gefunden wurden,
+    # handelt es sich um eine Film-Empfehlung
+    logging.debug(f"Film-Empfehlung erkannt: Tag 'Mediathekperlen' vorhanden und keine Nicht-Film-Tags gefunden")
+    return True
+
 def is_series(entry, metadata: Optional[Dict] = None) -> bool:
     """
     Prüft, ob ein RSS-Feed-Eintrag eine Serie ist.
@@ -514,6 +576,16 @@ def parse_rss_feed(limit, state_file=None):
         # Prüfe, ob Eintrag bereits verarbeitet wurde
         if entry_id in processed_entries:
             logging.debug(f"Eintrag bereits verarbeitet, überspringe: '{entry.title}'")
+            skipped_count += 1
+            continue
+        
+        # WICHTIG: Prüfe ob es sich um eine Film-Empfehlung handelt
+        # Überspringe Nicht-Film-Empfehlungen (z.B. "In eigener Sache" Beiträge)
+        if not is_movie_recommendation(entry):
+            logging.debug(f"Nicht-Film-Empfehlung erkannt, überspringe: '{entry.title}'")
+            # Markiere als übersprungen in State-Datei (verhindert erneute Prüfung)
+            if state_file:
+                save_processed_entry(state_file, entry_id, status='skipped', movie_title=entry.title)
             skipped_count += 1
             continue
         
