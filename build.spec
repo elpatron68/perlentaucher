@@ -51,6 +51,7 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# Erstelle EXE für alle Plattformen
 exe = EXE(
     pyz,
     a.scripts,
@@ -73,3 +74,18 @@ exe = EXE(
     entitlements_file=None,
     icon=None,  # Kann Icon-Pfad hinzugefügt werden: 'assets/perlerntaucher_512.ico'
 )
+
+# macOS: Erstelle zusätzlich APP Bundle aus dem EXE
+# PyInstaller erstellt auf macOS automatisch ein .app Bundle wenn console=False
+# Für explizite Bundle-Erstellung, uncomment folgendes:
+# if sys.platform == 'darwin':
+#     app = BUNDLE(
+#         exe,
+#         name='PerlentaucherGUI.app',
+#         icon=None,
+#         bundle_identifier='org.perlentaucher.gui',
+#         info_plist={
+#             'NSPrincipalClass': 'NSApplication',
+#             'NSHighResolutionCapable': 'True',
+#         },
+#     )

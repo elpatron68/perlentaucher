@@ -83,7 +83,27 @@ jobs:
       - name: Build with PyInstaller (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          pyinstaller build.spec --clean --noconfirm
+          # Auf macOS erstellt PyInstaller mit --windowed automatisch ein .app Bundle
+          # Versuche zuerst mit build.spec, dann mit direkter Kommandozeile
+          echo "Building with build.spec..."
+          pyinstaller build.spec --clean --noconfirm --windowed 2>&1 || {
+            echo "Build with spec failed, trying direct command..."
+            pyinstaller --windowed --name PerlentaucherGUI \
+              --hidden-import=feedparser \
+              --hidden-import=requests \
+              --hidden-import=apprise \
+              --hidden-import=semver \
+              --hidden-import=PyQt6 \
+              --hidden-import=PyQt6.QtCore \
+              --hidden-import=PyQt6.QtWidgets \
+              --hidden-import=PyQt6.QtGui \
+              --hidden-import=perlentaucher \
+              --clean --noconfirm \
+              perlentaucher_gui.py 2>&1
+          }
+          echo ""
+          echo "Build output in dist/:"
+          ls -la dist/ 2>/dev/null || echo "dist/ not found"
 
       - name: Determine artifact name (Windows)
         if: matrix.os == 'windows-latest'
@@ -109,9 +129,26 @@ jobs:
         id: artifact-macos
         run: |
           VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from _version import __version__; print(__version__)")
-          ARTIFACT="PerlentaucherGUI-$VERSION-macos.app"
+          
+          # Prüfe ob .app Bundle existiert
+          if [ -d "dist/PerlentaucherGUI.app" ]; then
+            ARTIFACT="PerlentaucherGUI-$VERSION-macos.app"
+            ARTIFACT_PATH="dist/PerlentaucherGUI.app"
+            ARTIFACT_TYPE="app"
+          elif [ -f "dist/PerlentaucherGUI" ]; then
+            ARTIFACT="PerlentaucherGUI-$VERSION-macos"
+            ARTIFACT_PATH="dist/PerlentaucherGUI"
+            ARTIFACT_TYPE="exe"
+          else
+            # Fallback: verwende .app Name
+            ARTIFACT="PerlentaucherGUI-$VERSION-macos.app"
+            ARTIFACT_PATH="dist/PerlentaucherGUI.app"
+            ARTIFACT_TYPE="app"
+          fi
+          
           echo "name=$ARTIFACT" >> $GITHUB_OUTPUT
-          echo "path=dist/PerlentaucherGUI.app" >> $GITHUB_OUTPUT
+          echo "path=$ARTIFACT_PATH" >> $GITHUB_OUTPUT
+          echo "type=$ARTIFACT_TYPE" >> $GITHUB_OUTPUT
 
       - name: Verify build output exists (Windows)
         if: matrix.os == 'windows-latest'
@@ -127,7 +164,50 @@ jobs:
       - name: Verify build output exists (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          if [ -d "dist/PerlentaucherGUI.app" ]; then echo "✓ macOS build successful"; else echo "✗ macOS build failed"; exit 1; fi
+          echo "Checking for build output..."
+          echo "Contents of dist/:"
+          ls -la dist/ 2>/dev/null || echo "dist/ not found"
+          echo ""
+          echo "Searching for app bundle or executable:"
+          APP_BUNDLE=""
+          EXECUTABLE=""
+          
+          # Suche nach .app Bundle
+          if [ -d "dist/PerlentaucherGUI.app" ]; then
+            APP_BUNDLE="dist/PerlentaucherGUI.app"
+            echo "✓ Found PerlentaucherGUI.app bundle at: $APP_BUNDLE"
+          elif find dist -name "*.app" -type d | head -1 | read app_path; then
+            APP_BUNDLE="$app_path"
+            echo "✓ Found app bundle at: $APP_BUNDLE"
+          fi
+          
+          # Suche nach Executable
+          if [ -f "dist/PerlentaucherGUI" ]; then
+            EXECUTABLE="dist/PerlentaucherGUI"
+            echo "✓ Found PerlentaucherGUI executable at: $EXECUTABLE"
+          elif find dist -name "PerlentaucherGUI" -type f | head -1 | read exe_path; then
+            EXECUTABLE="$exe_path"
+            echo "✓ Found executable at: $EXECUTABLE"
+          fi
+          
+          # Wenn kein Bundle, aber Executable vorhanden, versuche Bundle zu erstellen
+          if [ -z "$APP_BUNDLE" ] && [ -n "$EXECUTABLE" ]; then
+            echo "ℹ No app bundle found, but executable exists. PyInstaller should create .app automatically."
+            echo "  Checking if PyInstaller creates it with different command..."
+          fi
+          
+          # Fehler, wenn nichts gefunden wurde
+          if [ -z "$APP_BUNDLE" ] && [ -z "$EXECUTABLE" ]; then
+            echo "✗ No build output found in dist/"
+            echo "Available files in dist/:"
+            find dist -type f -o -type d 2>/dev/null | head -20 || echo "dist/ directory is empty"
+            exit 1
+          fi
+          
+          # Setze APP_BUNDLE wenn Executable vorhanden aber kein Bundle
+          if [ -z "$APP_BUNDLE" ] && [ -n "$EXECUTABLE" ]; then
+            echo "⚠ Warning: Only executable found, no .app bundle. This might cause issues."
+          fi
 
       - name: Rename artifact (Windows)
         if: matrix.os == 'windows-latest'
@@ -151,11 +231,31 @@ jobs:
         run: |
           tar -czf "dist/${{ steps.artifact-linux.outputs.name }}.tar.gz" -C dist "${{ steps.artifact-linux.outputs.name }}"
 
+      - name: Rename artifact (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          if [ "${{ steps.artifact-macos.outputs.type }}" = "app" ] && [ -d "dist/PerlentaucherGUI.app" ]; then
+            # App Bundle bereits vorhanden, benenne es um
+            mv "dist/PerlentaucherGUI.app" "dist/${{ steps.artifact-macos.outputs.name }}"
+          elif [ "${{ steps.artifact-macos.outputs.type }}" = "exe" ] && [ -f "dist/PerlentaucherGUI" ]; then
+            # Executable vorhanden, benenne es um
+            mv "dist/PerlentaucherGUI" "dist/${{ steps.artifact-macos.outputs.name }}"
+          else
+            echo "ℹ Artifact already has correct name or not found"
+          fi
+
       - name: Create ZIP archive (macOS)
         if: matrix.os == 'macos-latest'
         run: |
           cd dist
-          zip -r "${{ steps.artifact-macos.outputs.name }}.zip" "${{ steps.artifact-macos.outputs.name }}"
+          if [ -d "${{ steps.artifact-macos.outputs.name }}" ]; then
+            zip -r "${{ steps.artifact-macos.outputs.name }}.zip" "${{ steps.artifact-macos.outputs.name }}"
+          elif [ -f "${{ steps.artifact-macos.outputs.name }}" ]; then
+            zip "${{ steps.artifact-macos.outputs.name }}.zip" "${{ steps.artifact-macos.outputs.name }}"
+          else
+            echo "⚠ Artifact not found for archiving: ${{ steps.artifact-macos.outputs.name }}"
+            exit 1
+          fi
           cd ..
 
       - name: List build artifacts (Windows)

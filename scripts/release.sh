@@ -68,6 +68,89 @@ git push origin "$new_tag"
 echo "Pushe master Branch..."
 git push origin master
 
+# Push zu GitHub (falls GitHub Remote vorhanden)
+echo ""
+echo "Prüfe GitHub Remote..."
+if git remote | grep -q "^github$"; then
+    echo "GitHub Remote gefunden. Pushe zu GitHub..."
+    
+    # Pushe Tag zu GitHub
+    echo "Pushe Tag zu GitHub: $new_tag"
+    if git push github "$new_tag" 2>/dev/null; then
+        echo "✓ Tag erfolgreich zu GitHub gepusht"
+    else
+        echo "⚠ Warnung: Fehler beim Pushen des Tags zu GitHub"
+    fi
+    
+    # Pushe master Branch zu GitHub
+    echo "Pushe master Branch zu GitHub..."
+    if git push github master 2>/dev/null; then
+        echo "✓ master Branch erfolgreich zu GitHub gepusht"
+    else
+        echo "⚠ Warnung: Fehler beim Pushen des master Branches zu GitHub"
+    fi
+    
+    # Starte GitHub Actions Workflow für GUI Builds
+    echo ""
+    echo "Starte GitHub Actions Workflow für Cross-Platform GUI Builds..."
+    
+    # Prüfe ob gh CLI verfügbar ist
+    if command -v gh >/dev/null 2>&1; then
+        # Prüfe ob authentifiziert
+        if gh auth status >/dev/null 2>&1; then
+            # Extrahiere GitHub Repository-Informationen
+            github_url=$(git remote get-url github)
+            if [[ $github_url =~ github\.com[/:]([^/]+)/([^/]+?)(\.git)?$ ]]; then
+                github_repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]%.git}"
+                
+                echo "Starte Workflow für Repository: $github_repo"
+                if gh workflow run build-gui.yml --ref master --repo "$github_repo" 2>/dev/null; then
+                    echo "✓ GitHub Actions Workflow erfolgreich gestartet!"
+                    
+                    # Warte kurz und hole Workflow-Run Status
+                    sleep 3
+                    latest_run=$(gh run list --workflow build-gui.yml --repo "$github_repo" --limit 1 --json databaseId,status,url,createdAt 2>/dev/null)
+                    
+                    if [ -n "$latest_run" ]; then
+                        run_id=$(echo "$latest_run" | grep -o '"databaseId":[0-9]*' | head -1 | cut -d':' -f2)
+                        run_status=$(echo "$latest_run" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
+                        run_url=$(echo "$latest_run" | grep -o '"url":"[^"]*"' | head -1 | cut -d'"' -f4)
+                        
+                        if [ -n "$run_id" ]; then
+                            echo "  Run ID: $run_id"
+                            echo "  Status: $run_status"
+                            if [ -n "$run_url" ]; then
+                                echo "  URL: $run_url"
+                            fi
+                            echo ""
+                            echo "Verfolge Build-Status mit:"
+                            echo "  gh run watch $run_id --repo $github_repo"
+                            if [ -n "$run_url" ]; then
+                                echo "  Oder öffne: $run_url"
+                            fi
+                        fi
+                    fi
+                else
+                    echo "⚠ Warnung: Workflow konnte nicht gestartet werden"
+                    echo "  Versuche manuell: gh workflow run build-gui.yml --ref master --repo $github_repo"
+                fi
+            else
+                echo "⚠ Warnung: Konnte GitHub Repository-Informationen nicht extrahieren"
+                echo "  Remote URL: $github_url"
+            fi
+        else
+            echo "⚠ Warnung: GitHub CLI nicht authentifiziert"
+            echo "  Bitte authentifiziere dich mit: gh auth login"
+        fi
+    else
+        echo "⚠ Warnung: GitHub CLI (gh) nicht verfügbar"
+        echo "  Installiere GitHub CLI oder starte Workflow manuell auf GitHub.com"
+    fi
+else
+    echo "ℹ GitHub Remote nicht gefunden. Überspringe GitHub Push und Workflow-Start."
+    echo "  Füge GitHub Remote hinzu mit: git remote add github https://github.com/USERNAME/REPO.git"
+fi
+
 # Erstelle Release über Codeberg API
 echo ""
 echo "Erstelle Release über Codeberg API..."
