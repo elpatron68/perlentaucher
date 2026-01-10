@@ -174,7 +174,8 @@ class DownloadPanel(QWidget):
             # Erstelle Download-Thread
             thread = DownloadThread(entry_data, config, series_download_mode=series_mode)
             
-            # Verbinde Signals
+            # Verbinde Signals mit Lambda-Funktionen (entry_id wird als Closure erfasst)
+            # WICHTIG: Verwende explizite Parameter-Namen, um Referenz-Probleme zu vermeiden
             thread.download_started.connect(lambda title, eid=entry_id: self._on_download_started(eid, title))
             thread.progress_updated.connect(lambda progress, status, eid=entry_id: self._on_progress_updated(eid, progress, status))
             thread.download_finished.connect(lambda success, title, filepath, error, eid=entry_id: 
@@ -339,9 +340,45 @@ class DownloadPanel(QWidget):
             # Entferne Cancel-Button
             self.table.setCellWidget(row, 4, None)
             
-            # Entferne aus aktiven Downloads
+            # WICHTIG: Räume Thread ordnungsgemäß auf, bevor wir ihn entfernen
+            # Dies verhindert, dass die App sich beendet, wenn alle Downloads fertig sind
             if entry_id in self.active_downloads:
+                thread = self.active_downloads[entry_id]
+                # Warte darauf, dass der Thread vollständig beendet ist (falls er noch läuft)
+                # Der Thread sollte bereits beendet sein, da das Signal nur nach run() gesendet wird
+                if thread.isRunning():
+                    logging.warning(f"Thread für {entry_id} läuft noch, warte auf Beendigung...")
+                    thread.wait(5000)  # Warte max. 5 Sekunden
+                    if thread.isRunning():
+                        logging.error(f"Thread für {entry_id} konnte nicht beendet werden!")
+                        # Breche Thread ab
+                        thread.terminate()
+                        thread.wait(1000)
+                
+                # Trenne alle Signal-Verbindungen, um Referenzen zu lösen und Memory Leaks zu vermeiden
+                # WICHTIG: Dies verhindert, dass Signal-Verbindungen die App am Beenden hindern
+                try:
+                    # Versuche alle Signal-Verbindungen zu trennen (ignoriere Fehler)
+                    thread.download_started.disconnect()
+                except (TypeError, RuntimeError):
+                    pass
+                
+                try:
+                    thread.progress_updated.disconnect()
+                except (TypeError, RuntimeError):
+                    pass
+                
+                try:
+                    thread.download_finished.disconnect()
+                except (TypeError, RuntimeError):
+                    pass
+                
+                # Entferne Thread aus Dictionary (dies sollte die letzte Referenz sein)
                 del self.active_downloads[entry_id]
+                
+                # Setze Thread-Referenz auf None, um Garbage Collection zu ermöglichen
+                # (aber nicht unbedingt notwendig, da del bereits die Referenz entfernt)
+                thread = None
             
             # Entferne auch aus download_rows
             if entry_id in self.download_rows:
