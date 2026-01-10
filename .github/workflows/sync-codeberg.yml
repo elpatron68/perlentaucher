@@ -11,6 +11,10 @@ on:
       - main
       - master
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   sync:
     name: Sync Codeberg → GitHub
@@ -113,18 +117,29 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Konfiguriere GitHub Remote mit Token
+          # Konfiguriere GitHub Remote mit Token (korrekte URL ohne / am Ende)
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
           
           # Setze Commit-Message um Endlosschleife zu vermeiden
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Pushe alle Branches (ohne Force, um Konflikte zu vermeiden)
-          git push origin --all || echo "Some branches could not be pushed"
+          # Pushe nur den aktuellen Branch (master oder main)
+          CURRENT_BRANCH=$(git branch --show-current || echo "master")
+          echo "Pushing branch: $CURRENT_BRANCH"
+          if ! git push origin "$CURRENT_BRANCH" 2>&1; then
+            echo "⚠ Failed to push branch $CURRENT_BRANCH"
+          else
+            echo "✓ Successfully pushed branch $CURRENT_BRANCH"
+          fi
           
           # Pushe alle Tags (ohne Force, um bestehende Tags nicht zu überschreiben)
-          git push origin --tags || echo "Some tags could not be pushed"
+          echo "Pushing tags..."
+          if ! git push origin --tags 2>&1; then
+            echo "⚠ Some tags could not be pushed (may already exist)"
+          else
+            echo "✓ Successfully pushed tags"
+          fi
 
       - name: Summary
         run: |
