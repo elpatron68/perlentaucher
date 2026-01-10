@@ -469,67 +469,121 @@ jobs:
         run: |
           mkdir -p codeberg-assets
           
+          echo "=== DEBUG: Listing all artifacts ==="
+          find artifacts -type f | sort
+          echo ""
+          
           # Sammle alle eindeutigen Dateinamen (vermeidet Duplikate)
           # Priorisiere komprimierte Dateien (.zip, .tar.gz) über rohe Dateien (.exe, ohne Extension)
-          # Verwende eine deduplizierte Liste basierend auf Dateinamen
           
-          echo "Finding all artifacts..."
+          echo "=== Step 1: Collect compressed files (.tar.gz, .zip, .exe.zip, .app.zip) ==="
           
-          # Sammle alle komprimierten Dateien und erstelle deduplizierte Liste (basierend auf Dateinamen)
-          # Für jede eindeutige Datei kopiere nur die erste gefundene Version
-          find artifacts -type f \( -name "*.exe.zip" -o -name "*.tar.gz" -o -name "*.zip" -o -name "*.app.zip" \) -exec basename {} \; | \
-            sort -u | \
-            while read filename; do
-              if [ "$filename" != "base_library.zip" ] && [ ! -f "codeberg-assets/$filename" ]; then
-                # Finde erste Datei mit diesem Namen
-                source_file=$(find artifacts -type f -name "$filename" | head -n1)
-                if [ -n "$source_file" ] && [ -f "$source_file" ]; then
-                  cp "$source_file" "codeberg-assets/$filename"
-                  echo "  Copied: $filename"
-                fi
+          # Sammle .tar.gz Dateien zuerst (Linux - haben höchste Priorität)
+          find artifacts -type f -name "*.tar.gz" -exec basename {} \; | sort -u | while read filename; do
+            if [ "$filename" != "base_library.zip" ]; then
+              source_file=$(find artifacts -type f -name "$filename" | head -n1)
+              if [ -n "$source_file" ] && [ -f "$source_file" ]; then
+                cp "$source_file" "codeberg-assets/$filename"
+                echo "  ✓ Copied: $filename"
               fi
-            done
+            fi
+          done
           
-          # Dann: Sammle rohe Dateien, aber nur wenn keine komprimierte Version existiert
-          find artifacts -type f \( -name "*.exe" -o -name "PerlentaucherGUI-*" \) ! -name "*.zip" ! -name "*.tar.gz" -exec basename {} \; | \
-            sort -u | \
-            while read filename; do
-              # Überspringe base_library.zip oder bereits kopierte Dateien
-              if [ "$filename" = "base_library.zip" ] || [ -f "codeberg-assets/$filename" ]; then
-                continue
+          # Sammle .exe.zip Dateien (Windows)
+          find artifacts -type f -name "*.exe.zip" -exec basename {} \; | sort -u | while read filename; do
+            if [ "$filename" != "base_library.zip" ] && [ ! -f "codeberg-assets/$filename" ]; then
+              source_file=$(find artifacts -type f -name "$filename" | head -n1)
+              if [ -n "$source_file" ] && [ -f "$source_file" ]; then
+                cp "$source_file" "codeberg-assets/$filename"
+                echo "  ✓ Copied: $filename"
               fi
-              
-              # Prüfe ob komprimierte Version bereits existiert
-              has_compressed=false
-              case "$filename" in
-                *.exe)
-                  zip_file="${filename}.zip"
-                  if [ -f "codeberg-assets/$zip_file" ]; then
-                    has_compressed=true
-                  fi
-                  ;;
-                *)
-                  tar_file="${filename}.tar.gz"
-                  zip_file="${filename}.zip"
-                  if [ -f "codeberg-assets/$tar_file" ] || [ -f "codeberg-assets/$zip_file" ]; then
-                    has_compressed=true
-                  fi
-                  ;;
-              esac
-              
-              # Füge nur hinzu wenn keine komprimierte Version vorhanden
-              if [ "$has_compressed" = "false" ]; then
-                source_file=$(find artifacts -type f -name "$filename" | head -n1)
-                if [ -n "$source_file" ] && [ -f "$source_file" ]; then
-                  cp "$source_file" "codeberg-assets/$filename"
-                  echo "  Copied: $filename"
-                fi
+            fi
+          done
+          
+          # Sammle .app.zip Dateien (macOS)
+          find artifacts -type f -name "*.app.zip" -exec basename {} \; | sort -u | while read filename; do
+            if [ "$filename" != "base_library.zip" ] && [ ! -f "codeberg-assets/$filename" ]; then
+              source_file=$(find artifacts -type f -name "$filename" | head -n1)
+              if [ -n "$source_file" ] && [ -f "$source_file" ]; then
+                cp "$source_file" "codeberg-assets/$filename"
+                echo "  ✓ Copied: $filename"
               fi
-            done
+            fi
+          done
+          
+          # Sammle andere .zip Dateien (sollte keine sein, aber sicherheitshalber)
+          find artifacts -type f -name "*.zip" ! -name "*.exe.zip" ! -name "*.app.zip" -exec basename {} \; | sort -u | while read filename; do
+            if [ "$filename" != "base_library.zip" ] && [ ! -f "codeberg-assets/$filename" ]; then
+              source_file=$(find artifacts -type f -name "$filename" | head -n1)
+              if [ -n "$source_file" ] && [ -f "$source_file" ]; then
+                cp "$source_file" "codeberg-assets/$filename"
+                echo "  ✓ Copied: $filename"
+              fi
+            fi
+          done
           
           echo ""
-          echo "Assets prepared for Codeberg upload:"
+          echo "=== Step 2: Collect raw files only if no compressed version exists ==="
+          
+          # Sammle rohe .exe Dateien (Windows), aber nur wenn kein .exe.zip existiert
+          find artifacts -type f -name "*.exe" ! -name "*.zip" -exec basename {} \; | sort -u | while read filename; do
+            if [ "$filename" = "base_library.zip" ]; then
+              continue
+            fi
+            
+            # Prüfe ob komprimierte Version existiert
+            zip_filename="${filename}.zip"
+            if [ ! -f "codeberg-assets/$zip_filename" ] && [ ! -f "codeberg-assets/$filename" ]; then
+              source_file=$(find artifacts -type f -name "$filename" | head -n1)
+              if [ -n "$source_file" ] && [ -f "$source_file" ]; then
+                cp "$source_file" "codeberg-assets/$filename"
+                echo "  ✓ Copied raw: $filename"
+              fi
+            else
+              echo "  ⊘ Skipped (compressed version exists): $filename"
+            fi
+          done
+          
+          # Sammle rohe Linux-Dateien (ohne Extension), aber nur wenn kein .tar.gz existiert
+          find artifacts -type f \( -name "PerlentaucherGUI-*-linux" \) ! -name "*.zip" ! -name "*.tar.gz" ! -name "*.exe" -exec basename {} \; | sort -u | while read filename; do
+            if [ -f "codeberg-assets/$filename" ]; then
+              continue
+            fi
+            
+            # Prüfe ob komprimierte Version existiert
+            tar_filename="${filename}.tar.gz"
+            zip_filename="${filename}.zip"
+            if [ ! -f "codeberg-assets/$tar_filename" ] && [ ! -f "codeberg-assets/$zip_filename" ]; then
+              source_file=$(find artifacts -type f -name "$filename" | head -n1)
+              if [ -n "$source_file" ] && [ -f "$source_file" ]; then
+                cp "$source_file" "codeberg-assets/$filename"
+                echo "  ✓ Copied raw: $filename"
+              fi
+            else
+              echo "  ⊘ Skipped (compressed version exists): $filename"
+            fi
+          done
+          
+          # Sammle rohe macOS .app Dateien, aber nur wenn kein .app.zip existiert
+          find artifacts -type d -name "*.app" -exec basename {} \; | sort -u | while read dirname; do
+            zip_filename="${dirname}.zip"
+            if [ ! -f "codeberg-assets/$zip_filename" ]; then
+              source_dir=$(find artifacts -type d -name "$dirname" | head -n1)
+              if [ -n "$source_dir" ] && [ -d "$source_dir" ]; then
+                # Erstelle TAR.GZ für .app Bundle wenn kein ZIP existiert
+                tar_filename="${dirname}.tar.gz"
+                tar -czf "codeberg-assets/$tar_filename" -C "$(dirname "$source_dir")" "$dirname"
+                echo "  ✓ Created compressed: $tar_filename"
+              fi
+            else
+              echo "  ⊘ Skipped (compressed version exists): $dirname"
+            fi
+          done
+          
+          echo ""
+          echo "=== Final assets prepared for Codeberg upload ==="
           ls -lh codeberg-assets/
+          echo ""
           
           # Zähle eindeutige Dateien
           FILE_COUNT=$(find codeberg-assets -type f | wc -l)
