@@ -1,0 +1,232 @@
+name: Build GUI Cross-Platform
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'feature/**'
+    paths:
+      - '**.py'
+      - 'build.spec'
+      - 'requirements*.txt'
+      - '.github/workflows/build-gui.yml'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - '**.py'
+      - 'build.spec'
+      - 'requirements*.txt'
+      - '.github/workflows/build-gui.yml'
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build GUI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install system dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxcb-xinerama0 \
+            libxcb-cursor0 \
+            libegl1 \
+            libxkbcommon-x11-0 \
+            libxkbcommon0 \
+            xvfb
+
+      - name: Install system dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install python@3.11 || true
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-gui.txt
+          pip install --upgrade pyinstaller
+
+      - name: Build with PyInstaller (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          pyinstaller build.spec --clean --noconfirm
+        shell: pwsh
+
+      - name: Build with PyInstaller (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+          pyinstaller build.spec --clean --noconfirm
+
+      - name: Build with PyInstaller (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          pyinstaller build.spec --clean --noconfirm
+
+      - name: Determine artifact name (Windows)
+        if: matrix.os == 'windows-latest'
+        id: artifact
+        run: |
+          $version = (python -c "import sys; sys.path.insert(0, '.'); from _version import __version__; print(__version__)").Trim()
+          $artifact = "PerlentaucherGUI-$version-windows.exe"
+          echo "name=$artifact" >> $env:GITHUB_OUTPUT
+          echo "path=dist\PerlentaucherGUI.exe" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Determine artifact name (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        id: artifact
+        run: |
+          VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from _version import __version__; print(__version__)")
+          ARTIFACT="PerlentaucherGUI-$VERSION-linux"
+          echo "name=$ARTIFACT" >> $GITHUB_OUTPUT
+          echo "path=dist/PerlentaucherGUI" >> $GITHUB_OUTPUT
+
+      - name: Determine artifact name (macOS)
+        if: matrix.os == 'macos-latest'
+        id: artifact
+        run: |
+          VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from _version import __version__; print(__version__)")
+          ARTIFACT="PerlentaucherGUI-$VERSION-macos.app"
+          echo "name=$ARTIFACT" >> $GITHUB_OUTPUT
+          echo "path=dist/PerlentaucherGUI.app" >> $GITHUB_OUTPUT
+
+      - name: Verify build output exists (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          if (Test-Path "dist\PerlentaucherGUI.exe") { Write-Host "✓ Windows build successful" } else { Write-Host "✗ Windows build failed"; exit 1 }
+        shell: pwsh
+
+      - name: Verify build output exists (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          if [ -f "dist/PerlentaucherGUI" ]; then echo "✓ Linux build successful"; else echo "✗ Linux build failed"; exit 1; fi
+
+      - name: Verify build output exists (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          if [ -d "dist/PerlentaucherGUI.app" ]; then echo "✓ macOS build successful"; else echo "✗ macOS build failed"; exit 1; fi
+
+      - name: Rename artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          Move-Item -Path "dist\PerlentaucherGUI.exe" -Destination "dist\${{ steps.artifact.outputs.name }}"
+        shell: pwsh
+
+      - name: Rename artifact (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mv "dist/PerlentaucherGUI" "dist/${{ steps.artifact.outputs.name }}"
+
+      - name: Create ZIP archive (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          Compress-Archive -Path "dist\${{ steps.artifact.outputs.name }}" -DestinationPath "dist\${{ steps.artifact.outputs.name }}.zip" -Force
+        shell: pwsh
+
+      - name: Create TAR.GZ archive (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          tar -czf "dist/${{ steps.artifact.outputs.name }}.tar.gz" -C dist "${{ steps.artifact.outputs.name }}"
+
+      - name: Create ZIP archive (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd dist
+          zip -r "${{ steps.artifact.outputs.name }}.zip" "${{ steps.artifact.outputs.name }}"
+          cd ..
+
+      - name: List build artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          echo "Build artifacts in dist/:"
+          Get-ChildItem -Path dist -Recurse | Format-Table Name, Length, LastWriteTime
+        shell: pwsh
+        continue-on-error: true
+
+      - name: List build artifacts (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          echo "Build artifacts in dist/:"
+          ls -lh dist/
+        continue-on-error: true
+
+      - name: Upload artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: PerlentaucherGUI-windows-${{ github.sha }}
+          path: dist/*.exe*
+          retention-days: 30
+
+      - name: Upload artifact (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: PerlentaucherGUI-linux-${{ github.sha }}
+          path: dist/PerlentaucherGUI*
+          retention-days: 30
+
+      - name: Upload artifact (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: PerlentaucherGUI-macos-${{ github.sha }}
+          path: dist/PerlentaucherGUI*
+          retention-days: 30
+
+  release:
+    name: Create Release Assets
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Determine version
+        id: version
+        run: |
+          VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from _version import __version__; print(__version__)" 2>/dev/null || echo "${{ github.event.release.tag_name }}")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name "*.exe" -o -name "*.exe.zip" -o -name "*.tar.gz" -o -name "*.zip" -o -name "PerlentaucherGUI" -o -name "PerlentaucherGUI-*" \) -exec cp {} release-assets/ \;
+          echo "Release assets prepared:"
+          ls -lh release-assets/
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
