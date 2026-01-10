@@ -87,7 +87,7 @@ jobs:
 
       - name: Determine artifact name (Windows)
         if: matrix.os == 'windows-latest'
-        id: artifact
+        id: artifact-windows
         run: |
           $version = (python -c "import sys; sys.path.insert(0, '.'); from _version import __version__; print(__version__)").Trim()
           $artifact = "PerlentaucherGUI-$version-windows.exe"
@@ -97,7 +97,7 @@ jobs:
 
       - name: Determine artifact name (Linux)
         if: matrix.os == 'ubuntu-latest'
-        id: artifact
+        id: artifact-linux
         run: |
           VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from _version import __version__; print(__version__)")
           ARTIFACT="PerlentaucherGUI-$VERSION-linux"
@@ -106,7 +106,7 @@ jobs:
 
       - name: Determine artifact name (macOS)
         if: matrix.os == 'macos-latest'
-        id: artifact
+        id: artifact-macos
         run: |
           VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from _version import __version__; print(__version__)")
           ARTIFACT="PerlentaucherGUI-$VERSION-macos.app"
@@ -132,30 +132,30 @@ jobs:
       - name: Rename artifact (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          Move-Item -Path "dist\PerlentaucherGUI.exe" -Destination "dist\${{ steps.artifact.outputs.name }}"
+          Move-Item -Path "dist\PerlentaucherGUI.exe" -Destination "dist\${{ steps.artifact-windows.outputs.name }}"
         shell: pwsh
 
       - name: Rename artifact (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          mv "dist/PerlentaucherGUI" "dist/${{ steps.artifact.outputs.name }}"
+          mv "dist/PerlentaucherGUI" "dist/${{ steps.artifact-linux.outputs.name }}"
 
       - name: Create ZIP archive (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          Compress-Archive -Path "dist\${{ steps.artifact.outputs.name }}" -DestinationPath "dist\${{ steps.artifact.outputs.name }}.zip" -Force
+          Compress-Archive -Path "dist\${{ steps.artifact-windows.outputs.name }}" -DestinationPath "dist\${{ steps.artifact-windows.outputs.name }}.zip" -Force
         shell: pwsh
 
       - name: Create TAR.GZ archive (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          tar -czf "dist/${{ steps.artifact.outputs.name }}.tar.gz" -C dist "${{ steps.artifact.outputs.name }}"
+          tar -czf "dist/${{ steps.artifact-linux.outputs.name }}.tar.gz" -C dist "${{ steps.artifact-linux.outputs.name }}"
 
       - name: Create ZIP archive (macOS)
         if: matrix.os == 'macos-latest'
         run: |
           cd dist
-          zip -r "${{ steps.artifact.outputs.name }}.zip" "${{ steps.artifact.outputs.name }}"
+          zip -r "${{ steps.artifact-macos.outputs.name }}.zip" "${{ steps.artifact-macos.outputs.name }}"
           cd ..
 
       - name: List build artifacts (Windows)
