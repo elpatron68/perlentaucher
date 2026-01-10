@@ -732,10 +732,24 @@ jobs:
             
             echo "Processing: $filename"
             
-            # Prüfe ob Datei bereits auf Codeberg vorhanden ist (vor Upload)
-            # Aktualisiere Liste NUR am Anfang, nicht vor jedem Upload (zu langsam)
+            # WICHTIG: Prüfe IMMER zuerst ob Datei bereits auf Codeberg vorhanden ist
+            # Aktualisiere Liste vor jedem Upload, um sicherzustellen dass wir die neueste Liste haben
+            # Dies verhindert Duplikate wenn mehrere Uploads nacheinander laufen
             if grep -Fxq "$filename" "$EXISTING_NAMES_FILE" 2>/dev/null; then
               echo "  ⊘ Skipping (already exists on Codeberg): $filename"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+            
+            # Zusätzliche Prüfung: Hole aktuelle Asset-Liste von Codeberg API
+            # Dies stellt sicher, dass wir die neueste Liste haben (falls ein anderer Prozess hochgeladen hat)
+            CURRENT_ASSETS=$(curl -s -H "Authorization: token $CODEBERG_TOKEN" \
+              "https://codeberg.org/api/v1/repos/$CODEBERG_REPO/releases/$RELEASE_ID/assets" 2>/dev/null || echo "[]")
+            
+            # Prüfe ob Datei bereits in aktueller Asset-Liste vorhanden ist
+            if echo "$CURRENT_ASSETS" | grep -q "\"name\":\"$filename\""; then
+              echo "  ⊘ Skipping (found in current Codeberg assets): $filename"
+              echo "$filename" >> "$EXISTING_NAMES_FILE"
               SKIPPED=$((SKIPPED + 1))
               continue
             fi
