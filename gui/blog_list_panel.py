@@ -45,6 +45,7 @@ class BlogListPanel(QWidget):
         self._init_ui()
         
         # Auto-Lade beim Start (nach kurzer Verzögerung um UI zu initialisieren)
+        # Lade automatisch die letzten 30 Tage beim Start der GUI
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(500, lambda: self._load_rss_feed(days=30))
     
@@ -275,15 +276,18 @@ class BlogListPanel(QWidget):
                             f"Alle sind innerhalb der letzten {days} Tage."
                         )
                     
-                    # Wenn sehr wenige Einträge, zeige Hinweis-Dialog
-                    if total_entries_from_feed <= 10 and filtered_count <= 10:
-                        reply = QMessageBox.information(
+                    # Wenn sehr wenige Einträge, zeige Hinweis-Dialog (nur beim ersten Laden)
+                    # WordPress RSS-Feeds sind standardmäßig auf 10-20 Einträge begrenzt
+                    if total_entries_from_feed <= 15 and not append:
+                        QMessageBox.information(
                             self,
-                            "Hinweis: Feed-Begrenzung",
+                            "Hinweis: RSS-Feed Begrenzung",
                             f"Der RSS-Feed liefert nur {total_entries_from_feed} Einträge.\n\n"
-                            f"Dies ist wahrscheinlich eine Begrenzung auf Server-Seite.\n"
-                            f"Nutzen Sie 'Ältere Einträge nachladen...' um mehr Einträge zu laden "
-                            f"(auch älter als 30 Tage).",
+                            f"Dies ist eine Begrenzung auf Server-Seite (typisch für WordPress-RSS-Feeds).\n"
+                            f"Der Feed-Administrator kann dies bis max. 50 erhöhen.\n\n"
+                            f"Aktuell werden {filtered_count} Einträge der letzten {days} Tage angezeigt.\n\n"
+                            f"Nutzen Sie 'Ältere Einträge nachladen...' um alle verfügbaren Einträge "
+                            f"zu sehen (auch älter als 30 Tage, falls vorhanden).",
                             QMessageBox.StandardButton.Ok
                         )
             else:
