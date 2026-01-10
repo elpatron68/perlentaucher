@@ -308,31 +308,34 @@ class MainWindow(QMainWindow):
         width = self.config_manager.get('gui_window_width', 1200)
         height = self.config_manager.get('gui_window_height', 800)
         
+        # Validiere Größe (nicht zu klein)
+        min_width = 800
+        min_height = 600
+        if width < min_width:
+            width = min_width
+        if height < min_height:
+            height = min_height
+        
         # Prüfe ob Werte gültig sind (nicht None und innerhalb des Bildschirms)
-        if x is not None and y is not None:
-            # Prüfe ob Position innerhalb des Bildschirms liegt
-            app = QApplication.instance()
-            if app:
-                screens = app.screens()
-                if screens:
-                    # Verwende primären Bildschirm
-                    screen = screens[0]
-                    screen_geometry = screen.geometry()
-                    
-                    # Stelle sicher, dass Position gültig ist
-                    if (screen_geometry.left() <= x <= screen_geometry.right() and
-                        screen_geometry.top() <= y <= screen_geometry.bottom()):
-                        # Stelle sicher, dass mindestens ein Teil des Fensters sichtbar ist
-                        # (z.B. nicht komplett außerhalb)
-                        if (x + width >= screen_geometry.left() and
-                            y + height >= screen_geometry.top()):
-                            self.setGeometry(x, y, width, height)
-                            return
+        app = QApplication.instance()
+        if app and app.screens() and x is not None and y is not None:
+            # Verwende primären Bildschirm
+            screen = app.screens()[0]
+            screen_geometry = screen.geometry()
+            
+            # Stelle sicher, dass Position gültig ist
+            # Prüfe ob mindestens ein Teil des Fensters sichtbar ist
+            # (z.B. nicht komplett außerhalb des Bildschirms)
+            if (x + width >= screen_geometry.left() and
+                y + height >= screen_geometry.top() and
+                x <= screen_geometry.right() and
+                y <= screen_geometry.bottom()):
+                self.setGeometry(x, y, width, height)
+                return
         
         # Fallback: Standard-Größe und Position (zentriert auf Bildschirm)
         default_width = 1200
         default_height = 800
-        app = QApplication.instance()
         if app and app.screens():
             screen = app.screens()[0]
             screen_geometry = screen.geometry()
