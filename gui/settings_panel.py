@@ -43,11 +43,12 @@ class SettingsPanel(QWidget):
         self.download_dir_btn = QPushButton("Durchsuchen...")
         self.download_dir_btn.clicked.connect(lambda: self._select_directory(self.download_dir_edit))
         download_dir_layout = QHBoxLayout()
-        download_dir_layout.addWidget(self.download_dir_edit)
-        download_dir_layout.addWidget(self.download_dir_btn)
-        download_dir_widget = QWidget()
-        download_dir_widget.setLayout(download_dir_layout)
-        download_layout.addRow("Download-Verzeichnis:", download_dir_widget)
+        download_dir_layout.setContentsMargins(0, 0, 0, 0)
+        download_dir_layout.addWidget(self.download_dir_edit, 1)  # Stretch-Faktor für Textfeld
+        download_dir_layout.addWidget(self.download_dir_btn, 0)  # Kein Stretch für Button
+        self.download_dir_widget = QWidget()
+        self.download_dir_widget.setLayout(download_dir_layout)
+        download_layout.addRow("Download-Verzeichnis:", self.download_dir_widget)
         
         # Hinweis: Limit wurde entfernt - es werden automatisch die letzten 30 Tage geladen
         info_label = QLabel("Hinweis: Beim Laden werden automatisch alle Einträge der letzten 30 Tage abgerufen.")
@@ -88,11 +89,12 @@ class SettingsPanel(QWidget):
         self.serien_dir_btn = QPushButton("Durchsuchen...")
         self.serien_dir_btn.clicked.connect(lambda: self._select_directory(self.serien_dir_edit))
         serien_dir_layout = QHBoxLayout()
-        serien_dir_layout.addWidget(self.serien_dir_edit)
-        serien_dir_layout.addWidget(self.serien_dir_btn)
-        serien_dir_widget = QWidget()
-        serien_dir_widget.setLayout(serien_dir_layout)
-        preferences_layout.addRow("Serien-Verzeichnis:", serien_dir_widget)
+        serien_dir_layout.setContentsMargins(0, 0, 0, 0)
+        serien_dir_layout.addWidget(self.serien_dir_edit, 1)  # Stretch-Faktor für Textfeld
+        serien_dir_layout.addWidget(self.serien_dir_btn, 0)  # Kein Stretch für Button
+        self.serien_dir_widget = QWidget()
+        self.serien_dir_widget.setLayout(serien_dir_layout)
+        preferences_layout.addRow("Serien-Verzeichnis:", self.serien_dir_widget)
         
         preferences_group.setLayout(preferences_layout)
         layout.addWidget(preferences_group)
