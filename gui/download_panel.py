@@ -1,0 +1,382 @@
+"""
+Download Panel für die GUI-Anwendung.
+Zeigt aktive Downloads mit Progress Bars und Log-Ausgabe.
+"""
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
+    QTableWidgetItem, QHeaderView, QTextEdit, QLabel, QProgressBar,
+    QAbstractItemView, QMessageBox
+)
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6 import QtCore
+from typing import Dict, List
+import logging
+from datetime import datetime
+
+
+class DownloadPanel(QWidget):
+    """Panel für Download-Status."""
+    
+    def __init__(self, parent=None):
+        """
+        Initialisiert das Download Panel.
+        
+        Args:
+            parent: Parent Widget
+        """
+        super().__init__(parent)
+        self.active_downloads = {}  # entry_id -> DownloadThread
+        self.download_rows = {}  # entry_id -> row index
+        self._init_ui()
+        
+        # Log Handler für Textausgabe
+        self.log_handler = TextEditLogHandler(self.log_text)
+        logging.getLogger().addHandler(self.log_handler)
+        logging.getLogger().setLevel(logging.INFO)
+    
+    def _init_ui(self):
+        """Initialisiert die UI-Komponenten."""
+        layout = QVBoxLayout()
+        layout.setSpacing(10)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Toolbar
+        toolbar = QHBoxLayout()
+        
+        self.start_downloads_btn = QPushButton("Ausgewählte Downloads starten")
+        self.start_downloads_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; padding: 8px; font-weight: bold; }")
+        self.start_downloads_btn.setEnabled(False)
+        
+        self.cancel_all_btn = QPushButton("Alle Downloads abbrechen")
+        self.cancel_all_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; padding: 8px; }")
+        self.cancel_all_btn.setEnabled(False)
+        self.cancel_all_btn.clicked.connect(self._cancel_all_downloads)
+        
+        self.clear_log_btn = QPushButton("Log löschen")
+        self.clear_log_btn.clicked.connect(lambda: self.log_text.clear())
+        
+        toolbar.addWidget(self.start_downloads_btn)
+        toolbar.addWidget(self.cancel_all_btn)
+        toolbar.addWidget(self.clear_log_btn)
+        toolbar.addStretch()
+        
+        # Status-Label
+        self.status_label = QLabel("Bereit. Wählen Sie Downloads im Blog-Liste-Tab aus.")
+        toolbar.addWidget(self.status_label)
+        
+        layout.addLayout(toolbar)
+        
+        # Download-Tabelle
+        self.table = QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels([
+            "Titel", "Fortschritt", "Status", "Geschwindigkeit", "Aktion"
+        ])
+        
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Titel
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Fortschritt
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Status
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Geschwindigkeit
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Aktion
+        
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
+        layout.addWidget(self.table)
+        
+        # Log-Ausgabe
+        log_label = QLabel("Log-Ausgabe:")
+        layout.addWidget(log_label)
+        
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setMaximumHeight(200)
+        self.log_text.setFont(QtCore.QFont("Courier", 9))
+        layout.addWidget(self.log_text)
+        
+        self.setLayout(layout)
+    
+    def start_downloads(self, entries: List[Dict], config: Dict):
+        """
+        Startet Downloads für die ausgewählten Einträge.
+        
+        Args:
+            entries: Liste von Entry-Dictionaries
+            config: Konfigurations-Dictionary
+        """
+        if not entries:
+            QMessageBox.warning(self, "Keine Auswahl", "Bitte wählen Sie mindestens einen Eintrag aus!")
+            return
+        
+        # Speichere Config für State-Datei-Updates
+        self._config = config
+        
+        # Import hier um Circular Import zu vermeiden
+        from gui.utils.thread_manager import DownloadThread
+        
+        for entry_data in entries:
+            entry_id = entry_data['entry_id']
+            
+            # Überspringe bereits verarbeitete, es sei denn Benutzer möchte erneut versuchen
+            if entry_data.get('is_processed'):
+                reply = QMessageBox.question(
+                    self,
+                    "Bereits verarbeitet",
+                    f"'{entry_data.get('movie_title', entry_data['rss_title'])}' wurde bereits verarbeitet.\n"
+                    "Trotzdem herunterladen?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    continue
+            
+            # Hole Metadata wenn API-Keys vorhanden
+            if entry_data.get('movie_title'):
+                movie_title = entry_data['movie_title']
+                year = entry_data.get('year')
+                tmdb_key = config.get('tmdb_api_key')
+                omdb_key = config.get('omdb_api_key')
+                
+                # Importiere core-Modul
+                import sys
+                import os
+                root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                if root_dir not in sys.path:
+                    sys.path.insert(0, root_dir)
+                import perlentaucher as core
+                
+                metadata = core.get_metadata(movie_title, year, tmdb_key, omdb_key)
+                entry_data['metadata'] = metadata
+                
+                # Aktualisiere is_series basierend auf Metadata
+                entry_obj = entry_data.get('entry')
+                if entry_obj:
+                    entry_data['is_series'] = core.is_series(entry_obj, metadata)
+            
+            # Erstelle Download-Thread
+            thread = DownloadThread(entry_data, config)
+            
+            # Verbinde Signals
+            thread.download_started.connect(lambda title, eid=entry_id: self._on_download_started(eid, title))
+            thread.progress_updated.connect(lambda progress, status, eid=entry_id: self._on_progress_updated(eid, progress, status))
+            thread.download_finished.connect(lambda success, title, filepath, error, eid=entry_id: 
+                                           self._on_download_finished(eid, success, title, filepath, error))
+            
+            # Füge zur Tabelle hinzu
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            self.download_rows[entry_id] = row
+            
+            title_item = QTableWidgetItem(entry_data.get('movie_title', entry_data['rss_title']))
+            # Speichere Entry-Daten für späteren Zugriff
+            title_item._entry_data = entry_data
+            self.table.setItem(row, 0, title_item)
+            
+            # Progress Bar
+            progress_bar = QProgressBar()
+            progress_bar.setRange(0, 100)
+            progress_bar.setValue(0)
+            self.table.setCellWidget(row, 1, progress_bar)
+            
+            status_item = QTableWidgetItem("Wartend...")
+            self.table.setItem(row, 2, status_item)
+            
+            speed_item = QTableWidgetItem("")
+            self.table.setItem(row, 3, speed_item)
+            
+            # Cancel-Button
+            cancel_btn = QPushButton("Abbrechen")
+            cancel_btn.clicked.connect(lambda checked, eid=entry_id: self._cancel_download(eid))
+            self.table.setCellWidget(row, 4, cancel_btn)
+            
+            # Speichere Thread
+            self.active_downloads[entry_id] = thread
+            
+            # Starte Download
+            thread.start()
+            logging.info(f"Download gestartet: {entry_data.get('movie_title', entry_data['rss_title'])}")
+        
+        self.status_label.setText(f"{len(entries)} Download(s) gestartet.")
+        self.start_downloads_btn.setEnabled(False)
+        self.cancel_all_btn.setEnabled(True)
+    
+    def _on_download_started(self, entry_id: str, title: str):
+        """Wird aufgerufen wenn ein Download gestartet wird."""
+        if entry_id in self.download_rows:
+            row = self.download_rows[entry_id]
+            status_item = self.table.item(row, 2)
+            if status_item:
+                status_item.setText("Läuft...")
+                status_item.setForeground(QtCore.Qt.GlobalColor.blue)
+    
+    def _on_progress_updated(self, entry_id: str, progress: int, status: str):
+        """Wird aufgerufen wenn sich der Download-Fortschritt aktualisiert."""
+        if entry_id in self.download_rows:
+            row = self.download_rows[entry_id]
+            
+            # Update Progress Bar
+            progress_bar = self.table.cellWidget(row, 1)
+            if progress_bar:
+                progress_bar.setValue(progress)
+            
+            # Update Status
+            status_item = self.table.item(row, 2)
+            if status_item:
+                status_item.setText(status)
+            
+            # Update Speed (vereinfacht - könnte berechnet werden)
+            speed_item = self.table.item(row, 3)
+            if speed_item and "MB" in status:
+                speed_item.setText(status)
+    
+    def _on_download_finished(self, entry_id: str, success: bool, title: str, filepath: str, error: str):
+        """Wird aufgerufen wenn ein Download abgeschlossen ist."""
+        if entry_id in self.download_rows:
+            row = self.download_rows[entry_id]
+            
+            # Hole Entry-Daten um State-Datei zu aktualisieren
+            entry_data = None
+            title_item = self.table.item(row, 0)
+            if title_item:
+                # Versuche Entry-Daten aus UserData zu holen (falls gespeichert)
+                entry_data = getattr(title_item, '_entry_data', None)
+            
+            # Update Status
+            status_item = self.table.item(row, 2)
+            if status_item:
+                if success:
+                    status_item.setText("✓ Erfolgreich")
+                    status_item.setForeground(QtCore.Qt.GlobalColor.green)
+                    logging.info(f"Download erfolgreich: {title} -> {filepath}")
+                    
+                    # Aktualisiere State-Datei für erfolgreichen Download
+                    if entry_data:
+                        self._update_state_file(entry_id, entry_data, 'download_success', filepath)
+                else:
+                    status_text = f"✗ Fehlgeschlagen: {error}"
+                    status_item.setText(status_text)
+                    status_item.setForeground(QtCore.Qt.GlobalColor.red)
+                    logging.error(f"Download fehlgeschlagen: {title} - {error}")
+                    
+                    # Aktualisiere State-Datei für fehlgeschlagenen Download
+                    if entry_data:
+                        if "nicht gefunden" in error.lower():
+                            self._update_state_file(entry_id, entry_data, 'not_found', None)
+                        else:
+                            self._update_state_file(entry_id, entry_data, 'download_failed', None)
+            
+            # Update Progress Bar
+            progress_bar = self.table.cellWidget(row, 1)
+            if progress_bar:
+                progress_bar.setValue(100 if success else 0)
+            
+            # Entferne Cancel-Button
+            self.table.setCellWidget(row, 4, None)
+            
+            # Entferne aus aktiven Downloads
+            if entry_id in self.active_downloads:
+                del self.active_downloads[entry_id]
+            
+            # Update Status-Label
+            active_count = len(self.active_downloads)
+            if active_count == 0:
+                self.status_label.setText("Alle Downloads abgeschlossen.")
+                self.start_downloads_btn.setEnabled(True)
+                self.cancel_all_btn.setEnabled(False)
+            else:
+                self.status_label.setText(f"{active_count} Download(s) aktiv.")
+    
+    def _update_state_file(self, entry_id: str, entry_data: Dict, status: str, filepath: Optional[str]):
+        """Aktualisiert die State-Datei nach einem Download."""
+        try:
+            import sys
+            import os
+            root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            if root_dir not in sys.path:
+                sys.path.insert(0, root_dir)
+            import perlentaucher as core
+            
+            # Hole Config aus Settings (wird übergeben)
+            config = getattr(self, '_config', {})
+            no_state = config.get('no_state', False)
+            if no_state:
+                # State-Tracking ist deaktiviert, überspringe Update
+                return
+            
+            state_file = config.get('state_file', '.perlentaucher_state.json')
+            if not state_file:
+                return
+            
+            movie_title = entry_data.get('movie_title', entry_data.get('rss_title', ''))
+            is_series = entry_data.get('is_series', False)
+            filename = os.path.basename(filepath) if filepath and os.path.exists(filepath) else None
+            
+            core.save_processed_entry(
+                state_file,
+                entry_id,
+                status=status,
+                movie_title=movie_title,
+                filename=filename,
+                is_series=is_series
+            )
+        except Exception as e:
+            logging.warning(f"Konnte State-Datei nicht aktualisieren: {e}")
+    
+    def _cancel_download(self, entry_id: str):
+        """Bricht einen einzelnen Download ab."""
+        if entry_id in self.active_downloads:
+            thread = self.active_downloads[entry_id]
+            thread.cancel()
+            thread.wait(1000)  # Warte max. 1 Sekunde
+            
+            if entry_id in self.download_rows:
+                row = self.download_rows[entry_id]
+                status_item = self.table.item(row, 2)
+                if status_item:
+                    status_item.setText("Abgebrochen")
+                    status_item.setForeground(QtCore.Qt.GlobalColor.gray)
+            
+            if entry_id in self.active_downloads:
+                del self.active_downloads[entry_id]
+            
+            logging.info(f"Download abgebrochen: {entry_id}")
+    
+    def _cancel_all_downloads(self):
+        """Bricht alle aktiven Downloads ab."""
+        reply = QMessageBox.question(
+            self,
+            "Alle abbrechen",
+            "Möchten Sie wirklich alle Downloads abbrechen?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            entry_ids = list(self.active_downloads.keys())
+            for entry_id in entry_ids:
+                self._cancel_download(entry_id)
+            
+            self.status_label.setText("Alle Downloads abgebrochen.")
+            self.start_downloads_btn.setEnabled(True)
+            self.cancel_all_btn.setEnabled(False)
+
+
+class TextEditLogHandler(logging.Handler):
+    """Custom Log Handler der in ein QTextEdit schreibt."""
+    
+    def __init__(self, text_widget):
+        super().__init__()
+        self.text_widget = text_widget
+        self.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', 
+                                           datefmt='%H:%M:%S'))
+    
+    def emit(self, record):
+        """Schreibt Log-Eintrag in das Text-Widget."""
+        try:
+            msg = self.format(record)
+            self.text_widget.append(msg)
+            # Auto-Scroll zum Ende
+            self.text_widget.verticalScrollBar().setValue(
+                self.text_widget.verticalScrollBar().maximum()
+            )
+        except Exception:
+            pass

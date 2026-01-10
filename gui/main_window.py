@@ -1,0 +1,191 @@
+"""
+Hauptfenster für die GUI-Anwendung.
+Integriert alle Panels in einem Tab-Widget.
+"""
+from PyQt6.QtWidgets import (
+    QMainWindow, QTabWidget, QMenuBar, QMenu, QStatusBar, QMessageBox
+)
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QAction
+import sys
+import os
+
+from gui.settings_panel import SettingsPanel
+from gui.blog_list_panel import BlogListPanel
+from gui.download_panel import DownloadPanel
+from gui.config_manager import ConfigManager
+
+
+class MainWindow(QMainWindow):
+    """Hauptfenster der GUI-Anwendung."""
+    
+    def __init__(self, config_manager: ConfigManager, parent=None):
+        """
+        Initialisiert das Hauptfenster.
+        
+        Args:
+            config_manager: Instance von ConfigManager
+            parent: Parent Widget
+        """
+        super().__init__(parent)
+        self.config_manager = config_manager
+        self._init_ui()
+        self._connect_signals()
+    
+    def _init_ui(self):
+        """Initialisiert die UI-Komponenten."""
+        self.setWindowTitle("Perlentaucher GUI")
+        self.setGeometry(100, 100, 1200, 800)
+        
+        # Menüleiste
+        self._create_menu_bar()
+        
+        # Tab-Widget
+        self.tabs = QTabWidget()
+        self.setCentralWidget(self.tabs)
+        
+        # Einstellungen Panel
+        self.settings_panel = SettingsPanel(self.config_manager)
+        self.tabs.addTab(self.settings_panel, "⚙️ Einstellungen")
+        
+        # Blog-Liste Panel
+        self.blog_list_panel = BlogListPanel(self.config_manager)
+        self.tabs.addTab(self.blog_list_panel, "📰 Blog-Liste")
+        
+        # Download Panel
+        self.download_panel = DownloadPanel()
+        self.tabs.addTab(self.download_panel, "⬇️ Downloads")
+        
+        # Statusleiste
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("Bereit")
+    
+    def _create_menu_bar(self):
+        """Erstellt die Menüleiste."""
+        menubar = self.menuBar()
+        
+        # Datei-Menü
+        file_menu = menubar.addMenu("Datei")
+        
+        save_action = QAction("Einstellungen speichern", self)
+        save_action.setShortcut("Ctrl+S")
+        save_action.triggered.connect(self._save_settings)
+        file_menu.addAction(save_action)
+        
+        file_menu.addSeparator()
+        
+        exit_action = QAction("Beenden", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        
+        # Download-Menü
+        download_menu = menubar.addMenu("Download")
+        
+        start_action = QAction("Ausgewählte Downloads starten", self)
+        start_action.setShortcut("F5")
+        start_action.triggered.connect(self._start_selected_downloads)
+        download_menu.addAction(start_action)
+        
+        cancel_action = QAction("Alle Downloads abbrechen", self)
+        cancel_action.setShortcut("Esc")
+        cancel_action.triggered.connect(self._cancel_all_downloads)
+        download_menu.addAction(cancel_action)
+        
+        # Hilfe-Menü
+        help_menu = menubar.addMenu("Hilfe")
+        
+        about_action = QAction("Über", self)
+        about_action.triggered.connect(self._show_about)
+        help_menu.addAction(about_action)
+    
+    def _connect_signals(self):
+        """Verbindet Signale zwischen Panels."""
+        # Wenn Blog-Liste Einträge lädt, aktiviere Download-Button
+        self.blog_list_panel.entries_loaded.connect(self._on_entries_loaded)
+        
+        # Verbinde Download-Button mit Start-Funktion
+        self.download_panel.start_downloads_btn.clicked.connect(self._start_selected_downloads)
+    
+    def _on_entries_loaded(self, entries):
+        """Wird aufgerufen wenn Einträge geladen wurden."""
+        # Aktiviere Download-Button wenn Einträge vorhanden
+        if entries:
+            self.download_panel.start_downloads_btn.setEnabled(True)
+        else:
+            self.download_panel.start_downloads_btn.setEnabled(False)
+    
+    def _save_settings(self):
+        """Speichert die Einstellungen."""
+        self.settings_panel._save_settings()
+        self.status_bar.showMessage("Einstellungen gespeichert.", 3000)
+    
+    def _start_selected_downloads(self):
+        """Startet die ausgewählten Downloads."""
+        # Hole ausgewählte Einträge aus Blog-Liste
+        selected_entries = self.blog_list_panel.get_selected_entries()
+        
+        if not selected_entries:
+            QMessageBox.warning(self, "Keine Auswahl", "Bitte wählen Sie mindestens einen Eintrag in der Blog-Liste aus!")
+            return
+        
+        # Hole aktuelle Konfiguration
+        config = self.settings_panel.get_config()
+        
+        # Starte Downloads
+        self.download_panel.start_downloads(selected_entries, config)
+        
+        # Wechsle zum Download-Tab
+        self.tabs.setCurrentIndex(2)
+        
+        self.status_bar.showMessage(f"{len(selected_entries)} Download(s) gestartet.", 3000)
+    
+    def _cancel_all_downloads(self):
+        """Bricht alle Downloads ab."""
+        self.download_panel._cancel_all_downloads()
+        self.status_bar.showMessage("Alle Downloads abgebrochen.", 3000)
+    
+    def _show_about(self):
+        """Zeigt das About-Dialog."""
+        try:
+            import _version
+            version = _version.__version__
+        except ImportError:
+            version = "unknown"
+        
+        about_text = f"""
+        <h2>Perlentaucher GUI</h2>
+        <p>Version {version}</p>
+        <p>Eine grafische Benutzeroberfläche für Perlentaucher.</p>
+        <p>Automatischer Download von Film-Empfehlungen aus dem RSS-Feed Mediathekperlen.</p>
+        <p><a href="https://codeberg.org/elpatron/Perlentaucher">GitHub Repository</a></p>
+        <p>Lizenz: MIT</p>
+        """
+        
+        QMessageBox.about(self, "Über Perlentaucher GUI", about_text)
+    
+    def closeEvent(self, event):
+        """Wird aufgerufen wenn das Fenster geschlossen wird."""
+        # Prüfe ob aktive Downloads laufen
+        if self.download_panel.active_downloads:
+            reply = QMessageBox.question(
+                self,
+                "Downloads aktiv",
+                "Es laufen noch aktive Downloads. Möchten Sie wirklich beenden?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.No:
+                event.ignore()
+                return
+            
+            # Breche alle Downloads ab
+            for entry_id in list(self.download_panel.active_downloads.keys()):
+                self.download_panel._cancel_download(entry_id)
+        
+        # Speichere Einstellungen
+        self.config_manager.save()
+        
+        event.accept()
