@@ -5,7 +5,7 @@ Zeigt aktive Downloads mit Progress Bars und Log-Ausgabe.
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QTextEdit, QLabel, QProgressBar,
-    QAbstractItemView, QMessageBox
+    QAbstractItemView, QMessageBox, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
@@ -73,6 +73,9 @@ class DownloadPanel(QWidget):
             "Titel", "Fortschritt", "Status", "Geschwindigkeit", "Aktion"
         ])
         
+        # Stelle sicher, dass die Tabelle vertikal skalierbar ist
+        self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Titel
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Fortschritt
@@ -83,7 +86,7 @@ class DownloadPanel(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
-        layout.addWidget(self.table)
+        layout.addWidget(self.table, stretch=1)  # Stretch-Faktor für vertikale Skalierung
         
         # Log-Ausgabe
         log_label = QLabel("Log-Ausgabe:")
@@ -92,6 +95,8 @@ class DownloadPanel(QWidget):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMaximumHeight(200)
+        self.log_text.setMinimumHeight(100)
+        self.log_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.log_text.setFont(QFont("Courier", 9))
         layout.addWidget(self.log_text)
         

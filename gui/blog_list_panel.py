@@ -5,7 +5,7 @@ Zeigt RSS-Feed-Einträge in einer scrollbaren Liste mit Checkboxen an.
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QCheckBox, QLabel, QMessageBox,
-    QComboBox, QLineEdit, QAbstractItemView, QInputDialog
+    QComboBox, QLineEdit, QAbstractItemView, QInputDialog, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 import sys
@@ -114,6 +114,9 @@ class BlogListPanel(QWidget):
             "Auswählen", "Titel", "Filmtitel/Serie", "Jahr", "Typ", "Status", "Link"
         ])
         
+        # Stelle sicher, dass die Tabelle vertikal skalierbar ist
+        self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
         # Spaltenbreiten einstellen
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)  # Checkbox
@@ -128,7 +131,7 @@ class BlogListPanel(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
-        layout.addWidget(self.table)
+        layout.addWidget(self.table, stretch=1)  # Stretch-Faktor für vertikale Skalierung
         
         self.setLayout(layout)
     

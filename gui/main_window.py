@@ -4,9 +4,9 @@ Integriert alle Panels in einem Tab-Widget.
 """
 from PyQt6.QtWidgets import (
     QMainWindow, QTabWidget, QMenuBar, QMenu, QStatusBar, QMessageBox,
-    QDialog, QVBoxLayout, QLabel, QPushButton, QButtonGroup, QRadioButton
+    QDialog, QVBoxLayout, QLabel, QPushButton, QButtonGroup, QRadioButton, QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QAction
 from typing import Dict, Optional
 import sys
@@ -39,24 +39,32 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Perlentaucher GUI")
         self.setGeometry(100, 100, 1200, 800)
         
+        # Stelle sicher, dass das Fenster in beide Richtungen resizable ist
+        self.setMinimumSize(QSize(800, 600))
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
         # Menüleiste
         self._create_menu_bar()
         
         # Tab-Widget
         self.tabs = QTabWidget()
+        self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setCentralWidget(self.tabs)
         
         # Neue Reihenfolge: 1. Feed, 2. Downloads, 3. Einstellungen
         # Blog-Liste Panel (Feed) - Tab 0
         self.blog_list_panel = BlogListPanel(self.config_manager)
+        self.blog_list_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.tabs.addTab(self.blog_list_panel, "📰 Feed")
         
         # Download Panel - Tab 1
         self.download_panel = DownloadPanel()
+        self.download_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.tabs.addTab(self.download_panel, "⬇️ Downloads")
         
         # Einstellungen Panel - Tab 2
         self.settings_panel = SettingsPanel(self.config_manager)
+        self.settings_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.tabs.addTab(self.settings_panel, "⚙️ Einstellungen")
         
         # Statusleiste
