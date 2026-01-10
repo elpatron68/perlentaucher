@@ -79,9 +79,12 @@ class DownloadPanel(QWidget):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Titel
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Fortschritt
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Status
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)  # Status - feste Breite
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Geschwindigkeit
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Aktion
+        
+        # Setze feste Breite für Status-Spalte (verhindert springende Spaltenbreite)
+        self.table.setColumnWidth(2, 150)
         
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -246,7 +249,11 @@ class DownloadPanel(QWidget):
     
     def _on_download_finished(self, entry_id: str, success: bool, title: str, filepath: str, error: str):
         """Wird aufgerufen wenn ein Download abgeschlossen ist."""
-        if entry_id in self.download_rows:
+        try:
+            if entry_id not in self.download_rows:
+                logging.warning(f"Download-Finished: entry_id {entry_id} nicht in download_rows gefunden")
+                return
+            
             row = self.download_rows[entry_id]
             
             # Hole Entry-Daten um State-Datei zu aktualisieren
@@ -256,41 +263,73 @@ class DownloadPanel(QWidget):
                 # Versuche Entry-Daten aus UserData zu holen (falls gespeichert)
                 entry_data = getattr(title_item, '_entry_data', None)
             
+            # Normalisiere filepath (kann None oder leerer String sein)
+            filepath = filepath if filepath else ""
+            
             # Update Status
             status_item = self.table.item(row, 2)
             if status_item:
                 if success:
                     # Prüfe ob es ein Staffel-Download war (mehrere Episoden)
-                    is_series_download = entry_data and entry_data.get('is_series', False) and not filepath and "Episoden" in title
+                    # Staffel-Downloads haben typischerweise "Episoden" im Titel und keinen einzelnen filepath
+                    is_series_download = (
+                        entry_data and 
+                        entry_data.get('is_series', False) and 
+                        (not filepath or not filepath.strip()) and 
+                        "Episoden" in (title or "")
+                    )
                     
                     if is_series_download:
                         # Staffel-Download - State-Datei wurde bereits im Thread aktualisiert
-                        status_item.setText(f"✓ Erfolgreich ({error if error else title})")
+                        status_text = "✓ Erfolgreich"
+                        if error and error.strip():
+                            status_text += f" ({error})"
+                        elif title and "Episoden" in title:
+                            # Extrahiere nur den relevanten Teil (z.B. "3/5 Episoden")
+                            import re
+                            match = re.search(r'(\d+/\d+\s+Episoden)', title)
+                            if match:
+                                status_text += f" ({match.group(1)})"
+                        status_item.setText(status_text)
                     else:
                         # Einzelner Download
                         status_item.setText("✓ Erfolgreich")
                         # Aktualisiere State-Datei für erfolgreichen Download
                         if entry_data:
-                            self._update_state_file(entry_id, entry_data, 'download_success', filepath)
+                            try:
+                                self._update_state_file(entry_id, entry_data, 'download_success', filepath if filepath else None)
+                            except Exception as e:
+                                logging.warning(f"Fehler beim Aktualisieren der State-Datei: {e}")
                     
                     status_item.setForeground(Qt.GlobalColor.green)
-                    logging.info(f"Download erfolgreich: {title} -> {filepath}")
+                    # Sichere Logging-Ausgabe (filepath kann leer sein)
+                    log_msg = f"Download erfolgreich: {title}"
+                    if filepath and filepath.strip():
+                        log_msg += f" -> {filepath}"
+                    logging.info(log_msg)
                 else:
-                    status_text = f"✗ Fehlgeschlagen: {error}"
+                    status_text = f"✗ Fehlgeschlagen"
+                    if error and error.strip():
+                        # Kürze sehr lange Fehlermeldungen für bessere Anzeige
+                        error_short = error[:100] + "..." if len(error) > 100 else error
+                        status_text += f": {error_short}"
                     status_item.setText(status_text)
                     status_item.setForeground(Qt.GlobalColor.red)
                     logging.error(f"Download fehlgeschlagen: {title} - {error}")
                     
                     # Prüfe ob Staffel-Download (State-Datei wurde bereits im Thread aktualisiert)
-                    is_series_download = entry_data and entry_data.get('is_series', False) and "Episoden" in error
+                    is_series_download = entry_data and entry_data.get('is_series', False) and error and "Episoden" in error
                     
                     if not is_series_download:
                         # Aktualisiere State-Datei für fehlgeschlagenen Download
                         if entry_data:
-                            if "nicht gefunden" in error.lower():
-                                self._update_state_file(entry_id, entry_data, 'not_found', None)
-                            else:
-                                self._update_state_file(entry_id, entry_data, 'download_failed', None)
+                            try:
+                                if error and "nicht gefunden" in error.lower():
+                                    self._update_state_file(entry_id, entry_data, 'not_found', None)
+                                else:
+                                    self._update_state_file(entry_id, entry_data, 'download_failed', None)
+                            except Exception as e:
+                                logging.warning(f"Fehler beim Aktualisieren der State-Datei: {e}")
             
             # Update Progress Bar
             progress_bar = self.table.cellWidget(row, 1)
@@ -304,6 +343,10 @@ class DownloadPanel(QWidget):
             if entry_id in self.active_downloads:
                 del self.active_downloads[entry_id]
             
+            # Entferne auch aus download_rows
+            if entry_id in self.download_rows:
+                del self.download_rows[entry_id]
+            
             # Update Status-Label
             active_count = len(self.active_downloads)
             if active_count == 0:
@@ -312,6 +355,19 @@ class DownloadPanel(QWidget):
                 self.cancel_all_btn.setEnabled(False)
             else:
                 self.status_label.setText(f"{active_count} Download(s) aktiv.")
+                
+        except Exception as e:
+            logging.error(f"Fehler in _on_download_finished: {e}", exc_info=True)
+            # Versuche zumindest den Status zu aktualisieren, auch wenn etwas schief ging
+            try:
+                if entry_id in self.download_rows:
+                    row = self.download_rows[entry_id]
+                    status_item = self.table.item(row, 2)
+                    if status_item:
+                        status_item.setText("✗ Fehler")
+                        status_item.setForeground(Qt.GlobalColor.red)
+            except:
+                pass
     
     def _update_state_file(self, entry_id: str, entry_data: Dict, status: str, filepath: Optional[str]):
         """Aktualisiert die State-Datei nach einem Download."""
@@ -336,7 +392,16 @@ class DownloadPanel(QWidget):
             
             movie_title = entry_data.get('movie_title', entry_data.get('rss_title', ''))
             is_series = entry_data.get('is_series', False)
-            filename = os.path.basename(filepath) if filepath and os.path.exists(filepath) else None
+            
+            # Sichere Dateipfad-Prüfung (verhindert Crash bei None oder leerem String)
+            filename = None
+            if filepath and filepath.strip():
+                try:
+                    if os.path.exists(filepath):
+                        filename = os.path.basename(filepath)
+                except (OSError, ValueError, TypeError) as e:
+                    logging.warning(f"Fehler beim Prüfen des Dateipfads '{filepath}': {e}")
+                    filename = None
             
             core.save_processed_entry(
                 state_file,
@@ -347,7 +412,7 @@ class DownloadPanel(QWidget):
                 is_series=is_series
             )
         except Exception as e:
-            logging.warning(f"Konnte State-Datei nicht aktualisieren: {e}")
+            logging.warning(f"Konnte State-Datei nicht aktualisieren: {e}", exc_info=True)
     
     def _cancel_download(self, entry_id: str):
         """Bricht einen einzelnen Download ab."""
