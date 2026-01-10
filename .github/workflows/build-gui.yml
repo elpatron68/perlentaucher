@@ -53,7 +53,7 @@ jobs:
           python -m py_compile perlentaucher_gui.py
           python -m py_compile gui/*.py gui/utils/*.py 2>/dev/null || true
       
-      - name: Test: --help Option
+      - name: Test --help Option
         run: |
           echo "=== Test: --help Option ==="
           python perlentaucher.py --help

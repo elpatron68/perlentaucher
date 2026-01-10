@@ -50,9 +50,141 @@ cat > _version.py <<EOF
 __version__ = "$version_number"
 EOF
 
-# Committe Version-Update
-echo "Committe Version-Update..."
+# Generiere Release Notes VOR dem Tag
+echo ""
+echo "Generiere Release Notes..."
+release_notes_dir="docs/release-notes"
+release_notes_file="$release_notes_dir/RELEASE_NOTES_${version_number}.md"
+
+# Stelle sicher, dass das Verzeichnis existiert
+mkdir -p "$release_notes_dir"
+
+# Prüfe ob Release Notes bereits existieren, sonst generiere sie
+if [ ! -f "$release_notes_file" ]; then
+    # Hole OpenRouter API Key (optional)
+    script_dir="$(cd "$(dirname "$0")" && pwd)"
+    env_file="$script_dir/.env"
+    openrouter_key="${OPENROUTER_API_KEY:-}"
+    if [ -z "$openrouter_key" ]; then
+        # Versuche aus .env Datei
+        if [ -f "$env_file" ]; then
+            openrouter_key=$(grep -E '^\s*OPENROUTER_API_KEY\s*=' "$env_file" | head -1 | awk -F'=' '{print $2}' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/^["'\'']//' | sed 's/["'\'']$//' | sed 's/#.*$//' | sed 's/[[:space:]]*$//')
+        fi
+    fi
+    
+    # Rufe Hilfs-Script auf
+    get_release_notes_script="$script_dir/get_release_notes.sh"
+    
+    if [ -f "$get_release_notes_script" ] && [ -x "$get_release_notes_script" ]; then
+        # Bestimme letzten Tag (falls nicht vorhanden, verwende ersten Commit)
+        previous_tag="$last_tag"
+        if [ -z "$previous_tag" ]; then
+            first_commit=$(git rev-list --max-parents=0 HEAD 2>/dev/null)
+            if [ -n "$first_commit" ]; then
+                previous_tag="$first_commit"
+                echo "Verwende ersten Commit als Referenz: $previous_tag"
+            else
+                previous_tag="HEAD~100"  # Fallback: letzte 100 Commits
+            fi
+        fi
+        
+        if [ -n "$openrouter_key" ]; then
+            echo "Verwende OpenRouter API für AI-basierte Zusammenfassung..."
+            release_notes_content=$($get_release_notes_script "$previous_tag" "$new_tag" "$openrouter_key")
+        else
+            echo "Generiere Release Notes manuell (ohne AI)..."
+            release_notes_content=$($get_release_notes_script "$previous_tag" "$new_tag")
+        fi
+        
+        if [ -n "$release_notes_content" ]; then
+            # Speichere generierte Release Notes
+            echo "$release_notes_content" > "$release_notes_file"
+            echo "✓ Release Notes erfolgreich generiert: $release_notes_file"
+            echo "ℹ Du kannst die Datei vor dem Commit noch bearbeiten."
+        else
+            echo "⚠ Fehler beim Generieren der Release Notes. Erstelle Fallback Template..."
+            # Fallback: Template erstellen
+            codeberg_url=$(git remote get-url origin 2>&1 || echo "")
+            codeberg_repo="elpatron/perlentaucher"
+            if [[ $codeberg_url =~ codeberg\.org[/:]([^/]+)/([^/]+?)(\.git)?$ ]]; then
+                codeberg_repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]%.git}"
+            fi
+            cat > "$release_notes_file" <<EOF
+# Release $new_tag
+
+## Neue Features
+
+<!-- Hier neue Features beschreiben -->
+
+## Verbesserungen
+
+<!-- Hier Verbesserungen beschreiben -->
+
+## Bugfixes
+
+<!-- Hier Bugfixes beschreiben -->
+
+## Technische Änderungen
+
+<!-- Hier technische Änderungen beschreiben -->
+
+## Bekannte Einschränkungen
+
+<!-- Hier bekannte Einschränkungen beschreiben -->
+
+---
+
+**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$codeberg_repo/commits/$new_tag)
+EOF
+            echo "⚠ Release Notes Template wurde erstellt. Bitte bearbeite die Datei vor dem Release:"
+            echo "  $release_notes_file"
+        fi
+    else
+        echo "⚠ get_release_notes.sh nicht gefunden. Erstelle Fallback Template..."
+        codeberg_url=$(git remote get-url origin 2>&1 || echo "")
+        codeberg_repo="elpatron/perlentaucher"
+        if [[ $codeberg_url =~ codeberg\.org[/:]([^/]+)/([^/]+?)(\.git)?$ ]]; then
+            codeberg_repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]%.git}"
+        fi
+        cat > "$release_notes_file" <<EOF
+# Release $new_tag
+
+## Neue Features
+
+<!-- Hier neue Features beschreiben -->
+
+## Verbesserungen
+
+<!-- Hier Verbesserungen beschreiben -->
+
+## Bugfixes
+
+<!-- Hier Bugfixes beschreiben -->
+
+## Technische Änderungen
+
+<!-- Hier technische Änderungen beschreiben -->
+
+## Bekannte Einschränkungen
+
+<!-- Hier bekannte Einschränkungen beschreiben -->
+
+---
+
+**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$codeberg_repo/commits/$new_tag)
+EOF
+    fi
+else
+    echo "Release Notes existieren bereits: $release_notes_file"
+fi
+
+# Committe Version-Update und Release Notes zusammen
+echo ""
+echo "Committe Version-Update und Release Notes..."
 git add _version.py
+if [ -f "$release_notes_file" ]; then
+    git add "$release_notes_file"
+fi
 git commit -m "Bump version to $version_number" 2>/dev/null || echo "Version bereits aktuell oder kein Commit notwendig"
 
 # Erstelle neuen Tag
@@ -120,44 +252,17 @@ if git remote | grep -q "^github$"; then
                     codeberg_repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]%.git}"
                 fi
                 
+                # Lese Release Notes (sollten bereits vor dem Tag generiert worden sein)
                 if [ -f "$release_notes_file" ]; then
+                    echo "Lese Release-Notes aus: $release_notes_file"
                     github_release_body=$(cat "$release_notes_file")
                 else
-                    # Erstelle automatisch Template-Datei für Release-Notes
-                    echo "Erstelle Release-Notes Template: $release_notes_file"
-                    cat > "$release_notes_file" <<EOF
-# Release $new_tag
-
-## Neue Features
-
-<!-- Hier neue Features beschreiben -->
-
-## Verbesserungen
-
-<!-- Hier Verbesserungen beschreiben -->
-
-## Bugfixes
-
-<!-- Hier Bugfixes beschreiben -->
-
-## Technische Änderungen
-
-<!-- Hier technische Änderungen beschreiben -->
-
-## Bekannte Einschränkungen
-
-<!-- Hier bekannte Einschränkungen beschreiben -->
-
----
-
-**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$codeberg_repo/commits/$new_tag)
-EOF
-                    echo "⚠ Release-Notes Template wurde erstellt. Bitte bearbeite die Datei vor dem Release:"
-                    echo "  $release_notes_file"
+                    echo "⚠ Warnung: Release Notes Datei nicht gefunden: $release_notes_file"
+                    echo "Verwende Fallback Release Notes..."
+                    # Fallback: Standard Release Notes
                     github_release_body="Release $new_tag
 
 Siehe [Changelog](https://codeberg.org/$codeberg_repo/commits/$new_tag) für Details."
-                    echo "ℹ Verwende Standard Release-Notes für GitHub Release."
                 fi
                 
                 # Erstelle GitHub Release
@@ -273,42 +378,14 @@ if [[ $remote_url =~ codeberg\.org[/:]([^/]+)/([^/]+?)(\.git)?$ ]]; then
         # Stelle sicher, dass das Verzeichnis existiert
         mkdir -p "$release_notes_dir"
         
+        # Lese Release Notes (sollten bereits vor dem Tag generiert worden sein)
         if [ -f "$release_notes_file" ]; then
             echo "Lese Release-Notes aus: $release_notes_file"
             release_body=$(cat "$release_notes_file")
         else
-            # Erstelle automatisch Template-Datei für Release-Notes
-            echo "Erstelle Release-Notes Template: $release_notes_file"
-            cat > "$release_notes_file" <<EOF
-# Release $new_tag
-
-## Neue Features
-
-<!-- Hier neue Features beschreiben -->
-
-## Verbesserungen
-
-<!-- Hier Verbesserungen beschreiben -->
-
-## Bugfixes
-
-<!-- Hier Bugfixes beschreiben -->
-
-## Technische Änderungen
-
-<!-- Hier technische Änderungen beschreiben -->
-
-## Bekannte Einschränkungen
-
-<!-- Hier bekannte Einschränkungen beschreiben -->
-
----
-
-**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag)
-EOF
-            echo "⚠ Release-Notes Template wurde erstellt. Bitte bearbeite die Datei vor dem Release:"
-            echo "  $release_notes_file"
-            # Fallback: Standard Release-Notes
+            echo "⚠ Warnung: Release Notes Datei nicht gefunden: $release_notes_file"
+            echo "Verwende Fallback Release Notes..."
+            # Fallback: Standard Release Notes
             release_body="Release $new_tag
 
 Siehe [Changelog](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag) für Details."

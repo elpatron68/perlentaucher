@@ -48,9 +48,150 @@ Write-Host "Aktualisiere Version in _version.py: $versionNumber" -ForegroundColo
 $versionContent = "# Version wird automatisch vom Release-Script aktualisiert`n__version__ = `"$versionNumber`"`n"
 Set-Content -Path "_version.py" -Value $versionContent -NoNewline
 
-# Committe Version-Update
-Write-Host "Committe Version-Update..." -ForegroundColor Cyan
+# Generiere Release Notes VOR dem Tag
+Write-Host "`nGeneriere Release Notes..." -ForegroundColor Cyan
+$releaseNotesDir = "docs/release-notes"
+$releaseNotesFile = Join-Path $releaseNotesDir "RELEASE_NOTES_$versionNumber.md"
+
+# Stelle sicher, dass das Verzeichnis existiert
+if (-not (Test-Path $releaseNotesDir)) {
+    New-Item -ItemType Directory -Path $releaseNotesDir -Force | Out-Null
+}
+
+# Prüfe ob Release Notes bereits existieren, sonst generiere sie
+if (-not (Test-Path $releaseNotesFile)) {
+    # Hole OpenRouter API Key (optional)
+    $openRouterKey = $env:OPENROUTER_API_KEY
+    if (-not $openRouterKey) {
+        # Versuche aus .env Datei
+        $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+        $envFile = Join-Path $scriptDir ".env"
+        if (Test-Path $envFile) {
+            $envContent = Get-Content $envFile -Raw
+            if ($envContent -match '(?m)^\s*OPENROUTER_API_KEY\s*=\s*(.+?)(?:\s*$|\s*#)') {
+                $openRouterKey = $matches[1].Trim().Trim('"').Trim("'")
+            }
+        }
+    }
+    
+    # Rufe Hilfs-Script auf
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $getReleaseNotesScript = Join-Path $scriptDir "get_release_notes.ps1"
+    
+    if (Test-Path $getReleaseNotesScript) {
+        try {
+            # Bestimme letzten Tag (falls nicht vorhanden, verwende ersten Commit)
+            $previousTag = $lastTag
+            if (-not $previousTag) {
+                $firstCommit = git rev-list --max-parents=0 HEAD 2>&1
+                if ($LASTEXITCODE -eq 0 -and $firstCommit) {
+                    $previousTag = $firstCommit.Trim()
+                    Write-Host "Verwende ersten Commit als Referenz: $previousTag" -ForegroundColor Gray
+                } else {
+                    $previousTag = "HEAD~100"  # Fallback: letzte 100 Commits
+                }
+            }
+            
+            if ($openRouterKey) {
+                Write-Host "Verwende OpenRouter API für AI-basierte Zusammenfassung..." -ForegroundColor Gray
+                $releaseNotesContent = & $getReleaseNotesScript -LastTag $previousTag -NewTag $newTag -OpenRouterApiKey $openRouterKey
+            } else {
+                Write-Host "Generiere Release Notes manuell (ohne AI)..." -ForegroundColor Gray
+                $releaseNotesContent = & $getReleaseNotesScript -LastTag $previousTag -NewTag $newTag
+            }
+            
+            # Speichere generierte Release Notes
+            Set-Content -Path $releaseNotesFile -Value $releaseNotesContent -Encoding UTF8
+            Write-Host "✓ Release Notes erfolgreich generiert: $releaseNotesFile" -ForegroundColor Green
+            Write-Host "ℹ Du kannst die Datei vor dem Commit noch bearbeiten." -ForegroundColor Gray
+        }
+        catch {
+            Write-Host "⚠ Fehler beim Generieren der Release Notes: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host "Erstelle Fallback Template..." -ForegroundColor Gray
+            
+            # Fallback: Template erstellen
+            $codebergUrl = git remote get-url origin 2>&1
+            $codebergRepo = "elpatron/perlentaucher"
+            if ($codebergUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
+                $codebergRepo = "$($matches[1])/$($matches[2] -replace '\.git$', '')"
+            }
+            $template = @"
+# Release $newTag
+
+## Neue Features
+
+<!-- Hier neue Features beschreiben -->
+
+## Verbesserungen
+
+<!-- Hier Verbesserungen beschreiben -->
+
+## Bugfixes
+
+<!-- Hier Bugfixes beschreiben -->
+
+## Technische Änderungen
+
+<!-- Hier technische Änderungen beschreiben -->
+
+## Bekannte Einschränkungen
+
+<!-- Hier bekannte Einschränkungen beschreiben -->
+
+---
+
+**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$codebergRepo/commits/$newTag)
+"@
+            Set-Content -Path $releaseNotesFile -Value $template -Encoding UTF8
+            Write-Host "⚠ Release Notes Template wurde erstellt. Bitte bearbeite die Datei vor dem Release:" -ForegroundColor Yellow
+            Write-Host "  $releaseNotesFile" -ForegroundColor Gray
+        }
+    } else {
+        Write-Host "⚠ get_release_notes.ps1 nicht gefunden. Erstelle Fallback Template..." -ForegroundColor Yellow
+        $codebergUrl = git remote get-url origin 2>&1
+        $codebergRepo = "elpatron/perlentaucher"
+        if ($codebergUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
+            $codebergRepo = "$($matches[1])/$($matches[2] -replace '\.git$', '')"
+        }
+        $template = @"
+# Release $newTag
+
+## Neue Features
+
+<!-- Hier neue Features beschreiben -->
+
+## Verbesserungen
+
+<!-- Hier Verbesserungen beschreiben -->
+
+## Bugfixes
+
+<!-- Hier Bugfixes beschreiben -->
+
+## Technische Änderungen
+
+<!-- Hier technische Änderungen beschreiben -->
+
+## Bekannte Einschränkungen
+
+<!-- Hier bekannte Einschränkungen beschreiben -->
+
+---
+
+**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$codebergRepo/commits/$newTag)
+"@
+        Set-Content -Path $releaseNotesFile -Value $template -Encoding UTF8
+    }
+} else {
+    Write-Host "Release Notes existieren bereits: $releaseNotesFile" -ForegroundColor Gray
+}
+
+# Committe Version-Update und Release Notes zusammen
+Write-Host "`nCommitte Version-Update und Release Notes..." -ForegroundColor Cyan
 git add _version.py
+if (Test-Path $releaseNotesFile) {
+    git add $releaseNotesFile
+}
 $commitOutput = git commit -m "Bump version to $versionNumber" 2>&1
 if ($LASTEXITCODE -ne 0 -or $commitOutput -match "nothing to commit") {
     # Wenn nichts zu committen ist (Datei bereits aktuell), ist das OK
@@ -131,48 +272,18 @@ if ($githubRemote) {
                         New-Item -ItemType Directory -Path $releaseNotesDir -Force | Out-Null
                     }
                     
+                    # Lese Release Notes (sollten bereits vor dem Tag generiert worden sein)
                     if (Test-Path $releaseNotesFile) {
+                        Write-Host "Lese Release-Notes aus: $releaseNotesFile" -ForegroundColor Gray
                         $githubReleaseBody = Get-Content $releaseNotesFile -Raw -Encoding UTF8
                     } else {
-                        # Erstelle automatisch Template-Datei für Release-Notes
-                        Write-Host "Erstelle Release-Notes Template: $releaseNotesFile" -ForegroundColor Gray
-                        # Extrahiere Codeberg Repository-Informationen für Template
+                        Write-Host "⚠ Warnung: Release Notes Datei nicht gefunden: $releaseNotesFile" -ForegroundColor Yellow
+                        # Fallback: Standard Release Notes
                         $codebergUrl = git remote get-url origin 2>&1
-                        $codebergRepo = "elpatron/perlentaucher"  # Fallback
+                        $codebergRepo = "elpatron/perlentaucher"
                         if ($codebergUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
                             $codebergRepo = "$($matches[1])/$($matches[2] -replace '\.git$', '')"
                         }
-                        $template = @"
-# Release $newTag
-
-## Neue Features
-
-<!-- Hier neue Features beschreiben -->
-
-## Verbesserungen
-
-<!-- Hier Verbesserungen beschreiben -->
-
-## Bugfixes
-
-<!-- Hier Bugfixes beschreiben -->
-
-## Technische Änderungen
-
-<!-- Hier technische Änderungen beschreiben -->
-
-## Bekannte Einschränkungen
-
-<!-- Hier bekannte Einschränkungen beschreiben -->
-
----
-
-**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$codebergRepo/commits/$newTag)
-"@
-                        Set-Content -Path $releaseNotesFile -Value $template -Encoding UTF8
-                        Write-Host "⚠ Release-Notes Template wurde erstellt. Bitte bearbeite die Datei vor dem Release:" -ForegroundColor Yellow
-                        Write-Host "  $releaseNotesFile" -ForegroundColor Gray
-                        Write-Host "ℹ Verwende Standard Release-Notes für GitHub Release." -ForegroundColor Gray
                         $githubReleaseBody = "Release $newTag`n`nSiehe [Changelog](https://codeberg.org/$codebergRepo/commits/$newTag) für Details."
                     }
                     
@@ -292,9 +403,60 @@ if ($remoteUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
             Write-Host "Lese Release-Notes aus: $releaseNotesFile" -ForegroundColor Gray
             $releaseBody = Get-Content $releaseNotesFile -Raw -Encoding UTF8
         } else {
-            # Erstelle automatisch Template-Datei für Release-Notes
-            Write-Host "Erstelle Release-Notes Template: $releaseNotesFile" -ForegroundColor Gray
-            $template = @"
+            # Generiere Release Notes automatisch aus Commits (wenn nicht bereits für GitHub erstellt)
+            Write-Host "Generiere Release Notes aus Git Commits..." -ForegroundColor Cyan
+            
+            # Hole OpenRouter API Key (optional)
+            $openRouterKey = $env:OPENROUTER_API_KEY
+            if (-not $openRouterKey) {
+                # Versuche aus .env Datei
+                if (Test-Path $envFile) {
+                    $envContent = Get-Content $envFile -Raw
+                    if ($envContent -match '(?m)^\s*OPENROUTER_API_KEY\s*=\s*(.+?)(?:\s*$|\s*#)') {
+                        $openRouterKey = $matches[1].Trim().Trim('"').Trim("'")
+                    }
+                }
+            }
+            
+            # Rufe Hilfs-Script auf
+            $getReleaseNotesScript = Join-Path $scriptDir "get_release_notes.ps1"
+            
+            if (Test-Path $getReleaseNotesScript) {
+                try {
+                    # Bestimme letzten Tag (falls nicht vorhanden, verwende ersten Commit)
+                    $previousTag = $lastTag
+                    if (-not $previousTag) {
+                        $firstCommit = git rev-list --max-parents=0 HEAD 2>&1
+                        if ($LASTEXITCODE -eq 0 -and $firstCommit) {
+                            $previousTag = $firstCommit.Trim()
+                            Write-Host "Verwende ersten Commit als Referenz: $previousTag" -ForegroundColor Gray
+                        } else {
+                            $previousTag = "HEAD~100"  # Fallback: letzte 100 Commits
+                        }
+                    }
+                    
+                    if ($openRouterKey) {
+                        Write-Host "Verwende OpenRouter API für AI-basierte Zusammenfassung..." -ForegroundColor Gray
+                        $releaseNotesContent = & $getReleaseNotesScript -LastTag $previousTag -NewTag $newTag -OpenRouterApiKey $openRouterKey
+                    } else {
+                        Write-Host "Generiere Release Notes manuell (ohne AI)..." -ForegroundColor Gray
+                        $releaseNotesContent = & $getReleaseNotesScript -LastTag $previousTag -NewTag $newTag
+                    }
+                    
+                    # Speichere generierte Release Notes (falls nicht bereits vorhanden)
+                    if (-not (Test-Path $releaseNotesFile)) {
+                        Set-Content -Path $releaseNotesFile -Value $releaseNotesContent -Encoding UTF8
+                        Write-Host "✓ Release Notes erfolgreich generiert: $releaseNotesFile" -ForegroundColor Green
+                        Write-Host "ℹ Du kannst die Datei vor dem Release noch bearbeiten." -ForegroundColor Gray
+                    }
+                    $releaseBody = $releaseNotesContent
+                }
+                catch {
+                    Write-Host "⚠ Fehler beim Generieren der Release Notes: $($_.Exception.Message)" -ForegroundColor Yellow
+                    Write-Host "Erstelle Fallback Template..." -ForegroundColor Gray
+                    
+                    # Fallback: Template erstellen
+                    $template = @"
 # Release $newTag
 
 ## Neue Features
@@ -321,11 +483,41 @@ if ($remoteUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
 
 **Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$repoOwner/$repoName/commits/$newTag)
 "@
-            Set-Content -Path $releaseNotesFile -Value $template -Encoding UTF8
-            Write-Host "⚠ Release-Notes Template wurde erstellt. Bitte bearbeite die Datei vor dem Release:" -ForegroundColor Yellow
-            Write-Host "  $releaseNotesFile" -ForegroundColor Gray
-            # Fallback: Standard Release-Notes
-            $releaseBody = "Release $newTag`n`nSiehe [Changelog](https://codeberg.org/$repoOwner/$repoName/commits/$newTag) für Details."
+                    Set-Content -Path $releaseNotesFile -Value $template -Encoding UTF8
+                    $releaseBody = "Release $newTag`n`nSiehe [Changelog](https://codeberg.org/$repoOwner/$repoName/commits/$newTag) für Details."
+                }
+            } else {
+                Write-Host "⚠ get_release_notes.ps1 nicht gefunden. Erstelle Fallback Template..." -ForegroundColor Yellow
+                $template = @"
+# Release $newTag
+
+## Neue Features
+
+<!-- Hier neue Features beschreiben -->
+
+## Verbesserungen
+
+<!-- Hier Verbesserungen beschreiben -->
+
+## Bugfixes
+
+<!-- Hier Bugfixes beschreiben -->
+
+## Technische Änderungen
+
+<!-- Hier technische Änderungen beschreiben -->
+
+## Bekannte Einschränkungen
+
+<!-- Hier bekannte Einschränkungen beschreiben -->
+
+---
+
+**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$repoOwner/$repoName/commits/$newTag)
+"@
+                Set-Content -Path $releaseNotesFile -Value $template -Encoding UTF8
+                $releaseBody = "Release $newTag`n`nSiehe [Changelog](https://codeberg.org/$repoOwner/$repoName/commits/$newTag) für Details."
+            }
         }
         
         # Erstelle Release über Codeberg/Gitea API
