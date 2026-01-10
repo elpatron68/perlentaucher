@@ -29,9 +29,8 @@ def main():
     app.setApplicationName("Perlentaucher GUI")
     app.setOrganizationName("Perlentaucher")
     
-    # Stelle sicher, dass High-DPI-Skalierung aktiviert ist
-    app.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
-    app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
+    # In PyQt6 ist High-DPI-Skalierung standardmäßig aktiviert
+    # Die alten Attribute (AA_EnableHighDpiScaling, AA_UseHighDpiPixmaps) existieren nicht mehr
     
     # Lade Konfiguration
     config_manager = ConfigManager()
