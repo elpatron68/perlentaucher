@@ -5,7 +5,7 @@ Stellt alle konfigurierbaren Optionen als UI-Elemente dar.
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLineEdit, QSpinBox, 
     QComboBox, QPushButton, QFileDialog, QGroupBox, QHBoxLayout,
-    QLabel, QMessageBox, QCheckBox, QSizePolicy
+    QLabel, QMessageBox, QCheckBox, QSizePolicy, QScrollArea
 )
 from PyQt6.QtCore import Qt
 import os
@@ -30,12 +30,25 @@ class SettingsPanel(QWidget):
     
     def _init_ui(self):
         """Initialisiert die UI-Komponenten."""
+        # Hauptlayout für das Panel (enthält ScrollArea und Buttons)
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # ScrollArea für den scrollbaren Inhalt
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        
+        # Inneres Widget für den Form-Inhalt
+        content_widget = QWidget()
         layout = QVBoxLayout()
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
         
-        # Minimale Höhe für Eingabefelder (verhindert gedrungenes Aussehen auf Linux)
-        MIN_FIELD_HEIGHT = 32
+        # Minimale Höhe für Eingabefelder (ausgewogen für bessere Lesbarkeit)
+        MIN_FIELD_HEIGHT = 28
         
         # Download-Einstellungen
         download_group = QGroupBox("Download-Einstellungen")
@@ -197,7 +210,16 @@ class SettingsPanel(QWidget):
         rss_group.setLayout(rss_layout)
         layout.addWidget(rss_group)
         
-        # Buttons
+        # Stretch am Ende, damit der Inhalt oben beginnt
+        layout.addStretch()
+        
+        # Setze das Layout für das Content-Widget
+        content_widget.setLayout(layout)
+        
+        # Setze das Content-Widget in die ScrollArea
+        scroll_area.setWidget(content_widget)
+        
+        # Buttons außerhalb der ScrollArea (immer sichtbar)
         button_layout = QHBoxLayout()
         
         self.save_btn = QPushButton("Einstellungen speichern")
@@ -211,10 +233,13 @@ class SettingsPanel(QWidget):
         button_layout.addWidget(self.reset_btn)
         button_layout.addStretch()
         
-        layout.addLayout(button_layout)
-        layout.addStretch()
+        # Füge ScrollArea zum Hauptlayout hinzu (mit Stretch, damit sie den verfügbaren Platz nutzt)
+        main_layout.addWidget(scroll_area, 1)
         
-        self.setLayout(layout)
+        # Füge Buttons zum Hauptlayout hinzu (ohne Stretch, damit sie am unteren Rand bleiben)
+        main_layout.addLayout(button_layout)
+        
+        self.setLayout(main_layout)
     
     def _select_directory(self, line_edit: QLineEdit):
         """Öffnet einen Verzeichnis-Auswahl-Dialog."""
