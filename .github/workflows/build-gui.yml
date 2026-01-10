@@ -399,7 +399,11 @@ jobs:
             if [ -n "$RELEASE_ID" ]; then
               echo "✓ Found Codeberg release ID: $RELEASE_ID"
               echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
-              echo "release_url=$(echo "$RELEASE_JSON" | grep -o '"html_url":"[^"]*"' | cut -d'"' -f4)" >> $GITHUB_OUTPUT
+              # Extrahiere URL sicher mit sed
+              RELEASE_URL=$(echo "$RELEASE_JSON" | sed -n 's/.*"html_url":"\([^"]*\)".*/\1/p')
+              if [ -n "$RELEASE_URL" ]; then
+                echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
+              fi
             else
               echo "⚠ Could not extract release ID from response"
               exit 1
