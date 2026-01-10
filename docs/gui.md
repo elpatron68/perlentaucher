@@ -12,26 +12,71 @@ Eine grafische Benutzeroberfläche für Perlentaucher, die alle Funktionen der K
 
 ## Installation
 
-### Voraussetzungen
+### Empfohlene Installation: Executable Download
+
+Die einfachste Installation erfolgt über die vorgebauten Executables von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases):
+
+#### Windows
+
+1. Laden Sie `PerlentaucherGUI-0.1.17-windows.exe.zip` oder `PerlentaucherGUI-0.1.17-windows.exe` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter
+2. Entpacken Sie die ZIP-Datei (falls vorhanden)
+3. Doppelklicken Sie auf `PerlentaucherGUI.exe` um die Anwendung zu starten
+
+#### Linux
+
+1. Laden Sie `PerlentaucherGUI-0.1.17-linux.tar.gz` oder `PerlentaucherGUI-0.1.17-linux` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter
+2. Entpacken Sie die TAR.GZ-Datei (falls vorhanden):
+   ```bash
+   tar -xzf PerlentaucherGUI-0.1.17-linux.tar.gz
+   ```
+3. Machen Sie die Datei ausführbar:
+   ```bash
+   chmod +x PerlentaucherGUI-0.1.17-linux
+   ```
+4. Führen Sie das Executable aus:
+   ```bash
+   ./PerlentaucherGUI-0.1.17-linux
+   ```
+
+#### macOS
+
+1. Laden Sie `PerlentaucherGUI-0.1.17-macos.app.zip` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter
+2. Entpacken Sie die ZIP-Datei (Doppelklick)
+3. Öffnen Sie `PerlentaucherGUI-0.1.17-macos.app` im Finder
+   - Bei Warnung "App kann nicht geöffnet werden": Rechtsklick > Öffnen > Öffnen bestätigen
+4. Alternativ über Terminal:
+   ```bash
+   open PerlentaucherGUI-0.1.17-macos.app
+   ```
+
+**Hinweis:** Ersetzen Sie `0.1.17` durch die neueste verfügbare Version aus den [Releases](https://codeberg.org/elpatron/Perlentaucher/releases).
+
+### Alternative: Manuelle Installation für Development
+
+Für Entwickler oder wenn Sie die neueste Version aus dem Quellcode benötigen:
+
+#### Voraussetzungen
 
 - Python 3.8 oder höher
 - PyQt6 (wird automatisch installiert)
 
-### GUI-Abhängigkeiten installieren
+#### GUI-Abhängigkeiten installieren
 
 ```bash
 pip install -r requirements-gui.txt
 ```
 
-### Manuell starten
+#### Manuell starten
 
 ```bash
 python perlentaucher_gui.py
 ```
 
-## Building als Executable
+## Building als Executable (für Entwickler)
 
-Die GUI kann als einzelnes Executable für alle Plattformen gebaut werden.
+Die GUI kann als einzelnes Executable für alle Plattformen gebaut werden. Die Builds werden automatisch bei jedem Release erstellt und auf der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) bereitgestellt.
+
+Falls Sie selbst bauen möchten:
 
 ### Windows
 
