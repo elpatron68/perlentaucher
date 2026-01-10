@@ -22,37 +22,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 import perlentaucher as core
 
-
-def _get_entry_attr(entry, attr: str, default=None):
-    """
-    Hilfs-Funktion um Attribute aus feedparser Entry-Objekten zu holen.
-    Unterstützt sowohl Dictionary-ähnliche Objekte (.get()) als auch Attribut-Zugriff.
-    
-    Args:
-        entry: feedparser Entry-Objekt
-        attr: Attribut-Name
-        default: Standardwert wenn nicht gefunden
-        
-    Returns:
-        Attribut-Wert oder default
-    """
-    # Versuche zuerst .get() Methode (Dictionary-ähnlich)
-    if hasattr(entry, 'get'):
-        try:
-            return entry.get(attr, default)
-        except (TypeError, AttributeError):
-            pass
-    
-    # Fallback: Attribut-Zugriff
-    if hasattr(entry, attr):
-        value = getattr(entry, attr, default)
-        return value if value is not None else default
-    
-    # Fallback: Dictionary-Zugriff mit []
-    try:
-        return entry[attr]
-    except (KeyError, TypeError):
-        return default
+from gui.utils.feedparser_helpers import get_entry_attr, make_entry_compatible
 
 
 class BlogListPanel(QWidget):
@@ -184,11 +154,11 @@ class BlogListPanel(QWidget):
             self.entries = []
             for entry in feed_entries:
                 # Verwende Wrapper-Funktion für robusten Zugriff auf Entry-Attribute
-                entry_id = _get_entry_attr(entry, 'id') or _get_entry_attr(entry, 'link') or _get_entry_attr(entry, 'title', '')
+                entry_id = get_entry_attr(entry, 'id') or get_entry_attr(entry, 'link') or get_entry_attr(entry, 'title', '')
                 is_processed = entry_id in processed_entries
                 
                 # Extrahiere Filmtitel
-                title = _get_entry_attr(entry, 'title', '')
+                title = get_entry_attr(entry, 'title', '')
                 movie_title = None
                 year = None
                 
@@ -215,48 +185,12 @@ class BlogListPanel(QWidget):
                     status = status_map.get(entry_state.get('status', 'unknown'), 'Verarbeitet')
                 
                 # Prüfe ob es eine Serie ist
-                # Erstelle ein kompatibles Entry-Dictionary für is_series()
-                # is_series() erwartet ein Objekt mit .get() Methode
-                entry_tags = _get_entry_attr(entry, 'tags', [])
-                
-                # Erstelle Dictionary-ähnliches Objekt für is_series()
-                # Diese Klasse macht feedparser Entry-Objekte kompatibel mit is_series()
-                class EntryDict(dict):
-                    """Wrapper-Klasse um Entry-Objekt Dictionary-ähnlich zu machen."""
-                    def __init__(self, entry, title, tags):
-                        self.entry = entry
-                        # Speichere wichtige Attribute
-                        self._title = title
-                        self._tags = tags
-                        # Initialisiere dict mit Werten
-                        super().__init__({
-                            'title': title,
-                            'tags': tags
-                        })
-                    
-                    def get(self, key, default=None):
-                        # Prüfe zuerst unsere gespeicherten Werte
-                        if key == 'title':
-                            return self._title
-                        elif key == 'tags':
-                            return self._tags
-                        # Versuche auch original entry
-                        return _get_entry_attr(self.entry, key, default)
-                    
-                    def __getitem__(self, key):
-                        # Unterstütze auch [] Zugriff
-                        if key in self:
-                            return super().__getitem__(key)
-                        value = _get_entry_attr(self.entry, key)
-                        if value is None:
-                            raise KeyError(key)
-                        return value
-                
-                entry_dict = EntryDict(entry, title, entry_tags)
+                # Erstelle kompatibles Entry-Objekt für is_series()
+                entry_dict = make_entry_compatible(entry)
                 metadata = {}  # Wird später gefüllt wenn Metadata verfügbar ist
                 is_series = core.is_series(entry_dict, metadata)
                 
-                entry_link = _get_entry_attr(entry, 'link', '')
+                entry_link = get_entry_attr(entry, 'link', '')
                 
                 entry_data = {
                     'entry_id': entry_id,

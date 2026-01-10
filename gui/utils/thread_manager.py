@@ -51,38 +51,9 @@ class DownloadThread(QThread):
             metadata = self.entry_data.get('metadata', {})
             
             # Prüfe ob es sich um eine Serie handelt
-            # Erstelle kompatibles Entry-Dictionary für is_series()
-            # is_series() erwartet ein Objekt mit .get() Methode
-            entry_title = getattr(entry, 'title', '') if hasattr(entry, 'title') else entry.get('title', '') if hasattr(entry, 'get') else ''
-            entry_tags = getattr(entry, 'tags', []) if hasattr(entry, 'tags') else entry.get('tags', []) if hasattr(entry, 'get') else []
-            
-            class EntryDict(dict):
-                """Wrapper-Klasse um Entry-Objekt Dictionary-ähnlich zu machen."""
-                def __init__(self, entry, title, tags):
-                    self.entry = entry
-                    self._title = title
-                    self._tags = tags
-                    super().__init__({'title': title, 'tags': tags})
-                
-                def get(self, key, default=None):
-                    if key == 'title':
-                        return self._title
-                    elif key == 'tags':
-                        return self._tags
-                    # Versuche original entry
-                    if hasattr(self.entry, 'get'):
-                        try:
-                            return self.entry.get(key, default)
-                        except (TypeError, AttributeError):
-                            pass
-                    if hasattr(self.entry, key):
-                        return getattr(self.entry, key, default)
-                    try:
-                        return self.entry[key]
-                    except (KeyError, TypeError):
-                        return default
-            
-            entry_dict = EntryDict(entry, entry_title, entry_tags)
+            # Erstelle kompatibles Entry-Objekt für is_series()
+            from gui.utils.feedparser_helpers import make_entry_compatible
+            entry_dict = make_entry_compatible(entry)
             is_series_entry = core.is_series(entry_dict, metadata)
             
             self.download_started.emit(movie_title)
