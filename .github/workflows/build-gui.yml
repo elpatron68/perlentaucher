@@ -470,125 +470,67 @@ jobs:
           mkdir -p codeberg-assets
           
           echo "=== DEBUG: Listing all artifacts ==="
-          find artifacts -type f | sort
+          find artifacts -type f -o -type d | sort
           echo ""
           
-          # Sammle alle eindeutigen Dateinamen (vermeidet Duplikate)
-          # Priorisiere komprimierte Dateien (.zip, .tar.gz) über rohe Dateien (.exe, ohne Extension)
+          # Kopiere ALLE Build-Artefakte (komprimiert UND unkomprimiert)
+          # Filtere nur base_library.zip heraus
           
-          echo "=== Step 1: Collect compressed files (.tar.gz, .zip, .exe.zip, .app.zip) ==="
+          echo "=== Collecting ALL build artifacts (compressed AND uncompressed) ==="
           
-          # Sammle .tar.gz Dateien zuerst (Linux - haben höchste Priorität)
-          find artifacts -type f -name "*.tar.gz" -exec basename {} \; | sort -u | while read filename; do
-            if [ "$filename" != "base_library.zip" ]; then
-              source_file=$(find artifacts -type f -name "$filename" | head -n1)
-              if [ -n "$source_file" ] && [ -f "$source_file" ]; then
-                cp "$source_file" "codeberg-assets/$filename"
-                echo "  ✓ Copied: $filename"
-              fi
-            fi
-          done
-          
-          # Sammle .exe.zip Dateien (Windows)
-          find artifacts -type f -name "*.exe.zip" -exec basename {} \; | sort -u | while read filename; do
+          # Sammle alle komprimierten Dateien
+          echo "--- Step 1: Collect compressed files ---"
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.exe.zip" -o -name "*.app.zip" \) | while read filepath; do
+            filename=$(basename "$filepath")
             if [ "$filename" != "base_library.zip" ] && [ ! -f "codeberg-assets/$filename" ]; then
-              source_file=$(find artifacts -type f -name "$filename" | head -n1)
-              if [ -n "$source_file" ] && [ -f "$source_file" ]; then
-                cp "$source_file" "codeberg-assets/$filename"
-                echo "  ✓ Copied: $filename"
-              fi
-            fi
-          done
-          
-          # Sammle .app.zip Dateien (macOS)
-          find artifacts -type f -name "*.app.zip" -exec basename {} \; | sort -u | while read filename; do
-            if [ "$filename" != "base_library.zip" ] && [ ! -f "codeberg-assets/$filename" ]; then
-              source_file=$(find artifacts -type f -name "$filename" | head -n1)
-              if [ -n "$source_file" ] && [ -f "$source_file" ]; then
-                cp "$source_file" "codeberg-assets/$filename"
-                echo "  ✓ Copied: $filename"
-              fi
-            fi
-          done
-          
-          # Sammle andere .zip Dateien (sollte keine sein, aber sicherheitshalber)
-          find artifacts -type f -name "*.zip" ! -name "*.exe.zip" ! -name "*.app.zip" -exec basename {} \; | sort -u | while read filename; do
-            if [ "$filename" != "base_library.zip" ] && [ ! -f "codeberg-assets/$filename" ]; then
-              source_file=$(find artifacts -type f -name "$filename" | head -n1)
-              if [ -n "$source_file" ] && [ -f "$source_file" ]; then
-                cp "$source_file" "codeberg-assets/$filename"
-                echo "  ✓ Copied: $filename"
-              fi
+              cp "$filepath" "codeberg-assets/$filename"
+              echo "  ✓ Copied compressed: $filename"
             fi
           done
           
           echo ""
-          echo "=== Step 2: Collect raw files only if no compressed version exists ==="
+          echo "--- Step 2: Collect uncompressed files ---"
           
-          # Sammle rohe .exe Dateien (Windows), aber nur wenn kein .exe.zip existiert
-          find artifacts -type f -name "*.exe" ! -name "*.zip" -exec basename {} \; | sort -u | while read filename; do
-            if [ "$filename" = "base_library.zip" ]; then
-              continue
-            fi
-            
-            # Prüfe ob komprimierte Version existiert
-            zip_filename="${filename}.zip"
-            if [ ! -f "codeberg-assets/$zip_filename" ] && [ ! -f "codeberg-assets/$filename" ]; then
-              source_file=$(find artifacts -type f -name "$filename" | head -n1)
-              if [ -n "$source_file" ] && [ -f "$source_file" ]; then
-                cp "$source_file" "codeberg-assets/$filename"
-                echo "  ✓ Copied raw: $filename"
-              fi
-            else
-              echo "  ⊘ Skipped (compressed version exists): $filename"
+          # Sammle rohe .exe Dateien (Windows)
+          find artifacts -type f -name "*.exe" ! -name "*.zip" | while read filepath; do
+            filename=$(basename "$filepath")
+            if [ "$filename" != "base_library.zip" ] && [ ! -f "codeberg-assets/$filename" ]; then
+              cp "$filepath" "codeberg-assets/$filename"
+              echo "  ✓ Copied uncompressed: $filename"
             fi
           done
           
-          # Sammle rohe Linux-Dateien (ohne Extension), aber nur wenn kein .tar.gz existiert
-          find artifacts -type f \( -name "PerlentaucherGUI-*-linux" \) ! -name "*.zip" ! -name "*.tar.gz" ! -name "*.exe" -exec basename {} \; | sort -u | while read filename; do
-            if [ -f "codeberg-assets/$filename" ]; then
-              continue
-            fi
-            
-            # Prüfe ob komprimierte Version existiert
-            tar_filename="${filename}.tar.gz"
-            zip_filename="${filename}.zip"
-            if [ ! -f "codeberg-assets/$tar_filename" ] && [ ! -f "codeberg-assets/$zip_filename" ]; then
-              source_file=$(find artifacts -type f -name "$filename" | head -n1)
-              if [ -n "$source_file" ] && [ -f "$source_file" ]; then
-                cp "$source_file" "codeberg-assets/$filename"
-                echo "  ✓ Copied raw: $filename"
-              fi
-            else
-              echo "  ⊘ Skipped (compressed version exists): $filename"
+          # Sammle rohe Linux-Dateien (ohne Extension)
+          find artifacts -type f \( -name "PerlentaucherGUI-*-linux" \) ! -name "*.zip" ! -name "*.tar.gz" ! -name "*.exe" | while read filepath; do
+            filename=$(basename "$filepath")
+            if [ ! -f "codeberg-assets/$filename" ]; then
+              cp "$filepath" "codeberg-assets/$filename"
+              echo "  ✓ Copied uncompressed: $filename"
             fi
           done
           
-          # Sammle rohe macOS .app Dateien, aber nur wenn kein .app.zip existiert
-          find artifacts -type d -name "*.app" -exec basename {} \; | sort -u | while read dirname; do
+          # Sammle rohe macOS .app Bundles (als TAR.GZ für bessere Kompatibilität)
+          find artifacts -type d -name "*.app" | while read appdir; do
+            dirname=$(basename "$appdir")
+            # Erstelle TAR.GZ aus .app Bundle (falls noch nicht vorhanden)
+            tar_filename="${dirname}.tar.gz"
             zip_filename="${dirname}.zip"
-            if [ ! -f "codeberg-assets/$zip_filename" ]; then
-              source_dir=$(find artifacts -type d -name "$dirname" | head -n1)
-              if [ -n "$source_dir" ] && [ -d "$source_dir" ]; then
-                # Erstelle TAR.GZ für .app Bundle wenn kein ZIP existiert
-                tar_filename="${dirname}.tar.gz"
-                tar -czf "codeberg-assets/$tar_filename" -C "$(dirname "$source_dir")" "$dirname"
-                echo "  ✓ Created compressed: $tar_filename"
-              fi
-            else
-              echo "  ⊘ Skipped (compressed version exists): $dirname"
+            # Nur erstellen wenn weder .tar.gz noch .zip bereits existiert
+            if [ ! -f "codeberg-assets/$tar_filename" ] && [ ! -f "codeberg-assets/$zip_filename" ]; then
+              tar -czf "codeberg-assets/$tar_filename" -C "$(dirname "$appdir")" "$dirname"
+              echo "  ✓ Created compressed from .app: $tar_filename"
             fi
           done
           
           echo ""
           echo "=== Final assets prepared for Codeberg upload ==="
-          ls -lh codeberg-assets/
+          ls -lh codeberg-assets/ | sort
           echo ""
           
           # Zähle eindeutige Dateien
           FILE_COUNT=$(find codeberg-assets -type f | wc -l)
           echo "count=$FILE_COUNT" >> $GITHUB_OUTPUT
-          echo "Prepared $FILE_COUNT unique assets for upload"
+          echo "Prepared $FILE_COUNT unique assets for upload (compressed + uncompressed)"
 
       - name: Check Codeberg Token
         id: check-token
@@ -691,56 +633,91 @@ jobs:
           fi
           
           # Erstelle eindeutige Dateiliste für Upload (verhindert Duplikate)
-          # Verwende temporäre Datei statt Pipe, um Subshell-Probleme zu vermeiden
+          # Verwende sort -u basierend auf Dateinamen, um Duplikate zu vermeiden
+          echo "Creating unique file list for upload..."
+          
+          # Erstelle temporäre Datei mit eindeutigen Dateinamen
+          # Format: filename|filepath (für eindeutige Sortierung nach Dateiname)
           FILES_TO_UPLOAD=$(mktemp)
-          find codeberg-assets -type f -exec basename {} \; | sort -u > "$FILES_TO_UPLOAD"
+          SEEN_FILENAMES=$(mktemp)
+          
+          # Sammle alle Dateien und erstelle eindeutige Liste basierend auf Dateinamen
+          find codeberg-assets -type f | while read -r filepath; do
+            filename=$(basename "$filepath")
+            # Überspringe base_library.zip
+            if [ "$filename" = "base_library.zip" ]; then
+              continue
+            fi
+            # Prüfe ob dieser Dateiname bereits gesehen wurde
+            if ! grep -Fxq "$filename" "$SEEN_FILENAMES" 2>/dev/null; then
+              echo "$filename" >> "$SEEN_FILENAMES"
+              echo "$filename|$filepath" >> "$FILES_TO_UPLOAD"
+            fi
+          done
+          
+          # Sortiere nach Dateinamen und entferne Duplikate (sollte keine sein, aber sicherheitshalber)
+          sort -t'|' -u -k1 "$FILES_TO_UPLOAD" > "${FILES_TO_UPLOAD}.sorted" 2>/dev/null || cp "$FILES_TO_UPLOAD" "${FILES_TO_UPLOAD}.sorted"
+          mv "${FILES_TO_UPLOAD}.sorted" "$FILES_TO_UPLOAD"
+          
+          # Zähle eindeutige Dateien
+          UNIQUE_COUNT=$(wc -l < "$FILES_TO_UPLOAD" | tr -d ' ' || echo "0")
+          echo "Found $UNIQUE_COUNT unique files to upload"
+          if [ "$UNIQUE_COUNT" -gt 0 ]; then
+            echo "Files to upload:"
+            cut -d'|' -f1 "$FILES_TO_UPLOAD" | sed 's/^/  - /'
+          fi
+          echo ""
           
           UPLOADED=0
           SKIPPED=0
           FAILED=0
           
-          # Iteriere über eindeutige Dateiliste (OHNE Pipe, um Variablen-Updates zu behalten)
-          while IFS= read -r filename; do
-            if [ -z "$filename" ]; then
+          # Iteriere über eindeutige Dateiliste (jede Zeile: filename|filepath)
+          while IFS='|' read -r filename filepath; do
+            # Überspringe leere Zeilen
+            if [ -z "$filepath" ] || [ -z "$filename" ]; then
               continue
             fi
             
-            filepath=$(find codeberg-assets -name "$filename" -type f | head -n1)
-            if [ -n "$filepath" ] && [ -f "$filepath" ]; then
-              echo "Processing: $filename"
-              
-              # Prüfe ob Datei bereits vorhanden ist (verwende Datei-basierte Prüfung)
-              if grep -Fxq "$filename" "$EXISTING_NAMES_FILE" 2>/dev/null; then
-                echo "  ⊘ Skipping (already exists): $filename"
-                SKIPPED=$((SKIPPED + 1))
-                continue
-              fi
-              
-              echo "  Uploading: $filename"
-              
-              # Codeberg/Gitea API: Upload asset
-              UPLOAD_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-                -H "Authorization: token $CODEBERG_TOKEN" \
-                -F "attachment=@$filepath;filename=$filename" \
-                "https://codeberg.org/api/v1/repos/$CODEBERG_REPO/releases/$RELEASE_ID/assets" 2>/dev/null)
-              
-              HTTP_CODE=$(echo "$UPLOAD_RESPONSE" | tail -n1)
-              
-              if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
-                echo "  ✓ Successfully uploaded: $filename"
-                UPLOADED=$((UPLOADED + 1))
-                # Füge zur Liste der vorhandenen Assets hinzu, um Duplikate im gleichen Run zu vermeiden
-                echo "$filename" >> "$EXISTING_NAMES_FILE"
-              else
-                echo "  ✗ Failed to upload: $filename (HTTP $HTTP_CODE)"
-                echo "    Response: $(echo "$UPLOAD_RESPONSE" | head -n-1)"
-                FAILED=$((FAILED + 1))
-              fi
+            # Prüfe ob Datei existiert
+            if [ ! -f "$filepath" ]; then
+              echo "⚠ File not found: $filepath"
+              continue
+            fi
+            
+            echo "Processing: $filename"
+            
+            # Prüfe ob Datei bereits auf Codeberg vorhanden ist
+            if grep -Fxq "$filename" "$EXISTING_NAMES_FILE" 2>/dev/null; then
+              echo "  ⊘ Skipping (already exists on Codeberg): $filename"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+            
+            echo "  Uploading: $filename"
+            
+            # Codeberg/Gitea API: Upload asset
+            UPLOAD_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+              -H "Authorization: token $CODEBERG_TOKEN" \
+              -F "attachment=@$filepath;filename=$filename" \
+              "https://codeberg.org/api/v1/repos/$CODEBERG_REPO/releases/$RELEASE_ID/assets" 2>/dev/null)
+            
+            HTTP_CODE=$(echo "$UPLOAD_RESPONSE" | tail -n1)
+            
+            if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+              echo "  ✓ Successfully uploaded: $filename"
+              UPLOADED=$((UPLOADED + 1))
+              # Füge zur Liste der vorhandenen Assets hinzu, um Duplikate im gleichen Run zu vermeiden
+              echo "$filename" >> "$EXISTING_NAMES_FILE"
+            else
+              echo "  ✗ Failed to upload: $filename (HTTP $HTTP_CODE)"
+              echo "    Response: $(echo "$UPLOAD_RESPONSE" | head -n-1)"
+              FAILED=$((FAILED + 1))
             fi
           done < "$FILES_TO_UPLOAD"
           
           # Aufräumen
-          rm -f "$EXISTING_NAMES_FILE" "$FILES_TO_UPLOAD"
+          rm -f "$EXISTING_NAMES_FILE" "$FILES_TO_UPLOAD" "$SEEN_FILENAMES"
           
           echo ""
           echo "Upload summary:"
