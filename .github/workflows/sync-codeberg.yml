@@ -11,7 +11,7 @@ on:
       - main
       - master
     # Nur ausführen, wenn nicht von Sync-Workflow selbst getriggert
-    if: github.event.head_commit.message != 'Sync from Codeberg'
+    if: github.event.head_commit.message != 'Sync from Codeberg' && github.event.head_commit.message != '[skip ci]'
 
 jobs:
   sync:
