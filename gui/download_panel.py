@@ -139,7 +139,7 @@ class DownloadPanel(QWidget):
                 if reply != QMessageBox.StandardButton.Yes:
                     continue
             
-            # Hole Metadata wenn API-Keys vorhanden
+            # Hole Metadata wenn API-Keys vorhanden (aber behalte Jahr aus RSS-Feed)
             if entry_data.get('movie_title'):
                 movie_title = entry_data['movie_title']
                 year = entry_data.get('year')
@@ -154,7 +154,12 @@ class DownloadPanel(QWidget):
                     sys.path.insert(0, root_dir)
                 import perlentaucher as core
                 
+                # Hole Metadata (das Jahr aus RSS-Feed wird beibehalten wenn keine API verwendet wird)
+                # get_metadata() initialisiert bereits mit year aus RSS-Feed
                 metadata = core.get_metadata(movie_title, year, tmdb_key, omdb_key)
+                # Stelle sicher, dass Jahr aus RSS-Feed verwendet wird wenn API kein Jahr zurückgibt
+                if not metadata.get('year') and year:
+                    metadata['year'] = year
                 entry_data['metadata'] = metadata
                 
                 # Aktualisiere is_series basierend auf Metadata

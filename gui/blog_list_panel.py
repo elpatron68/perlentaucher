@@ -493,7 +493,12 @@ class BlogListPanel(QWidget):
                 
                 # Prüfe ob es eine Serie ist
                 # Verwende bereits erstelltes entry_dict
-                metadata = {}  # Wird später gefüllt wenn Metadata verfügbar ist
+                # WICHTIG: Initialisiere metadata mit Jahr aus RSS-Feed, damit es auch ohne API-Keys im Dateinamen verwendet wird
+                metadata = {
+                    'year': year,  # Jahr aus RSS-Feed extrahiert, wird auch ohne API-Keys verwendet
+                    'provider_id': None,
+                    'content_type': 'unknown'
+                }
                 is_series = core.is_series(entry_dict, metadata)
                 
                 entry_link = get_entry_attr(entry, 'link', '')
