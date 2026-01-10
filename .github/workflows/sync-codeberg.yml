@@ -1,0 +1,112 @@
+name: Sync from Codeberg
+
+on:
+  schedule:
+    # Synchronisiere einmal täglich um 2:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Erlaube manuelle Ausführung
+  push:
+    branches:
+      - main
+      - master
+    # Nur ausführen, wenn nicht von Sync-Workflow selbst getriggert
+    if: github.event.head_commit.message != 'Sync from Codeberg'
+
+jobs:
+  sync:
+    name: Sync Codeberg → GitHub
+    runs-on: ubuntu-latest
+    # Nur ausführen, wenn nicht gerade synchronisiert wird
+    if: github.event.head_commit.message != '[skip ci]' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout GitHub repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Hole komplette Historie
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add Codeberg remote
+        env:
+          CODEBERG_REPO: ${{ secrets.CODEBERG_REPO_OWNER || 'elpatron/perlentaucher' }}
+        run: |
+          echo "Syncing from Codeberg: $CODEBERG_REPO"
+          
+          # Entferne Codeberg Remote falls bereits vorhanden
+          git remote remove codeberg 2>/dev/null || true
+          # Füge Codeberg Remote hinzu (öffentlich oder mit Token)
+          if [ -n "${{ secrets.CODEBERG_TOKEN }}" ]; then
+            git remote add codeberg https://${{ secrets.CODEBERG_TOKEN }}@codeberg.org/${CODEBERG_REPO}.git
+          else
+            git remote add codeberg https://codeberg.org/${CODEBERG_REPO}.git
+          fi
+
+      - name: Fetch from Codeberg
+        run: |
+          git fetch codeberg --all --tags --force
+
+      - name: Sync branches from Codeberg
+        run: |
+          # Liste alle Remote-Branches von Codeberg
+          git branch -r | grep 'codeberg/' | sed 's|codeberg/||' | grep -v HEAD | while read branch; do
+            echo "Syncing branch: $branch"
+            git checkout -B "$branch" "codeberg/$branch" 2>/dev/null || git checkout -b "$branch" "codeberg/$branch"
+          done
+          
+          # Setze default branch zurück
+          DEFAULT_BRANCH=$(git remote show codeberg | grep 'HEAD branch' | cut -d' ' -f5)
+          git checkout "$DEFAULT_BRANCH" 2>/dev/null || git checkout master || git checkout main
+
+      - name: Sync tags from Codeberg
+        run: |
+          # Synchronisiere alle Tags
+          git fetch codeberg --tags --force
+
+      - name: Check for changes
+        id: changes
+        run: |
+          # Prüfe ob es Änderungen gibt
+          if git diff --quiet codeberg/master origin/master 2>/dev/null || git diff --quiet codeberg/main origin/main 2>/dev/null; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected, skipping push"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected, will push to GitHub"
+          fi
+        continue-on-error: true
+
+      - name: Push to GitHub
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Konfiguriere GitHub Remote mit Token
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+          
+          # Setze Commit-Message um Endlosschleife zu vermeiden
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Pushe alle Branches (ohne Force, um Konflikte zu vermeiden)
+          git push origin --all || echo "Some branches could not be pushed"
+          
+          # Pushe alle Tags (ohne Force, um bestehende Tags nicht zu überschreiben)
+          git push origin --tags || echo "Some tags could not be pushed"
+
+      - name: Summary
+        run: |
+          echo "## Sync completed ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Synced from Codeberg to GitHub at $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Branches:" >> $GITHUB_STEP_SUMMARY
+          git branch -r | grep 'origin/' | sed 's|origin/||' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Tags:" >> $GITHUB_STEP_SUMMARY
+          git tag | tail -10 >> $GITHUB_STEP_SUMMARY
