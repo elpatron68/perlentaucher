@@ -335,7 +335,7 @@ jobs:
     name: Upload Assets to Codeberg
     needs: release
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' && secrets.CODEBERG_TOKEN != ''
+    if: github.event_name == 'release'
     
     steps:
       - name: Download all artifacts
@@ -360,8 +360,21 @@ jobs:
           FILE_COUNT=$(find codeberg-assets -type f | wc -l)
           echo "count=$FILE_COUNT" >> $GITHUB_OUTPUT
 
+      - name: Check Codeberg Token
+        id: check-token
+        run: |
+          if [ -z "${{ secrets.CODEBERG_TOKEN }}" ]; then
+            echo "⚠ CODEBERG_TOKEN secret not found. Skipping Codeberg upload."
+            echo "has_token=false" >> $GITHUB_OUTPUT
+            exit 0
+          else
+            echo "✓ CODEBERG_TOKEN secret found"
+            echo "has_token=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Get Codeberg Release ID
         id: get-release
+        if: steps.check-token.outputs.has_token == 'true'
         env:
           CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
           CODEBERG_REPO: ${{ secrets.CODEBERG_REPO_OWNER || 'elpatron/perlentaucher' }}
@@ -397,6 +410,7 @@ jobs:
           fi
 
       - name: Upload assets to Codeberg
+        if: steps.check-token.outputs.has_token == 'true' && steps.get-release.outputs.release_id != ''
         env:
           CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
           CODEBERG_REPO: ${{ secrets.CODEBERG_REPO_OWNER || 'elpatron/perlentaucher' }}

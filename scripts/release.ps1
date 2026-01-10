@@ -120,41 +120,25 @@ if ($githubRemote) {
                 if ($githubUrl -match 'github\.com[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
                     $githubRepo = "$($matches[1])/$($matches[2] -replace '\.git$', '')"
                     
-                    Write-Host "Starte Workflow für Repository: $githubRepo" -ForegroundColor Gray
-                    gh workflow run build-gui.yml --ref master --repo $githubRepo
+                    # Versuche GitHub Release zu erstellen (triggert Workflow mit release event)
+                    Write-Host "Erstelle GitHub Release für automatischen Asset-Upload..." -ForegroundColor Cyan
+                    $releaseNotesFile = "RELEASE_NOTES_$versionNumber.md"
+                    $githubReleaseBody = ""
+                    
+                    if (Test-Path $releaseNotesFile) {
+                        $githubReleaseBody = Get-Content $releaseNotesFile -Raw -Encoding UTF8
+                    } else {
+                        $githubReleaseBody = "Release $newTag`n`nSiehe [Changelog](https://codeberg.org/$repoOwner/$repoName/commits/$newTag) für Details."
+                    }
+                    
+                    # Erstelle GitHub Release (triggert automatisch den Workflow)
+                    $ghReleaseOutput = gh release create $newTag --repo $githubRepo --title "Release $newTag" --notes $githubReleaseBody --target master 2>&1
                     
                     if ($LASTEXITCODE -eq 0) {
-                        Write-Host "✓ GitHub Actions Workflow erfolgreich gestartet!" -ForegroundColor Green
-                        
-                        # Versuche GitHub Release zu erstellen (triggert Workflow mit release event)
-                        Write-Host "Erstelle GitHub Release für automatischen Asset-Upload..." -ForegroundColor Cyan
-                        $releaseNotesFile = "RELEASE_NOTES_$versionNumber.md"
-                        $githubReleaseBody = ""
-                        
-                        if (Test-Path $releaseNotesFile) {
-                            $githubReleaseBody = Get-Content $releaseNotesFile -Raw -Encoding UTF8
-                        } else {
-                            $githubReleaseBody = "Release $newTag`n`nSiehe [Changelog](https://codeberg.org/$repoOwner/$repoName/commits/$newTag) für Details."
-                        }
-                        
-                        # Erstelle GitHub Release
-                        $ghReleaseOutput = gh release create $newTag --repo $githubRepo --title "Release $newTag" --notes $githubReleaseBody --target master 2>&1
-                        
-                        if ($LASTEXITCODE -eq 0) {
-                            Write-Host "✓ GitHub Release erfolgreich erstellt!" -ForegroundColor Green
-                            Write-Host "  Build-Artefakte werden automatisch hochgeladen, wenn Builds abgeschlossen sind." -ForegroundColor Gray
-                            Write-Host "  Artefakte werden auch automatisch zu Codeberg hochgeladen (falls CODEBERG_TOKEN konfiguriert)." -ForegroundColor Gray
-                        } else {
-                            # Prüfe ob Release bereits existiert
-                            $existingRelease = gh release view $newTag --repo $githubRepo 2>&1
-                            if ($LASTEXITCODE -eq 0) {
-                                Write-Host "ℹ GitHub Release für Tag $newTag existiert bereits." -ForegroundColor Gray
-                            } else {
-                                Write-Host "⚠ Warnung: GitHub Release konnte nicht erstellt werden" -ForegroundColor Yellow
-                                Write-Host "  Du kannst es manuell erstellen: gh release create $newTag --repo $githubRepo" -ForegroundColor Gray
-                                Write-Host "  Oder auf GitHub.com: https://github.com/$githubRepo/releases/new" -ForegroundColor Gray
-                            }
-                        }
+                        Write-Host "✓ GitHub Release erfolgreich erstellt!" -ForegroundColor Green
+                        Write-Host "  GitHub Actions Workflow wird automatisch durch Release-Event getriggert." -ForegroundColor Gray
+                        Write-Host "  Build-Artefakte werden automatisch hochgeladen, wenn Builds abgeschlossen sind." -ForegroundColor Gray
+                        Write-Host "  Artefakte werden auch automatisch zu Codeberg hochgeladen (falls CODEBERG_TOKEN konfiguriert)." -ForegroundColor Gray
                         
                         # Warte kurz und hole Workflow-Run Status
                         Start-Sleep -Seconds 5
@@ -173,9 +157,17 @@ if ($githubRemote) {
                             }
                         }
                     } else {
-                        Write-Host "⚠ Warnung: Workflow konnte nicht gestartet werden" -ForegroundColor Yellow
-                        Write-Host "  Versuche manuell: gh workflow run build-gui.yml --ref master --repo $githubRepo" -ForegroundColor Gray
-                        Write-Host "  Oder erstelle GitHub Release manuell: gh release create $newTag --repo $githubRepo" -ForegroundColor Gray
+                        # Prüfe ob Release bereits existiert
+                        $existingRelease = gh release view $newTag --repo $githubRepo 2>&1
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Host "ℹ GitHub Release für Tag $newTag existiert bereits." -ForegroundColor Gray
+                            Write-Host "  GitHub Actions Workflow sollte bereits getriggert worden sein." -ForegroundColor Gray
+                        } else {
+                            Write-Host "⚠ Warnung: GitHub Release konnte nicht erstellt werden" -ForegroundColor Yellow
+                            Write-Host "  Fehler: $ghReleaseOutput" -ForegroundColor Gray
+                            Write-Host "  Du kannst es manuell erstellen: gh release create $newTag --repo $githubRepo" -ForegroundColor Gray
+                            Write-Host "  Oder auf GitHub.com: https://github.com/$githubRepo/releases/new" -ForegroundColor Gray
+                        }
                     }
                 } else {
                     Write-Host "⚠ Warnung: Konnte GitHub Repository-Informationen nicht extrahieren" -ForegroundColor Yellow

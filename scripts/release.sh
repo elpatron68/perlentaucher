@@ -103,39 +103,26 @@ if git remote | grep -q "^github$"; then
             if [[ $github_url =~ github\.com[/:]([^/]+)/([^/]+?)(\.git)?$ ]]; then
                 github_repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]%.git}"
                 
-                echo "Starte Workflow für Repository: $github_repo"
-                if gh workflow run build-gui.yml --ref master --repo "$github_repo" 2>/dev/null; then
-                    echo "✓ GitHub Actions Workflow erfolgreich gestartet!"
-                    
-                    # Versuche GitHub Release zu erstellen (triggert Workflow mit release event)
-                    echo ""
-                    echo "Erstelle GitHub Release für automatischen Asset-Upload..."
-                    release_notes_file="RELEASE_NOTES_${version_number}.md"
-                    github_release_body=""
-                    
-                    if [ -f "$release_notes_file" ]; then
-                        github_release_body=$(cat "$release_notes_file")
-                    else
-                        github_release_body="Release $new_tag
+                # Erstelle GitHub Release (triggert automatisch den Workflow via release event)
+                echo ""
+                echo "Erstelle GitHub Release für automatischen Asset-Upload..."
+                release_notes_file="RELEASE_NOTES_${version_number}.md"
+                github_release_body=""
+                
+                if [ -f "$release_notes_file" ]; then
+                    github_release_body=$(cat "$release_notes_file")
+                else
+                    github_release_body="Release $new_tag
 
 Siehe [Changelog](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag) für Details."
-                    fi
-                    
-                    # Erstelle GitHub Release
-                    if gh release create "$new_tag" --repo "$github_repo" --title "Release $new_tag" --notes "$github_release_body" --target master 2>/dev/null; then
-                        echo "✓ GitHub Release erfolgreich erstellt!"
-                        echo "  Build-Artefakte werden automatisch hochgeladen, wenn Builds abgeschlossen sind."
-                        echo "  Artefakte werden auch automatisch zu Codeberg hochgeladen (falls CODEBERG_TOKEN konfiguriert)."
-                    else
-                        # Prüfe ob Release bereits existiert
-                        if gh release view "$new_tag" --repo "$github_repo" >/dev/null 2>&1; then
-                            echo "ℹ GitHub Release für Tag $new_tag existiert bereits."
-                        else
-                            echo "⚠ Warnung: GitHub Release konnte nicht erstellt werden"
-                            echo "  Du kannst es manuell erstellen: gh release create $new_tag --repo $github_repo"
-                            echo "  Oder auf GitHub.com: https://github.com/$github_repo/releases/new"
-                        fi
-                    fi
+                fi
+                
+                # Erstelle GitHub Release
+                if gh release create "$new_tag" --repo "$github_repo" --title "Release $new_tag" --notes "$github_release_body" --target master 2>/dev/null; then
+                    echo "✓ GitHub Release erfolgreich erstellt!"
+                    echo "  GitHub Actions Workflow wird automatisch durch Release-Event getriggert."
+                    echo "  Build-Artefakte werden automatisch hochgeladen, wenn Builds abgeschlossen sind."
+                    echo "  Artefakte werden auch automatisch zu Codeberg hochgeladen (falls CODEBERG_TOKEN konfiguriert)."
                     
                     # Warte kurz und hole Workflow-Run Status
                     sleep 5
@@ -163,9 +150,15 @@ Siehe [Changelog](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag) 
                         fi
                     fi
                 else
-                    echo "⚠ Warnung: Workflow konnte nicht gestartet werden"
-                    echo "  Versuche manuell: gh workflow run build-gui.yml --ref master --repo $github_repo"
-                    echo "  Oder erstelle GitHub Release manuell: gh release create $new_tag --repo $github_repo"
+                    # Prüfe ob Release bereits existiert
+                    if gh release view "$new_tag" --repo "$github_repo" >/dev/null 2>&1; then
+                        echo "ℹ GitHub Release für Tag $new_tag existiert bereits."
+                        echo "  GitHub Actions Workflow sollte bereits getriggert worden sein."
+                    else
+                        echo "⚠ Warnung: GitHub Release konnte nicht erstellt werden"
+                        echo "  Du kannst es manuell erstellen: gh release create $new_tag --repo $github_repo"
+                        echo "  Oder auf GitHub.com: https://github.com/$github_repo/releases/new"
+                    fi
                 fi
             else
                 echo "⚠ Warnung: Konnte GitHub Repository-Informationen nicht extrahieren"
