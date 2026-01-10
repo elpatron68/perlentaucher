@@ -452,10 +452,11 @@ class BlogListPanel(QWidget):
                     # Nicht-Film-Empfehlung, überspringe
                     logging.debug(f"Nicht-Film-Empfehlung erkannt, überspringe: '{entry_dict.get('title', '')}'")
                     # Markiere als übersprungen in State-Datei (verhindert erneute Prüfung)
-                    if config.get('state_file'):
+                    # Verwende die bereits geladene state_file Variable (definiert weiter oben)
+                    if state_file:
                         try:
                             core.save_processed_entry(
-                                config.get('state_file'),
+                                state_file,
                                 entry_id,
                                 status='skipped',
                                 movie_title=entry_dict.get('title', '')
