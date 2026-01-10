@@ -42,6 +42,21 @@ if ($status) {
     }
 }
 
+# Bestimme Projekt-Root-Verzeichnis
+# Script sollte aus dem Root-Verzeichnis gestartet werden
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectRoot = if ((Split-Path -Leaf $scriptDir) -eq "scripts") { Split-Path -Parent $scriptDir } else { Get-Location }
+
+# Prüfe ob wir im Root-Verzeichnis sind
+$currentDir = Get-Location
+if ($currentDir.Path -ne $projectRoot) {
+    Write-Host "⚠ Warnung: Script sollte aus dem Projekt-Root-Verzeichnis gestartet werden!" -ForegroundColor Yellow
+    Write-Host "  Aktuelles Verzeichnis: $currentDir" -ForegroundColor Gray
+    Write-Host "  Erwartetes Verzeichnis: $projectRoot" -ForegroundColor Gray
+    Write-Host "  Wechsle zum Projekt-Root..." -ForegroundColor Gray
+    Set-Location $projectRoot
+}
+
 # Aktualisiere Version in _version.py
 $versionNumber = $newTag.TrimStart('v')  # Entferne 'v' Präfix
 Write-Host "Aktualisiere Version in _version.py: $versionNumber" -ForegroundColor Cyan
@@ -50,6 +65,7 @@ Set-Content -Path "_version.py" -Value $versionContent -NoNewline
 
 # Generiere Release Notes VOR dem Tag
 Write-Host "`nGeneriere Release Notes..." -ForegroundColor Cyan
+
 $releaseNotesDir = "docs/release-notes"
 $releaseNotesFile = Join-Path $releaseNotesDir "RELEASE_NOTES_$versionNumber.md"
 
@@ -75,7 +91,6 @@ if (-not (Test-Path $releaseNotesFile)) {
     }
     
     # Rufe Hilfs-Script auf
-    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $getReleaseNotesScript = Join-Path $scriptDir "get_release_notes.ps1"
     
     if (Test-Path $getReleaseNotesScript) {
@@ -263,21 +278,15 @@ if ($githubRemote) {
                     
                     # Versuche GitHub Release zu erstellen (triggert Workflow mit release event)
                     Write-Host "Erstelle GitHub Release für automatischen Asset-Upload..." -ForegroundColor Cyan
-                    $releaseNotesDir = "docs/release-notes"
-                    $releaseNotesFile = Join-Path $releaseNotesDir "RELEASE_NOTES_$versionNumber.md"
+                    $releaseNotesFileFull = Join-Path $releaseNotesDir "RELEASE_NOTES_$versionNumber.md"
                     $githubReleaseBody = ""
                     
-                    # Stelle sicher, dass das Verzeichnis existiert
-                    if (-not (Test-Path $releaseNotesDir)) {
-                        New-Item -ItemType Directory -Path $releaseNotesDir -Force | Out-Null
-                    }
-                    
                     # Lese Release Notes (sollten bereits vor dem Tag generiert worden sein)
-                    if (Test-Path $releaseNotesFile) {
-                        Write-Host "Lese Release-Notes aus: $releaseNotesFile" -ForegroundColor Gray
-                        $githubReleaseBody = Get-Content $releaseNotesFile -Raw -Encoding UTF8
+                    if (Test-Path $releaseNotesFileFull) {
+                        Write-Host "Lese Release-Notes aus: $releaseNotesFileFull" -ForegroundColor Gray
+                        $githubReleaseBody = Get-Content $releaseNotesFileFull -Raw -Encoding UTF8
                     } else {
-                        Write-Host "⚠ Warnung: Release Notes Datei nicht gefunden: $releaseNotesFile" -ForegroundColor Yellow
+                        Write-Host "⚠ Warnung: Release Notes Datei nicht gefunden: $releaseNotesFileFull" -ForegroundColor Yellow
                         # Fallback: Standard Release Notes
                         $codebergUrl = git remote get-url origin 2>&1
                         $codebergRepo = "elpatron/perlentaucher"
@@ -389,135 +398,18 @@ if ($remoteUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
     }
     
     if ($codebergToken) {
-        # Lese Release-Notes aus Datei, falls vorhanden
-        $releaseNotesDir = "docs/release-notes"
-        $releaseNotesFile = Join-Path $releaseNotesDir "RELEASE_NOTES_$versionNumber.md"
+        # Lese Release-Notes aus Datei (sollten bereits vor dem Tag generiert worden sein)
+        $releaseNotesFileFull = Join-Path $releaseNotesDir "RELEASE_NOTES_$versionNumber.md"
         $releaseBody = ""
         
-        # Stelle sicher, dass das Verzeichnis existiert
-        if (-not (Test-Path $releaseNotesDir)) {
-            New-Item -ItemType Directory -Path $releaseNotesDir -Force | Out-Null
-        }
-        
-        if (Test-Path $releaseNotesFile) {
-            Write-Host "Lese Release-Notes aus: $releaseNotesFile" -ForegroundColor Gray
-            $releaseBody = Get-Content $releaseNotesFile -Raw -Encoding UTF8
+        if (Test-Path $releaseNotesFileFull) {
+            Write-Host "Lese Release-Notes aus: $releaseNotesFileFull" -ForegroundColor Gray
+            $releaseBody = Get-Content $releaseNotesFileFull -Raw -Encoding UTF8
         } else {
-            # Generiere Release Notes automatisch aus Commits (wenn nicht bereits für GitHub erstellt)
-            Write-Host "Generiere Release Notes aus Git Commits..." -ForegroundColor Cyan
-            
-            # Hole OpenRouter API Key (optional)
-            $openRouterKey = $env:OPENROUTER_API_KEY
-            if (-not $openRouterKey) {
-                # Versuche aus .env Datei
-                if (Test-Path $envFile) {
-                    $envContent = Get-Content $envFile -Raw
-                    if ($envContent -match '(?m)^\s*OPENROUTER_API_KEY\s*=\s*(.+?)(?:\s*$|\s*#)') {
-                        $openRouterKey = $matches[1].Trim().Trim('"').Trim("'")
-                    }
-                }
-            }
-            
-            # Rufe Hilfs-Script auf
-            $getReleaseNotesScript = Join-Path $scriptDir "get_release_notes.ps1"
-            
-            if (Test-Path $getReleaseNotesScript) {
-                try {
-                    # Bestimme letzten Tag (falls nicht vorhanden, verwende ersten Commit)
-                    $previousTag = $lastTag
-                    if (-not $previousTag) {
-                        $firstCommit = git rev-list --max-parents=0 HEAD 2>&1
-                        if ($LASTEXITCODE -eq 0 -and $firstCommit) {
-                            $previousTag = $firstCommit.Trim()
-                            Write-Host "Verwende ersten Commit als Referenz: $previousTag" -ForegroundColor Gray
-                        } else {
-                            $previousTag = "HEAD~100"  # Fallback: letzte 100 Commits
-                        }
-                    }
-                    
-                    if ($openRouterKey) {
-                        Write-Host "Verwende OpenRouter API für AI-basierte Zusammenfassung..." -ForegroundColor Gray
-                        $releaseNotesContent = & $getReleaseNotesScript -LastTag $previousTag -NewTag $newTag -OpenRouterApiKey $openRouterKey
-                    } else {
-                        Write-Host "Generiere Release Notes manuell (ohne AI)..." -ForegroundColor Gray
-                        $releaseNotesContent = & $getReleaseNotesScript -LastTag $previousTag -NewTag $newTag
-                    }
-                    
-                    # Speichere generierte Release Notes (falls nicht bereits vorhanden)
-                    if (-not (Test-Path $releaseNotesFile)) {
-                        Set-Content -Path $releaseNotesFile -Value $releaseNotesContent -Encoding UTF8
-                        Write-Host "✓ Release Notes erfolgreich generiert: $releaseNotesFile" -ForegroundColor Green
-                        Write-Host "ℹ Du kannst die Datei vor dem Release noch bearbeiten." -ForegroundColor Gray
-                    }
-                    $releaseBody = $releaseNotesContent
-                }
-                catch {
-                    Write-Host "⚠ Fehler beim Generieren der Release Notes: $($_.Exception.Message)" -ForegroundColor Yellow
-                    Write-Host "Erstelle Fallback Template..." -ForegroundColor Gray
-                    
-                    # Fallback: Template erstellen
-                    $template = @"
-# Release $newTag
-
-## Neue Features
-
-<!-- Hier neue Features beschreiben -->
-
-## Verbesserungen
-
-<!-- Hier Verbesserungen beschreiben -->
-
-## Bugfixes
-
-<!-- Hier Bugfixes beschreiben -->
-
-## Technische Änderungen
-
-<!-- Hier technische Änderungen beschreiben -->
-
-## Bekannte Einschränkungen
-
-<!-- Hier bekannte Einschränkungen beschreiben -->
-
----
-
-**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$repoOwner/$repoName/commits/$newTag)
-"@
-                    Set-Content -Path $releaseNotesFile -Value $template -Encoding UTF8
-                    $releaseBody = "Release $newTag`n`nSiehe [Changelog](https://codeberg.org/$repoOwner/$repoName/commits/$newTag) für Details."
-                }
-            } else {
-                Write-Host "⚠ get_release_notes.ps1 nicht gefunden. Erstelle Fallback Template..." -ForegroundColor Yellow
-                $template = @"
-# Release $newTag
-
-## Neue Features
-
-<!-- Hier neue Features beschreiben -->
-
-## Verbesserungen
-
-<!-- Hier Verbesserungen beschreiben -->
-
-## Bugfixes
-
-<!-- Hier Bugfixes beschreiben -->
-
-## Technische Änderungen
-
-<!-- Hier technische Änderungen beschreiben -->
-
-## Bekannte Einschränkungen
-
-<!-- Hier bekannte Einschränkungen beschreiben -->
-
----
-
-**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$repoOwner/$repoName/commits/$newTag)
-"@
-                Set-Content -Path $releaseNotesFile -Value $template -Encoding UTF8
-                $releaseBody = "Release $newTag`n`nSiehe [Changelog](https://codeberg.org/$repoOwner/$repoName/commits/$newTag) für Details."
-            }
+            Write-Host "⚠ Warnung: Release Notes Datei nicht gefunden: $releaseNotesFileFull" -ForegroundColor Yellow
+            Write-Host "Verwende Fallback Release Notes..." -ForegroundColor Gray
+            # Fallback: Standard Release Notes
+            $releaseBody = "Release $newTag`n`nSiehe [Changelog](https://codeberg.org/$repoOwner/$repoName/commits/$newTag) für Details."
         }
         
         # Erstelle Release über Codeberg/Gitea API
