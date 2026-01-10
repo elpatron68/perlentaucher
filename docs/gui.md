@@ -212,8 +212,10 @@ Stellen Sie sicher, dass `perlentaucher.py` im gleichen Verzeichnis wie `perlent
 Die GUI-Version bietet die gleiche Funktionalität wie die CLI-Version, aber:
 
 - **Interaktive Auswahl**: Sie können explizit auswählen, welche Downloads gestartet werden sollen
-- **Visuelles Feedback**: Progress Bars und Status-Anzeigen
+- **Visuelles Feedback**: Progress Bars und Status-Anzeigen für jeden Download
+- **Parallele Downloads**: Mehrere Downloads können gleichzeitig laufen (jeder Eintrag läuft in einem eigenen Thread)
+- **Serien-Download-Auswahl**: Bei Serien kann vor jedem Download gewählt werden, ob nur die erste Episode oder alle Episoden heruntergeladen werden sollen
 - **Einfachere Konfiguration**: UI-basierte Einstellungen statt Kommandozeilen-Argumente
-- **Mehrere Downloads gleichzeitig**: Unterstützt parallele Downloads (wird in zukünftigen Versionen implementiert)
+- **Fenstergröße speichern**: Fenstergröße und Position werden gespeichert und beim nächsten Start wiederhergestellt
 
 Die CLI-Version bleibt vollständig funktional und unabhängig von der GUI.
