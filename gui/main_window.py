@@ -5,10 +5,10 @@ Integriert alle Panels in einem Tab-Widget.
 from PyQt6.QtWidgets import (
     QMainWindow, QTabWidget, QMenuBar, QMenu, QStatusBar, QMessageBox,
     QDialog, QVBoxLayout, QLabel, QPushButton, QButtonGroup, QRadioButton, QSizePolicy,
-    QApplication
+    QApplication, QProgressDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect
-from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QThread, pyqtSlot, QObject
+from PyQt6.QtGui import QAction, QDesktopServices
 from typing import Dict, Optional
 import sys
 import os
@@ -17,6 +17,7 @@ from gui.settings_panel import SettingsPanel
 from gui.blog_list_panel import BlogListPanel
 from gui.download_panel import DownloadPanel
 from gui.config_manager import ConfigManager
+from gui.utils.update_checker import check_for_updates
 
 
 class MainWindow(QMainWindow):
@@ -34,6 +35,10 @@ class MainWindow(QMainWindow):
         self.config_manager = config_manager
         self._init_ui()
         self._connect_signals()
+        
+        # Prüfe auf Updates beim Start (nach kurzer Verzögerung, damit UI vollständig geladen ist)
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(2000, self._check_for_updates_on_startup)
     
     def _init_ui(self):
         """Initialisiert die UI-Komponenten."""
@@ -271,7 +276,107 @@ class MainWindow(QMainWindow):
         <p>Lizenz: MIT</p>
         """
         
-        QMessageBox.about(self, "Über Perlentaucher GUI", about_text)
+        # Erstelle Dialog mit zusätzlichem Button für Update-Prüfung
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Über Perlentaucher GUI")
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+        msg_box.setText(about_text)
+        
+        # Füge "Auf Updates prüfen"-Button hinzu
+        check_update_btn = msg_box.addButton("Auf Updates prüfen", QMessageBox.ButtonRole.ActionRole)
+        msg_box.addButton(QMessageBox.StandardButton.Ok)
+        
+        # Zeige Dialog
+        msg_box.exec()
+        
+        # Prüfe ob "Auf Updates prüfen" geklickt wurde
+        if msg_box.clickedButton() == check_update_btn:
+            self._check_for_updates_manual()
+    
+    def _check_for_updates_on_startup(self):
+        """Prüft auf Updates beim Start der App (im Hintergrund, ohne Dialog)."""
+        # Prüfe ob Update-Prüfung beim Start aktiviert ist (kann später als Einstellung hinzugefügt werden)
+        # Für jetzt: Prüfe immer, aber zeige nur Dialog wenn Update verfügbar ist
+        
+        try:
+            is_update, latest_version, download_url = check_for_updates()
+            if is_update and latest_version and download_url:
+                # Zeige Dialog nur wenn Update verfügbar ist
+                self._show_update_available_dialog(latest_version, download_url)
+        except Exception:
+            # Fehler beim Update-Check werden stillschweigend ignoriert
+            pass
+    
+    def _check_for_updates_manual(self):
+        """Prüft manuell auf Updates (vom About-Dialog aufgerufen)."""
+        # Zeige Progress-Dialog während Prüfung läuft
+        progress = QProgressDialog("Prüfe auf Updates...", "Abbrechen", 0, 0, self)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setCancelButton(None)  # Kein Cancel-Button (schnelle Operation)
+        progress.setRange(0, 0)  # Indeterminate progress
+        progress.show()
+        
+        # Prüfe auf Updates (blockierend, aber sollte schnell sein)
+        try:
+            is_update, latest_version, download_url = check_for_updates()
+            progress.close()
+            
+            if is_update and latest_version and download_url:
+                # Update verfügbar
+                self._show_update_available_dialog(latest_version, download_url)
+            else:
+                # Kein Update verfügbar
+                try:
+                    import _version
+                    current_version = _version.__version__
+                except ImportError:
+                    current_version = "unknown"
+                
+                QMessageBox.information(
+                    self,
+                    "Auf Updates prüfen",
+                    f"Sie verwenden bereits die neueste Version.\n\n"
+                    f"Aktuelle Version: v{current_version}"
+                )
+        except Exception as e:
+            progress.close()
+            QMessageBox.warning(
+                self,
+                "Update-Prüfung fehlgeschlagen",
+                f"Die Update-Prüfung konnte nicht durchgeführt werden.\n\n"
+                f"Fehler: {str(e)}\n\n"
+                f"Bitte überprüfen Sie Ihre Internetverbindung und versuchen Sie es später erneut."
+            )
+    
+    def _show_update_available_dialog(self, latest_version: str, download_url: str):
+        """Zeigt einen Dialog, wenn ein Update verfügbar ist."""
+        try:
+            import _version
+            current_version = _version.__version__
+        except ImportError:
+            current_version = "unknown"
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Update verfügbar")
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setText(
+            f"<h3>Eine neuere Version ist verfügbar!</h3>"
+            f"<p>Aktuelle Version: <b>v{current_version}</b></p>"
+            f"<p>Neueste Version: <b>{latest_version}</b></p>"
+            f"<p>Möchten Sie die neueste Version herunterladen?</p>"
+        )
+        
+        # Buttons
+        download_btn = msg_box.addButton("Zum Download", QMessageBox.ButtonRole.AcceptRole)
+        later_btn = msg_box.addButton("Später", QMessageBox.ButtonRole.RejectRole)
+        msg_box.setDefaultButton(download_btn)
+        
+        # Zeige Dialog
+        msg_box.exec()
+        
+        # Öffne Download-URL wenn "Zum Download" geklickt wurde
+        if msg_box.clickedButton() == download_btn:
+            QDesktopServices.openUrl(download_url)
     
     def closeEvent(self, event):
         """Wird aufgerufen wenn das Fenster geschlossen wird."""
