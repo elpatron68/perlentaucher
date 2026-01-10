@@ -203,6 +203,17 @@ class BlogListPanel(QWidget):
         try:
             rss_url = self.config_manager.get('rss_feed_url', 'https://nexxtpress.de/author/mediathekperlen/feed/')
             
+            # Versuche mehr Einträge zu bekommen, wenn Feed-URL WordPress ist
+            # WordPress unterstützt ?posts_per_page= Parameter (max 50)
+            # Füge Parameter hinzu wenn nicht bereits vorhanden
+            if 'posts_per_page' not in rss_url and 'nexxtpress.de' in rss_url:
+                # Füge Parameter hinzu um mehr Einträge zu bekommen
+                separator = '&' if '?' in rss_url else '?'
+                rss_url_with_limit = f"{rss_url}{separator}posts_per_page=50"
+                logging.debug(f"Versuche RSS-Feed mit erhöhtem Limit: {rss_url_with_limit}")
+            else:
+                rss_url_with_limit = rss_url
+            
             self.load_rss_btn.setEnabled(False)
             self.refresh_btn.setEnabled(False)
             self.load_older_btn.setEnabled(False)
@@ -216,8 +227,22 @@ class BlogListPanel(QWidget):
             from PyQt6.QtWidgets import QApplication
             QApplication.processEvents()
             
-            # Parse RSS Feed
-            feed = feedparser.parse(rss_url)
+            # Parse RSS Feed - versuche zuerst mit erhöhtem Limit
+            feed = feedparser.parse(rss_url_with_limit)
+            
+            # Falls das nicht funktioniert oder gleich viele Einträge liefert, versuche ohne Parameter
+            # (falls Parameter hinzugefügt wurde)
+            if rss_url_with_limit != rss_url:
+                feed_original = feedparser.parse(rss_url)
+                # Verwende den Feed mit mehr Einträgen
+                if len(feed_original.entries) > len(feed.entries):
+                    feed = feed_original
+                    logging.debug(f"Original Feed liefert mehr Einträge: {len(feed.entries)} vs {len(feed_original.entries)}")
+                    rss_url_used = rss_url
+                else:
+                    rss_url_used = rss_url_with_limit
+            else:
+                rss_url_used = rss_url
             
             if feed.bozo:
                 QMessageBox.warning(self, "Warnung", "Beim Parsen des RSS-Feeds ist ein Fehler aufgetreten, fahre fort...")
