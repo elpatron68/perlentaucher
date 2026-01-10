@@ -6,6 +6,7 @@ test_downloads/
 .notizen.txt
 run_perlentaucher.sh
 run_perlentaucher.bat
+.perlentaucher_config.json
 run_perlentaucher_helper.py
 .env
 scripts/.env
