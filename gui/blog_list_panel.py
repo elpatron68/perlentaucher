@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QComboBox, QLineEdit, QAbstractItemView
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6 import QtCore
 import sys
 import os
 import feedparser
@@ -235,7 +234,7 @@ class BlogListPanel(QWidget):
             movie_title = entry_data.get('movie_title', 'Nicht extrahiert')
             movie_item = QTableWidgetItem(movie_title if movie_title else 'Nicht extrahiert')
             if not movie_title:
-                movie_item.setForeground(QtCore.Qt.GlobalColor.red)
+                movie_item.setForeground(Qt.GlobalColor.red)
             self.table.setItem(row, 2, movie_item)
             
             # Jahr
@@ -250,9 +249,9 @@ class BlogListPanel(QWidget):
             # Status
             status_item = QTableWidgetItem(entry_data['status'])
             if '✓' in entry_data['status']:
-                status_item.setForeground(QtCore.Qt.GlobalColor.green)
+                status_item.setForeground(Qt.GlobalColor.green)
             elif '✗' in entry_data['status']:
-                status_item.setForeground(QtCore.Qt.GlobalColor.red)
+                status_item.setForeground(Qt.GlobalColor.red)
             self.table.setItem(row, 5, status_item)
             
             # Link
@@ -332,7 +331,7 @@ class BlogListPanel(QWidget):
                     if status_item:
                         status_item.setText(status)
                         if '✓' in status:
-                            status_item.setForeground(QtCore.Qt.GlobalColor.green)
+                            status_item.setForeground(Qt.GlobalColor.green)
                         elif '✗' in status:
-                            status_item.setForeground(QtCore.Qt.GlobalColor.red)
+                            status_item.setForeground(Qt.GlobalColor.red)
                     break

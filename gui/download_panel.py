@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6 import QtCore
+from PyQt6.QtGui import QFont
 from typing import Dict, List
 import logging
 from datetime import datetime
@@ -92,7 +92,7 @@ class DownloadPanel(QWidget):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMaximumHeight(200)
-        self.log_text.setFont(QtCore.QFont("Courier", 9))
+        self.log_text.setFont(QFont("Courier", 9))
         layout.addWidget(self.log_text)
         
         self.setLayout(layout)
@@ -207,7 +207,7 @@ class DownloadPanel(QWidget):
             status_item = self.table.item(row, 2)
             if status_item:
                 status_item.setText("Läuft...")
-                status_item.setForeground(QtCore.Qt.GlobalColor.blue)
+                status_item.setForeground(Qt.GlobalColor.blue)
     
     def _on_progress_updated(self, entry_id: str, progress: int, status: str):
         """Wird aufgerufen wenn sich der Download-Fortschritt aktualisiert."""
@@ -246,7 +246,7 @@ class DownloadPanel(QWidget):
             if status_item:
                 if success:
                     status_item.setText("✓ Erfolgreich")
-                    status_item.setForeground(QtCore.Qt.GlobalColor.green)
+                    status_item.setForeground(Qt.GlobalColor.green)
                     logging.info(f"Download erfolgreich: {title} -> {filepath}")
                     
                     # Aktualisiere State-Datei für erfolgreichen Download
@@ -255,7 +255,7 @@ class DownloadPanel(QWidget):
                 else:
                     status_text = f"✗ Fehlgeschlagen: {error}"
                     status_item.setText(status_text)
-                    status_item.setForeground(QtCore.Qt.GlobalColor.red)
+                    status_item.setForeground(Qt.GlobalColor.red)
                     logging.error(f"Download fehlgeschlagen: {title} - {error}")
                     
                     # Aktualisiere State-Datei für fehlgeschlagenen Download
@@ -334,7 +334,7 @@ class DownloadPanel(QWidget):
                 status_item = self.table.item(row, 2)
                 if status_item:
                     status_item.setText("Abgebrochen")
-                    status_item.setForeground(QtCore.Qt.GlobalColor.gray)
+                    status_item.setForeground(Qt.GlobalColor.gray)
             
             if entry_id in self.active_downloads:
                 del self.active_downloads[entry_id]
