@@ -12,6 +12,7 @@ import sys
 import os
 import feedparser
 import re
+import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -142,23 +143,47 @@ class BlogListPanel(QWidget):
         
         cutoff_date = datetime.now() - timedelta(days=days)
         filtered_entries = []
+        entries_without_date = 0
+        entries_older_than_cutoff = 0
         
         for entry in entries:
-            # Hole Veröffentlichungsdatum
+            # Hole Veröffentlichungsdatum - feedparser verwendet published_parsed oder updated_parsed
             published = get_entry_attr(entry, 'published_parsed')
+            if not published:
+                # Fallback: updated_parsed
+                published = get_entry_attr(entry, 'updated_parsed')
+            
             if published:
                 try:
                     # published_parsed ist ein time.struct_time Objekt
                     from time import mktime
                     published_dt = datetime.fromtimestamp(mktime(published))
+                    
+                    # Debug: Zeige Datum des ersten Eintrags
+                    if len(filtered_entries) == 0 and entries_older_than_cutoff == 0:
+                        logging.debug(f"Erster Eintrag Datum: {published_dt}, Cutoff: {cutoff_date}")
+                    
                     if published_dt >= cutoff_date:
                         filtered_entries.append(entry)
-                except (ValueError, TypeError, OSError):
+                    else:
+                        entries_older_than_cutoff += 1
+                        # Debug: Zeige warum Eintrag herausgefiltert wurde
+                        age_days = (datetime.now() - published_dt).days
+                        if entries_older_than_cutoff <= 3:  # Nur erste 3 für Debug
+                            logging.debug(f"Eintrag herausgefiltert: {age_days} Tage alt (Datum: {published_dt})")
+                except (ValueError, TypeError, OSError) as e:
                     # Falls Parsing fehlschlägt, behalte Eintrag (besser zu viele als zu wenig)
+                    logging.debug(f"Datum-Parsing-Fehler für Entry: {e}, behalte Eintrag")
                     filtered_entries.append(entry)
             else:
-                # Wenn kein Datum vorhanden, behalte Eintrag
+                # Wenn kein Datum vorhanden, behalte Eintrag (besser zu viele als zu wenig)
+                entries_without_date += 1
                 filtered_entries.append(entry)
+        
+        if entries_without_date > 0:
+            logging.debug(f"{entries_without_date} Einträge ohne Datum (behalten)")
+        if entries_older_than_cutoff > 0:
+            logging.debug(f"{entries_older_than_cutoff} Einträge älter als {days} Tage (herausgefiltert)")
         
         return filtered_entries
     
@@ -192,11 +217,56 @@ class BlogListPanel(QWidget):
             if feed.bozo:
                 QMessageBox.warning(self, "Warnung", "Beim Parsen des RSS-Feeds ist ein Fehler aufgetreten, fahre fort...")
             
+            # WICHTIG: feed.entries enthält ALLE Einträge, die der RSS-Feed zurückgibt
+            # Viele RSS-Feeds limitieren die Anzahl selbst (z.B. nur die neuesten 10-20 Einträge)
+            # Das ist eine Feed-Begrenzung auf Server-Seite, nicht unsere Filterung
+            total_entries_from_feed = len(feed.entries)
+            
+            # Debug: Zeige Datum des ersten und letzten Eintrags
+            if feed.entries:
+                first_entry = feed.entries[0]
+                last_entry = feed.entries[-1]
+                first_pub = get_entry_attr(first_entry, 'published', 'unbekannt')
+                last_pub = get_entry_attr(last_entry, 'published', 'unbekannt')
+                logging.debug(f"Erster Eintrag: {first_pub}, Letzter Eintrag: {last_pub}")
+            
+            logging.info(f"RSS-Feed liefert {total_entries_from_feed} Einträge vom Feed-Server")
+            
             # Filtere nach Datum wenn days angegeben
             if days and days > 0:
                 feed_entries = self._filter_entries_by_date(feed.entries, days)
+                filtered_count = len(feed_entries)
+                removed_count = total_entries_from_feed - filtered_count
+                
+                status_text = f"Feed: {total_entries_from_feed} total → {filtered_count} in den letzten {days} Tagen"
+                if removed_count > 0:
+                    status_text += f" ({removed_count} älter herausgefiltert)"
+                
+                # Warnung wenn alle Einträge herausgefiltert wurden
+                if filtered_count == 0 and total_entries_from_feed > 0:
+                    status_text += f" ⚠️ Alle Einträge älter als {days} Tage!"
+                
+                self.status_label.setText(status_text)
+                logging.info(f"Nach {days}-Tage-Filter: {filtered_count} Einträge (von {total_entries_from_feed} total, {removed_count} entfernt)")
+                
+                # Warnung wenn der Feed selbst nur wenige Einträge zurückgibt
+                if total_entries_from_feed < 20:
+                    logging.warning(
+                        f"RSS-Feed liefert nur {total_entries_from_feed} Einträge. "
+                        f"Dies ist wahrscheinlich eine Begrenzung des Feed-Servers. "
+                        f"Um mehr Einträge zu sehen, nutzen Sie 'Ältere Einträge nachladen...' (dann ohne Datums-Filter)"
+                    )
             else:
                 feed_entries = feed.entries
+                self.status_label.setText(f"Feed: {total_entries_from_feed} Einträge total (keine Datums-Filterung)")
+                logging.info(f"Keine Datums-Filterung: {total_entries_from_feed} Einträge")
+                
+                # Warnung wenn der Feed nur wenige Einträge zurückgibt
+                if total_entries_from_feed < 20:
+                    logging.warning(
+                        f"RSS-Feed liefert nur {total_entries_from_feed} Einträge. "
+                        f"Dies ist wahrscheinlich eine Begrenzung des Feed-Servers."
+                    )
             
             # Lade State-Datei um verarbeitete Einträge zu erkennen (nur wenn no_state nicht aktiviert)
             no_state = self.config_manager.get('no_state', False)
