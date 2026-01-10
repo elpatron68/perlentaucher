@@ -3,7 +3,7 @@ Thread-Manager für asynchrone Downloads.
 Nutzt QThread für nicht-blockierende Downloads.
 """
 from PyQt6.QtCore import QThread, pyqtSignal
-from typing import Dict, Optional, Callable
+from typing import Dict, Optional, Callable, List, Tuple
 import logging
 import sys
 import os
@@ -23,17 +23,19 @@ class DownloadThread(QThread):
     download_started = pyqtSignal(str)  # Titel
     download_finished = pyqtSignal(bool, str, str, str)  # Erfolg, Titel, Dateipfad, Fehlermeldung
     
-    def __init__(self, entry_data: Dict, config: Dict):
+    def __init__(self, entry_data: Dict, config: Dict, series_download_mode: Optional[str] = None):
         """
         Initialisiert den Download-Thread.
         
         Args:
             entry_data: Dictionary mit Entry-Daten (entry_id, entry, entry_link, movie_title, year, metadata)
             config: Konfigurations-Dictionary mit allen Einstellungen
+            series_download_mode: Optional - 'erste' oder 'staffel' für Serien (überschreibt Config)
         """
         super().__init__()
         self.entry_data = entry_data
         self.config = config
+        self.series_download_mode = series_download_mode  # Überschreibt Config für diesen Eintrag
         self.is_cancelled = False
     
     def cancel(self):
@@ -59,7 +61,10 @@ class DownloadThread(QThread):
             self.download_started.emit(movie_title)
             
             if is_series_entry:
-                if self.config.get('serien_download') == 'keine':
+                # Verwende series_download_mode wenn gesetzt, sonst Config
+                serien_mode = self.series_download_mode if self.series_download_mode else self.config.get('serien_download', 'erste')
+                
+                if serien_mode == 'keine':
                     self.download_finished.emit(
                         False, 
                         movie_title, 
@@ -69,7 +74,7 @@ class DownloadThread(QThread):
                     return
                 
                 # Serie-Verarbeitung
-                if self.config.get('serien_download') == 'erste':
+                if serien_mode == 'erste':
                     # Nur erste Episode
                     result = core.search_mediathek(
                         movie_title,
@@ -98,9 +103,9 @@ class DownloadThread(QThread):
                         self.download_finished.emit(success, title, filepath, "" if success else "Download fehlgeschlagen")
                     else:
                         self.download_finished.emit(False, movie_title, "", "Film/Serie nicht in Mediathek gefunden")
-                elif self.config.get('serien_download') == 'staffel':
-                    # Ganze Staffel - TODO: Implementierung für mehrere Episoden
-                    self.download_finished.emit(False, movie_title, "", "Staffel-Download noch nicht implementiert")
+                elif serien_mode == 'staffel':
+                    # Ganze Staffel - Lade alle Episoden
+                    self._download_series_season(movie_title, entry_link, year, metadata)
             else:
                 # Normale Film-Verarbeitung
                 result = core.search_mediathek(
@@ -226,3 +231,198 @@ class DownloadThread(QThread):
                 except:
                     pass
             return (False, movie_data.get("title", "Unbekannt"), filepath if filepath else "")
+    
+    def _download_series_season(self, series_title: str, entry_link: str, year: Optional[int], metadata: Dict):
+        """
+        Lädt alle Episoden einer Serie herunter.
+        
+        Args:
+            series_title: Der Serientitel
+            entry_link: Link zum Blog-Eintrag
+            year: Optional - Das Jahr der Serie
+            metadata: Dictionary mit Metadaten
+        """
+        try:
+            # Suche nach allen Episoden
+            episodes = core.search_mediathek_series(
+                series_title,
+                prefer_language=self.config.get('sprache', 'deutsch'),
+                prefer_audio_desc=self.config.get('audiodeskription', 'egal'),
+                notify_url=None,  # Keine Benachrichtigungen im Thread
+                entry_link=entry_link,
+                year=year,
+                metadata=metadata
+            )
+            
+            if not episodes:
+                self.download_finished.emit(False, series_title, "", "Keine Episoden für Serie gefunden")
+                return
+            
+            # Sortiere Episoden nach Staffel/Episode und dedupliziere (wie in CLI)
+            # Verwende Dictionary um nur die beste Version jeder Episode zu behalten
+            episodes_dict = {}  # Key: (season, episode), Value: episode_data
+            
+            for episode_data in episodes:
+                season, episode_num = core.extract_episode_info(episode_data, series_title)
+                if season is None or episode_num is None:
+                    continue
+                
+                # Bewerte Episode (score_movie gibt einen Score zurück)
+                try:
+                    score = core.score_movie(
+                        episode_data,
+                        self.config.get('sprache', 'deutsch'),
+                        self.config.get('audiodeskription', 'egal'),
+                        search_title=series_title,
+                        search_year=year,
+                        metadata=metadata
+                    )
+                except Exception as e:
+                    logging.debug(f"Fehler beim Bewerten einer Episode: {e}")
+                    score = 0
+                
+                episode_key = (season, episode_num)
+                # Behalte nur die Episode mit dem höchsten Score
+                if episode_key not in episodes_dict:
+                    episodes_dict[episode_key] = (score, episode_data)
+                else:
+                    existing_score, _ = episodes_dict[episode_key]
+                    if score > existing_score:
+                        episodes_dict[episode_key] = (score, episode_data)
+            
+            # Konvertiere Dictionary zu Liste und sortiere
+            episodes_with_info = [(s, e, data) for (s, e), (score, data) in episodes_dict.items()]
+            episodes_with_info.sort(key=lambda x: (x[0] or 0, x[1] or 0))
+            
+            total_episodes = len(episodes_with_info)
+            if total_episodes == 0:
+                self.download_finished.emit(False, series_title, "", "Keine Episoden mit Staffel/Episode-Info gefunden")
+                return
+            
+            # Sende Start-Signal mit Gesamtanzahl
+            self.download_started.emit(f"{series_title} ({total_episodes} Episoden)")
+            
+            # Bestimme series_base_dir
+            series_base_dir = self.config.get('serien_dir') or self.config.get('download_dir')
+            
+            downloaded_count = 0
+            failed_count = 0
+            
+            # Lade Episoden sequenziell
+            for idx, (season, episode_num, episode_data) in enumerate(episodes_with_info, 1):
+                if self.is_cancelled:
+                    self.download_finished.emit(False, series_title, "", "Download abgebrochen")
+                    return
+                
+                # Update Progress: Zeige aktuellen Fortschritt (Episode X von Y)
+                episode_title = episode_data.get('title', f'S{season or 0:02d}E{episode_num or 0:02d}')
+                progress_percent = int((idx - 1) / total_episodes * 100)
+                self.progress_updated.emit(
+                    progress_percent,
+                    f"Episode {idx}/{total_episodes}: {episode_title}"
+                )
+                
+                # Download Episode
+                success, title, filepath = self._download_with_progress(
+                    episode_data,
+                    series_title,
+                    metadata,
+                    is_series=True,
+                    series_base_dir=series_base_dir,
+                    season=season,
+                    episode=episode_num
+                )
+                
+                if success:
+                    downloaded_count += 1
+                    logging.info(f"Episode S{season:02d}E{episode_num:02d} erfolgreich heruntergeladen: {filepath}")
+                    
+                    # State-Datei für diese Episode aktualisieren
+                    self._update_episode_state(series_title, season, episode_num, 'download_success', filepath)
+                else:
+                    failed_count += 1
+                    logging.error(f"Episode S{season:02d}E{episode_num:02d} fehlgeschlagen: {title}")
+                    
+                    # State-Datei für diese Episode aktualisieren
+                    self._update_episode_state(series_title, season, episode_num, 'download_failed', None)
+            
+            # Finale Progress-Update
+            final_progress = 100 if total_episodes > 0 else 0
+            status_msg = f"Abgeschlossen: {downloaded_count}/{total_episodes} Episoden"
+            if failed_count > 0:
+                status_msg += f" ({failed_count} fehlgeschlagen)"
+            self.progress_updated.emit(final_progress, status_msg)
+            
+            # Markiere Haupt-Eintrag als verarbeitet (mit Liste der Episoden)
+            entry_id = self.entry_data['entry_id']
+            config = self.config
+            no_state = config.get('no_state', False)
+            if not no_state:
+                state_file = config.get('state_file', '.perlentaucher_state.json')
+                if state_file:
+                    try:
+                        main_status = 'download_success' if downloaded_count > 0 else 'download_failed'
+                        episodes_list = [f"S{s:02d}E{e:02d}" for s, e, _ in episodes_with_info if s is not None and e is not None]
+                        core.save_processed_entry(
+                            state_file,
+                            entry_id,
+                            status=main_status,
+                            movie_title=series_title,
+                            is_series=True,
+                            episodes=episodes_list
+                        )
+                    except Exception as e:
+                        logging.warning(f"Konnte Haupt-Eintrag State-Datei nicht aktualisieren: {e}")
+            
+            # Sende Finale-Signal
+            if downloaded_count > 0:
+                self.download_finished.emit(
+                    True,
+                    f"{series_title} ({downloaded_count}/{total_episodes} Episoden)",
+                    "",  # Kein einzelner Dateipfad, da mehrere Dateien
+                    status_msg
+                )
+            else:
+                self.download_finished.emit(False, series_title, "", "Alle Episoden fehlgeschlagen")
+                
+        except Exception as e:
+            error_msg = str(e)
+            logging.error(f"Fehler beim Staffel-Download für '{series_title}': {error_msg}")
+            self.download_finished.emit(False, series_title, "", f"Fehler: {error_msg}")
+    
+    def _update_episode_state(self, series_title: str, season: Optional[int], episode: Optional[int], 
+                             status: str, filepath: Optional[str]):
+        """
+        Aktualisiert die State-Datei für eine einzelne Episode.
+        
+        Args:
+            series_title: Serientitel
+            season: Staffel-Nummer
+            episode: Episoden-Nummer
+            status: Status ('download_success', 'download_failed', etc.)
+            filepath: Optional - Pfad zur heruntergeladenen Datei
+        """
+        try:
+            entry_id = self.entry_data['entry_id']
+            config = self.config
+            no_state = config.get('no_state', False)
+            if no_state:
+                return
+            
+            state_file = config.get('state_file', '.perlentaucher_state.json')
+            if not state_file:
+                return
+            
+            if season is not None and episode is not None:
+                # Speichere individuelle Episode
+                episode_id = f"{entry_id}_S{season:02d}E{episode:02d}"
+                filename = os.path.basename(filepath) if filepath and os.path.exists(filepath) else None
+                core.save_processed_entry(
+                    state_file,
+                    episode_id,
+                    status=status,
+                    movie_title=f"{series_title} S{season:02d}E{episode:02d}",
+                    filename=filename
+                )
+        except Exception as e:
+            logging.warning(f"Konnte State-Datei für Episode nicht aktualisieren: {e}")

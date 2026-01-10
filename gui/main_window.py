@@ -3,10 +3,12 @@ Hauptfenster für die GUI-Anwendung.
 Integriert alle Panels in einem Tab-Widget.
 """
 from PyQt6.QtWidgets import (
-    QMainWindow, QTabWidget, QMenuBar, QMenu, QStatusBar, QMessageBox
+    QMainWindow, QTabWidget, QMenuBar, QMenu, QStatusBar, QMessageBox,
+    QDialog, QVBoxLayout, QLabel, QPushButton, QButtonGroup, QRadioButton
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
+from typing import Dict, Optional
 import sys
 import os
 
@@ -150,16 +152,91 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Keine Auswahl", "Bitte wählen Sie mindestens einen Eintrag in der Blog-Liste aus!")
             return
         
+        # Prüfe ob Serien dabei sind
+        series_entries = [e for e in selected_entries if e.get('is_series', False)]
+        
+        # Wenn Serien dabei sind, zeige Dialog zur Auswahl
+        series_download_mode = {}  # entry_id -> 'erste' oder 'staffel'
+        if series_entries:
+            for entry in series_entries:
+                choice = self._ask_series_download_mode(entry)
+                if choice is None:  # Benutzer hat abgebrochen
+                    return
+                series_download_mode[entry['entry_id']] = choice
+        
         # Hole aktuelle Konfiguration
         config = self.settings_panel.get_config()
         
-        # Starte Downloads
-        self.download_panel.start_downloads(selected_entries, config)
+        # Starte Downloads mit Serien-Auswahl
+        self.download_panel.start_downloads(selected_entries, config, series_download_mode=series_download_mode)
         
         # Wechsle zum Download-Tab (Tab 1 in neuer Reihenfolge)
         self.tabs.setCurrentIndex(1)
         
         self.status_bar.showMessage(f"{len(selected_entries)} Download(s) gestartet.", 3000)
+    
+    def _ask_series_download_mode(self, entry_data: Dict) -> Optional[str]:
+        """
+        Zeigt einen Dialog zur Auswahl des Serien-Download-Modus.
+        
+        Args:
+            entry_data: Dictionary mit Entry-Daten
+            
+        Returns:
+            'erste' für nur erste Episode, 'staffel' für alle Episoden, None wenn abgebrochen
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Serien-Download Auswahl")
+        dialog.setModal(True)
+        dialog.resize(400, 200)
+        
+        layout = QVBoxLayout()
+        
+        # Titel-Label
+        series_title = entry_data.get('movie_title', entry_data.get('rss_title', 'Unbekannte Serie'))
+        title_label = QLabel(f"<h3>{series_title}</h3>")
+        title_label.setWordWrap(True)
+        layout.addWidget(title_label)
+        
+        info_label = QLabel("Wie möchten Sie diese Serie herunterladen?")
+        layout.addWidget(info_label)
+        
+        # Radio-Buttons
+        button_group = QButtonGroup()
+        
+        first_ep_radio = QRadioButton("Nur erste Episode")
+        first_ep_radio.setChecked(True)  # Standard
+        button_group.addButton(first_ep_radio, 0)
+        layout.addWidget(first_ep_radio)
+        
+        all_ep_radio = QRadioButton("Alle verfügbaren Episoden")
+        button_group.addButton(all_ep_radio, 1)
+        layout.addWidget(all_ep_radio)
+        
+        layout.addStretch()
+        
+        # Buttons
+        button_layout = QVBoxLayout()
+        ok_btn = QPushButton("Download starten")
+        ok_btn.clicked.connect(dialog.accept)
+        cancel_btn = QPushButton("Abbrechen")
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        button_row = QVBoxLayout()
+        button_row.addWidget(ok_btn)
+        button_row.addWidget(cancel_btn)
+        layout.addLayout(button_row)
+        
+        dialog.setLayout(layout)
+        
+        # Zeige Dialog
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            if all_ep_radio.isChecked():
+                return 'staffel'
+            else:
+                return 'erste'
+        else:
+            return None
     
     def _cancel_all_downloads(self):
         """Bricht alle Downloads ab."""

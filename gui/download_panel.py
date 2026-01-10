@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
-from typing import Dict, List
+from typing import Dict, List, Optional
 import logging
 from datetime import datetime
 
@@ -97,13 +97,14 @@ class DownloadPanel(QWidget):
         
         self.setLayout(layout)
     
-    def start_downloads(self, entries: List[Dict], config: Dict):
+    def start_downloads(self, entries: List[Dict], config: Dict, series_download_mode: Optional[Dict] = None):
         """
         Startet Downloads für die ausgewählten Einträge.
         
         Args:
             entries: Liste von Entry-Dictionaries
             config: Konfigurations-Dictionary
+            series_download_mode: Optional - Dictionary mit entry_id -> 'erste' oder 'staffel' für Serien
         """
         if not entries:
             QMessageBox.warning(self, "Keine Auswahl", "Bitte wählen Sie mindestens einen Eintrag aus!")
@@ -153,8 +154,17 @@ class DownloadPanel(QWidget):
                 if entry_obj:
                     entry_data['is_series'] = core.is_series(entry_obj, metadata)
             
+            # Bestimme Serien-Download-Modus für diesen Eintrag
+            series_mode = None
+            if entry_data.get('is_series', False):
+                if series_download_mode and entry_id in series_download_mode:
+                    series_mode = series_download_mode[entry_id]
+                else:
+                    # Fallback auf Config-Einstellung
+                    series_mode = config.get('serien_download', 'erste')
+            
             # Erstelle Download-Thread
-            thread = DownloadThread(entry_data, config)
+            thread = DownloadThread(entry_data, config, series_download_mode=series_mode)
             
             # Verbinde Signals
             thread.download_started.connect(lambda title, eid=entry_id: self._on_download_started(eid, title))
@@ -245,25 +255,37 @@ class DownloadPanel(QWidget):
             status_item = self.table.item(row, 2)
             if status_item:
                 if success:
-                    status_item.setText("✓ Erfolgreich")
+                    # Prüfe ob es ein Staffel-Download war (mehrere Episoden)
+                    is_series_download = entry_data and entry_data.get('is_series', False) and not filepath and "Episoden" in title
+                    
+                    if is_series_download:
+                        # Staffel-Download - State-Datei wurde bereits im Thread aktualisiert
+                        status_item.setText(f"✓ Erfolgreich ({error if error else title})")
+                    else:
+                        # Einzelner Download
+                        status_item.setText("✓ Erfolgreich")
+                        # Aktualisiere State-Datei für erfolgreichen Download
+                        if entry_data:
+                            self._update_state_file(entry_id, entry_data, 'download_success', filepath)
+                    
                     status_item.setForeground(Qt.GlobalColor.green)
                     logging.info(f"Download erfolgreich: {title} -> {filepath}")
-                    
-                    # Aktualisiere State-Datei für erfolgreichen Download
-                    if entry_data:
-                        self._update_state_file(entry_id, entry_data, 'download_success', filepath)
                 else:
                     status_text = f"✗ Fehlgeschlagen: {error}"
                     status_item.setText(status_text)
                     status_item.setForeground(Qt.GlobalColor.red)
                     logging.error(f"Download fehlgeschlagen: {title} - {error}")
                     
-                    # Aktualisiere State-Datei für fehlgeschlagenen Download
-                    if entry_data:
-                        if "nicht gefunden" in error.lower():
-                            self._update_state_file(entry_id, entry_data, 'not_found', None)
-                        else:
-                            self._update_state_file(entry_id, entry_data, 'download_failed', None)
+                    # Prüfe ob Staffel-Download (State-Datei wurde bereits im Thread aktualisiert)
+                    is_series_download = entry_data and entry_data.get('is_series', False) and "Episoden" in error
+                    
+                    if not is_series_download:
+                        # Aktualisiere State-Datei für fehlgeschlagenen Download
+                        if entry_data:
+                            if "nicht gefunden" in error.lower():
+                                self._update_state_file(entry_id, entry_data, 'not_found', None)
+                            else:
+                                self._update_state_file(entry_id, entry_data, 'download_failed', None)
             
             # Update Progress Bar
             progress_bar = self.table.cellWidget(row, 1)
