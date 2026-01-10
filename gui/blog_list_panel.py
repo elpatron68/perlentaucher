@@ -43,6 +43,10 @@ class BlogListPanel(QWidget):
         self.config_manager = config_manager
         self.entries = []  # Liste von Entry-Dictionaries
         self._init_ui()
+        
+        # Auto-Lade beim Start (nach kurzer Verzögerung um UI zu initialisieren)
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(500, lambda: self._load_rss_feed(days=30))
     
     def _init_ui(self):
         """Initialisiert die UI-Komponenten."""
@@ -245,25 +249,51 @@ class BlogListPanel(QWidget):
                 # Warnung wenn alle Einträge herausgefiltert wurden
                 if filtered_count == 0 and total_entries_from_feed > 0:
                     status_text += f" ⚠️ Alle Einträge älter als {days} Tage!"
+                    QMessageBox.information(
+                        self,
+                        "Keine Einträge in Zeitraum",
+                        f"Alle {total_entries_from_feed} Einträge vom Feed sind älter als {days} Tage.\n\n"
+                        f"Nutzen Sie 'Ältere Einträge nachladen...' und geben Sie mehr Tage ein "
+                        f"(oder lassen Sie das Feld leer für alle Einträge)."
+                    )
                 
                 self.status_label.setText(status_text)
                 logging.info(f"Nach {days}-Tage-Filter: {filtered_count} Einträge (von {total_entries_from_feed} total, {removed_count} entfernt)")
                 
-                # Warnung wenn der Feed selbst nur wenige Einträge zurückgibt
-                if total_entries_from_feed < 20:
-                    logging.warning(
-                        f"RSS-Feed liefert nur {total_entries_from_feed} Einträge. "
-                        f"Dies ist wahrscheinlich eine Begrenzung des Feed-Servers. "
-                        f"Um mehr Einträge zu sehen, nutzen Sie 'Ältere Einträge nachladen...' (dann ohne Datums-Filter)"
-                    )
+                # Hinweis wenn der Feed selbst nur wenige Einträge zurückgibt
+                if total_entries_from_feed <= 15:
+                    if filtered_count < total_entries_from_feed:
+                        # Einige wurden herausgefiltert - zeige Hinweis
+                        logging.info(
+                            f"RSS-Feed liefert nur {total_entries_from_feed} Einträge (wahrscheinlich Server-Begrenzung). "
+                            f"{filtered_count} innerhalb von {days} Tagen, {removed_count} älter."
+                        )
+                    else:
+                        # Alle Einträge sind innerhalb des Zeitraums
+                        logging.info(
+                            f"RSS-Feed liefert nur {total_entries_from_feed} Einträge (wahrscheinlich Server-Begrenzung). "
+                            f"Alle sind innerhalb der letzten {days} Tage."
+                        )
+                    
+                    # Wenn sehr wenige Einträge, zeige Hinweis-Dialog
+                    if total_entries_from_feed <= 10 and filtered_count <= 10:
+                        reply = QMessageBox.information(
+                            self,
+                            "Hinweis: Feed-Begrenzung",
+                            f"Der RSS-Feed liefert nur {total_entries_from_feed} Einträge.\n\n"
+                            f"Dies ist wahrscheinlich eine Begrenzung auf Server-Seite.\n"
+                            f"Nutzen Sie 'Ältere Einträge nachladen...' um mehr Einträge zu laden "
+                            f"(auch älter als 30 Tage).",
+                            QMessageBox.StandardButton.Ok
+                        )
             else:
                 feed_entries = feed.entries
                 self.status_label.setText(f"Feed: {total_entries_from_feed} Einträge total (keine Datums-Filterung)")
                 logging.info(f"Keine Datums-Filterung: {total_entries_from_feed} Einträge")
                 
-                # Warnung wenn der Feed nur wenige Einträge zurückgibt
-                if total_entries_from_feed < 20:
-                    logging.warning(
+                # Hinweis wenn der Feed nur wenige Einträge zurückgibt
+                if total_entries_from_feed <= 15:
+                    logging.info(
                         f"RSS-Feed liefert nur {total_entries_from_feed} Einträge. "
                         f"Dies ist wahrscheinlich eine Begrenzung des Feed-Servers."
                     )
