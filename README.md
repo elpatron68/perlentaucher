@@ -6,6 +6,14 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 
 ## Features
 
+- **GUI-Anwendung** (neu): Moderne PyQt6-basierte grafische Benutzeroberfläche
+  - Cross-Platform: Windows, Linux, macOS
+  - Einzelnes Executable möglich (via PyInstaller)
+  - Alle Einstellungen als UI-Elemente konfigurierbar
+  - RSS-Feed-Einträge in scrollbarer Liste mit Checkboxen
+  - Selektiver Download von Filmen/Serien
+  - Progress Bars für aktive Downloads
+  - Siehe [GUI-Dokumentation](docs/gui.md) für Details
 - Parst den RSS Feed der Mediathekperlen nach neuen Filmeinträgen.
 - Sucht automatisch nach dem Filmtitel oder Serientitel.
 - Lädt die beste Fassung basierend auf deinen Präferenzen herunter.
@@ -56,6 +64,29 @@ Eine ausführliche Anleitung findest du in der [Quickstart-Dokumentation](docs/q
    ```
 
 ## Nutzung
+
+### GUI-Anwendung
+
+Die einfachste Methode ist die grafische Benutzeroberfläche:
+
+```bash
+# GUI-Abhängigkeiten installieren
+pip install -r requirements-gui.txt
+
+# GUI starten
+python perlentaucher_gui.py
+```
+
+Eine ausführliche Anleitung zur GUI findest du in der [GUI-Dokumentation](docs/gui.md).
+
+**Als Executable:**
+- Windows: `scripts\build_gui_windows.bat`
+- Linux: `./scripts/build_gui_linux.sh`
+- macOS: `./scripts/build_gui_macos.sh`
+
+Das Executable befindet sich nach dem Build in `dist/`.
+
+### Kommandozeilen-Interface
 
 ```bash
 python perlentaucher.py [Optionen]
