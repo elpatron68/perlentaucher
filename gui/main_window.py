@@ -4,9 +4,10 @@ Integriert alle Panels in einem Tab-Widget.
 """
 from PyQt6.QtWidgets import (
     QMainWindow, QTabWidget, QMenuBar, QMenu, QStatusBar, QMessageBox,
-    QDialog, QVBoxLayout, QLabel, QPushButton, QButtonGroup, QRadioButton, QSizePolicy
+    QDialog, QVBoxLayout, QLabel, QPushButton, QButtonGroup, QRadioButton, QSizePolicy,
+    QApplication
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect
 from PyQt6.QtGui import QAction
 from typing import Dict, Optional
 import sys
@@ -37,7 +38,9 @@ class MainWindow(QMainWindow):
     def _init_ui(self):
         """Initialisiert die UI-Komponenten."""
         self.setWindowTitle("Perlentaucher GUI")
-        self.setGeometry(100, 100, 1200, 800)
+        
+        # Lade gespeicherte Fenstergröße und Position
+        self._restore_window_geometry()
         
         # Stelle sicher, dass das Fenster in beide Richtungen resizable ist
         self.setMinimumSize(QSize(800, 600))
@@ -290,7 +293,60 @@ class MainWindow(QMainWindow):
             for entry_id in list(self.download_panel.active_downloads.keys()):
                 self.download_panel._cancel_download(entry_id)
         
+        # Speichere Fenstergröße und Position
+        self._save_window_geometry()
+        
         # Speichere Einstellungen
         self.config_manager.save()
         
         event.accept()
+    
+    def _restore_window_geometry(self):
+        """Stellt die gespeicherte Fenstergröße und Position wieder her."""
+        x = self.config_manager.get('gui_window_x')
+        y = self.config_manager.get('gui_window_y')
+        width = self.config_manager.get('gui_window_width', 1200)
+        height = self.config_manager.get('gui_window_height', 800)
+        
+        # Prüfe ob Werte gültig sind (nicht None und innerhalb des Bildschirms)
+        if x is not None and y is not None:
+            # Prüfe ob Position innerhalb des Bildschirms liegt
+            app = QApplication.instance()
+            if app:
+                screens = app.screens()
+                if screens:
+                    # Verwende primären Bildschirm
+                    screen = screens[0]
+                    screen_geometry = screen.geometry()
+                    
+                    # Stelle sicher, dass Position gültig ist
+                    if (screen_geometry.left() <= x <= screen_geometry.right() and
+                        screen_geometry.top() <= y <= screen_geometry.bottom()):
+                        # Stelle sicher, dass mindestens ein Teil des Fensters sichtbar ist
+                        # (z.B. nicht komplett außerhalb)
+                        if (x + width >= screen_geometry.left() and
+                            y + height >= screen_geometry.top()):
+                            self.setGeometry(x, y, width, height)
+                            return
+        
+        # Fallback: Standard-Größe und Position (zentriert auf Bildschirm)
+        default_width = 1200
+        default_height = 800
+        app = QApplication.instance()
+        if app and app.screens():
+            screen = app.screens()[0]
+            screen_geometry = screen.geometry()
+            x = (screen_geometry.width() - default_width) // 2 + screen_geometry.left()
+            y = (screen_geometry.height() - default_height) // 2 + screen_geometry.top()
+            self.setGeometry(x, y, default_width, default_height)
+        else:
+            # Fallback falls kein Bildschirm gefunden
+            self.setGeometry(100, 100, default_width, default_height)
+    
+    def _save_window_geometry(self):
+        """Speichert die aktuelle Fenstergröße und Position."""
+        geometry = self.geometry()
+        self.config_manager.set('gui_window_x', geometry.x())
+        self.config_manager.set('gui_window_y', geometry.y())
+        self.config_manager.set('gui_window_width', geometry.width())
+        self.config_manager.set('gui_window_height', geometry.height())

@@ -25,7 +25,12 @@ class ConfigManager:
         "omdb_api_key": "",
         "serien_download": "erste",
         "serien_dir": "",
-        "rss_feed_url": "https://nexxtpress.de/author/mediathekperlen/feed/"  # GUI-spezifisch
+        "rss_feed_url": "https://nexxtpress.de/author/mediathekperlen/feed/",  # GUI-spezifisch
+        # GUI-spezifische Fenster-Einstellungen (werden von CLI-Scripts ignoriert)
+        "gui_window_x": None,
+        "gui_window_y": None,
+        "gui_window_width": 1200,
+        "gui_window_height": 800
         # Hinweis: "limit" wurde entfernt - es werden automatisch die letzten 30 Tage geladen
     }
     
@@ -87,9 +92,13 @@ class ConfigManager:
                     for key in self.DEFAULT_CONFIG:
                         if key not in self.config:
                             self.config[key] = self.DEFAULT_CONFIG[key]
-                    # Stelle sicher, dass rss_feed_url vorhanden ist (GUI-spezifisch)
+                    # Stelle sicher, dass GUI-spezifische Felder vorhanden sind
                     if "rss_feed_url" not in self.config:
                         self.config["rss_feed_url"] = self.DEFAULT_CONFIG["rss_feed_url"]
+                    # GUI-spezifische Fenster-Einstellungen
+                    for gui_key in ["gui_window_x", "gui_window_y", "gui_window_width", "gui_window_height"]:
+                        if gui_key not in self.config:
+                            self.config[gui_key] = self.DEFAULT_CONFIG[gui_key]
             except (json.JSONDecodeError, IOError) as e:
                 print(f"Fehler beim Laden der Konfiguration: {e}")
                 print("Verwende Standard-Konfiguration.")
@@ -115,13 +124,13 @@ class ConfigManager:
             if config_dir and not os.path.exists(config_dir):
                 os.makedirs(config_dir, exist_ok=True)
             
-            # Erstelle eine Kopie ohne GUI-spezifische Felder für Kompatibilität
+            # Erstelle eine Kopie für das Speichern
+            # GUI-spezifische Felder (gui_window_*, rss_feed_url) werden mitgespeichert,
+            # aber von Quickstart-Scripts ignoriert (JSON.parse() ignoriert unbekannte Keys)
             save_config = self.config.copy()
-            # Entferne rss_feed_url (GUI-spezifisch, nicht in Quickstart-Config)
-            # Aber behalte es intern für GUI-Nutzung
-            if "rss_feed_url" in save_config:
-                # Speichere es separat oder behalte es nur intern
-                pass  # Wir speichern es mit, aber Quickstart ignoriert unbekannte Keys
+            
+            # Konvertiere None-Werte für JSON-Kompatibilität (None wird als null gespeichert)
+            # JSON unterstützt null, aber Python None wird automatisch zu null konvertiert
             
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(save_config, f, indent=2, ensure_ascii=False)
