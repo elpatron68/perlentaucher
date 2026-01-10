@@ -122,13 +122,58 @@ if ($githubRemote) {
                     
                     # Versuche GitHub Release zu erstellen (triggert Workflow mit release event)
                     Write-Host "Erstelle GitHub Release für automatischen Asset-Upload..." -ForegroundColor Cyan
-                    $releaseNotesFile = "RELEASE_NOTES_$versionNumber.md"
+                    $releaseNotesDir = "docs/release-notes"
+                    $releaseNotesFile = Join-Path $releaseNotesDir "RELEASE_NOTES_$versionNumber.md"
                     $githubReleaseBody = ""
+                    
+                    # Stelle sicher, dass das Verzeichnis existiert
+                    if (-not (Test-Path $releaseNotesDir)) {
+                        New-Item -ItemType Directory -Path $releaseNotesDir -Force | Out-Null
+                    }
                     
                     if (Test-Path $releaseNotesFile) {
                         $githubReleaseBody = Get-Content $releaseNotesFile -Raw -Encoding UTF8
                     } else {
-                        $githubReleaseBody = "Release $newTag`n`nSiehe [Changelog](https://codeberg.org/$repoOwner/$repoName/commits/$newTag) für Details."
+                        # Erstelle automatisch Template-Datei für Release-Notes
+                        Write-Host "Erstelle Release-Notes Template: $releaseNotesFile" -ForegroundColor Gray
+                        # Extrahiere Codeberg Repository-Informationen für Template
+                        $codebergUrl = git remote get-url origin 2>&1
+                        $codebergRepo = "elpatron/perlentaucher"  # Fallback
+                        if ($codebergUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
+                            $codebergRepo = "$($matches[1])/$($matches[2] -replace '\.git$', '')"
+                        }
+                        $template = @"
+# Release $newTag
+
+## Neue Features
+
+<!-- Hier neue Features beschreiben -->
+
+## Verbesserungen
+
+<!-- Hier Verbesserungen beschreiben -->
+
+## Bugfixes
+
+<!-- Hier Bugfixes beschreiben -->
+
+## Technische Änderungen
+
+<!-- Hier technische Änderungen beschreiben -->
+
+## Bekannte Einschränkungen
+
+<!-- Hier bekannte Einschränkungen beschreiben -->
+
+---
+
+**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$codebergRepo/commits/$newTag)
+"@
+                        Set-Content -Path $releaseNotesFile -Value $template -Encoding UTF8
+                        Write-Host "⚠ Release-Notes Template wurde erstellt. Bitte bearbeite die Datei vor dem Release:" -ForegroundColor Yellow
+                        Write-Host "  $releaseNotesFile" -ForegroundColor Gray
+                        Write-Host "ℹ Verwende Standard Release-Notes für GitHub Release." -ForegroundColor Gray
+                        $githubReleaseBody = "Release $newTag`n`nSiehe [Changelog](https://codeberg.org/$codebergRepo/commits/$newTag) für Details."
                     }
                     
                     # Erstelle GitHub Release (triggert automatisch den Workflow)
@@ -234,13 +279,51 @@ if ($remoteUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
     
     if ($codebergToken) {
         # Lese Release-Notes aus Datei, falls vorhanden
-        $releaseNotesFile = "RELEASE_NOTES_$versionNumber.md"
+        $releaseNotesDir = "docs/release-notes"
+        $releaseNotesFile = Join-Path $releaseNotesDir "RELEASE_NOTES_$versionNumber.md"
         $releaseBody = ""
+        
+        # Stelle sicher, dass das Verzeichnis existiert
+        if (-not (Test-Path $releaseNotesDir)) {
+            New-Item -ItemType Directory -Path $releaseNotesDir -Force | Out-Null
+        }
         
         if (Test-Path $releaseNotesFile) {
             Write-Host "Lese Release-Notes aus: $releaseNotesFile" -ForegroundColor Gray
             $releaseBody = Get-Content $releaseNotesFile -Raw -Encoding UTF8
         } else {
+            # Erstelle automatisch Template-Datei für Release-Notes
+            Write-Host "Erstelle Release-Notes Template: $releaseNotesFile" -ForegroundColor Gray
+            $template = @"
+# Release $newTag
+
+## Neue Features
+
+<!-- Hier neue Features beschreiben -->
+
+## Verbesserungen
+
+<!-- Hier Verbesserungen beschreiben -->
+
+## Bugfixes
+
+<!-- Hier Bugfixes beschreiben -->
+
+## Technische Änderungen
+
+<!-- Hier technische Änderungen beschreiben -->
+
+## Bekannte Einschränkungen
+
+<!-- Hier bekannte Einschränkungen beschreiben -->
+
+---
+
+**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$repoOwner/$repoName/commits/$newTag)
+"@
+            Set-Content -Path $releaseNotesFile -Value $template -Encoding UTF8
+            Write-Host "⚠ Release-Notes Template wurde erstellt. Bitte bearbeite die Datei vor dem Release:" -ForegroundColor Yellow
+            Write-Host "  $releaseNotesFile" -ForegroundColor Gray
             # Fallback: Standard Release-Notes
             $releaseBody = "Release $newTag`n`nSiehe [Changelog](https://codeberg.org/$repoOwner/$repoName/commits/$newTag) für Details."
         }

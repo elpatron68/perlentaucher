@@ -106,15 +106,58 @@ if git remote | grep -q "^github$"; then
                 # Erstelle GitHub Release (triggert automatisch den Workflow via release event)
                 echo ""
                 echo "Erstelle GitHub Release für automatischen Asset-Upload..."
-                release_notes_file="RELEASE_NOTES_${version_number}.md"
+                release_notes_dir="docs/release-notes"
+                release_notes_file="$release_notes_dir/RELEASE_NOTES_${version_number}.md"
                 github_release_body=""
+                
+                # Stelle sicher, dass das Verzeichnis existiert
+                mkdir -p "$release_notes_dir"
+                
+                # Extrahiere Codeberg Repository-Informationen für Template
+                codeberg_url=$(git remote get-url origin 2>&1 || echo "")
+                codeberg_repo="elpatron/perlentaucher"  # Fallback
+                if [[ $codeberg_url =~ codeberg\.org[/:]([^/]+)/([^/]+?)(\.git)?$ ]]; then
+                    codeberg_repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]%.git}"
+                fi
                 
                 if [ -f "$release_notes_file" ]; then
                     github_release_body=$(cat "$release_notes_file")
                 else
+                    # Erstelle automatisch Template-Datei für Release-Notes
+                    echo "Erstelle Release-Notes Template: $release_notes_file"
+                    cat > "$release_notes_file" <<EOF
+# Release $new_tag
+
+## Neue Features
+
+<!-- Hier neue Features beschreiben -->
+
+## Verbesserungen
+
+<!-- Hier Verbesserungen beschreiben -->
+
+## Bugfixes
+
+<!-- Hier Bugfixes beschreiben -->
+
+## Technische Änderungen
+
+<!-- Hier technische Änderungen beschreiben -->
+
+## Bekannte Einschränkungen
+
+<!-- Hier bekannte Einschränkungen beschreiben -->
+
+---
+
+**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$codeberg_repo/commits/$new_tag)
+EOF
+                    echo "⚠ Release-Notes Template wurde erstellt. Bitte bearbeite die Datei vor dem Release:"
+                    echo "  $release_notes_file"
                     github_release_body="Release $new_tag
 
-Siehe [Changelog](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag) für Details."
+Siehe [Changelog](https://codeberg.org/$codeberg_repo/commits/$new_tag) für Details."
+                    echo "ℹ Verwende Standard Release-Notes für GitHub Release."
                 fi
                 
                 # Erstelle GitHub Release
@@ -223,13 +266,48 @@ if [[ $remote_url =~ codeberg\.org[/:]([^/]+)/([^/]+?)(\.git)?$ ]]; then
     
     if [ -n "$codeberg_token" ]; then
         # Lese Release-Notes aus Datei, falls vorhanden
-        release_notes_file="RELEASE_NOTES_${version_number}.md"
+        release_notes_dir="docs/release-notes"
+        release_notes_file="$release_notes_dir/RELEASE_NOTES_${version_number}.md"
         release_body=""
+        
+        # Stelle sicher, dass das Verzeichnis existiert
+        mkdir -p "$release_notes_dir"
         
         if [ -f "$release_notes_file" ]; then
             echo "Lese Release-Notes aus: $release_notes_file"
             release_body=$(cat "$release_notes_file")
         else
+            # Erstelle automatisch Template-Datei für Release-Notes
+            echo "Erstelle Release-Notes Template: $release_notes_file"
+            cat > "$release_notes_file" <<EOF
+# Release $new_tag
+
+## Neue Features
+
+<!-- Hier neue Features beschreiben -->
+
+## Verbesserungen
+
+<!-- Hier Verbesserungen beschreiben -->
+
+## Bugfixes
+
+<!-- Hier Bugfixes beschreiben -->
+
+## Technische Änderungen
+
+<!-- Hier technische Änderungen beschreiben -->
+
+## Bekannte Einschränkungen
+
+<!-- Hier bekannte Einschränkungen beschreiben -->
+
+---
+
+**Vollständige Änderungsliste:** Siehe [Git Commits](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag)
+EOF
+            echo "⚠ Release-Notes Template wurde erstellt. Bitte bearbeite die Datei vor dem Release:"
+            echo "  $release_notes_file"
             # Fallback: Standard Release-Notes
             release_body="Release $new_tag
 
