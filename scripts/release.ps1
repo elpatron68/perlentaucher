@@ -79,6 +79,94 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Pushe master Branch..." -ForegroundColor Cyan
 git push origin master
 
+# Push zu GitHub (falls GitHub Remote vorhanden)
+Write-Host "`nPrüfe GitHub Remote..." -ForegroundColor Cyan
+$githubRemote = git remote | Select-String -Pattern "^github$"
+if ($githubRemote) {
+    Write-Host "GitHub Remote gefunden. Pushe zu GitHub..." -ForegroundColor Cyan
+    
+    # Pushe Tag zu GitHub
+    Write-Host "Pushe Tag zu GitHub: $newTag" -ForegroundColor Gray
+    git push github $newTag
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "⚠ Warnung: Fehler beim Pushen des Tags zu GitHub" -ForegroundColor Yellow
+    } else {
+        Write-Host "✓ Tag erfolgreich zu GitHub gepusht" -ForegroundColor Green
+    }
+    
+    # Pushe master Branch zu GitHub
+    Write-Host "Pushe master Branch zu GitHub..." -ForegroundColor Gray
+    git push github master
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "⚠ Warnung: Fehler beim Pushen des master Branches zu GitHub" -ForegroundColor Yellow
+    } else {
+        Write-Host "✓ master Branch erfolgreich zu GitHub gepusht" -ForegroundColor Green
+    }
+    
+    # Starte GitHub Actions Workflow für GUI Builds
+    Write-Host "`nStarte GitHub Actions Workflow für Cross-Platform GUI Builds..." -ForegroundColor Cyan
+    
+    # Prüfe ob gh CLI verfügbar ist
+    $ghAvailable = Get-Command gh -ErrorAction SilentlyContinue
+    if ($ghAvailable) {
+        try {
+            # Prüfe ob authentifiziert
+            $null = gh auth status 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                # Extrahiere GitHub Repository-Informationen
+                $githubUrl = git remote get-url github
+                if ($githubUrl -match 'github\.com[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
+                    $githubRepo = "$($matches[1])/$($matches[2] -replace '\.git$', '')"
+                    
+                    Write-Host "Starte Workflow für Repository: $githubRepo" -ForegroundColor Gray
+                    gh workflow run build-gui.yml --ref master --repo $githubRepo
+                    
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host "✓ GitHub Actions Workflow erfolgreich gestartet!" -ForegroundColor Green
+                        
+                        # Warte kurz und hole Workflow-Run Status
+                        Start-Sleep -Seconds 3
+                        $latestRunOutput = gh run list --workflow build-gui.yml --repo $githubRepo --limit 1 --json databaseId,status,url,createdAt 2>&1
+                        if ($LASTEXITCODE -eq 0 -and $latestRunOutput) {
+                            $latestRun = $latestRunOutput | ConvertFrom-Json
+                        
+                            if ($latestRun) {
+                                Write-Host "  Run ID: $($latestRun.databaseId)" -ForegroundColor Gray
+                                Write-Host "  Status: $($latestRun.status)" -ForegroundColor Gray
+                                Write-Host "  URL: $($latestRun.url)" -ForegroundColor Gray
+                                Write-Host "`nVerfolge Build-Status mit:" -ForegroundColor Cyan
+                                Write-Host "  gh run watch $($latestRun.databaseId) --repo $githubRepo" -ForegroundColor Gray
+                                Write-Host "  Oder öffne: $($latestRun.url)" -ForegroundColor Gray
+                            }
+                        }
+                    } else {
+                        Write-Host "⚠ Warnung: Workflow konnte nicht gestartet werden" -ForegroundColor Yellow
+                        Write-Host "  Versuche manuell: gh workflow run build-gui.yml --ref master --repo $githubRepo" -ForegroundColor Gray
+                    }
+                } else {
+                    Write-Host "⚠ Warnung: Konnte GitHub Repository-Informationen nicht extrahieren" -ForegroundColor Yellow
+                    Write-Host "  Remote URL: $githubUrl" -ForegroundColor Gray
+                }
+            } else {
+                Write-Host "⚠ Warnung: GitHub CLI nicht authentifiziert" -ForegroundColor Yellow
+                Write-Host "  Bitte authentifiziere dich mit: gh auth login" -ForegroundColor Gray
+            }
+        }
+        catch {
+            Write-Host "⚠ Warnung: Fehler beim Starten des GitHub Actions Workflows:" -ForegroundColor Yellow
+            Write-Host "  $($_.Exception.Message)" -ForegroundColor Gray
+        }
+    } else {
+        Write-Host "⚠ Warnung: GitHub CLI (gh) nicht verfügbar" -ForegroundColor Yellow
+        Write-Host "  Installiere GitHub CLI oder starte Workflow manuell auf GitHub.com" -ForegroundColor Gray
+    }
+} else {
+    Write-Host "ℹ GitHub Remote nicht gefunden. Überspringe GitHub Push und Workflow-Start." -ForegroundColor Gray
+    Write-Host "  Füge GitHub Remote hinzu mit: git remote add github https://github.com/USERNAME/REPO.git" -ForegroundColor Gray
+}
+
 # Erstelle Release über Codeberg API
 Write-Host "`nErstelle Release über Codeberg API..." -ForegroundColor Cyan
 
