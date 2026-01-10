@@ -107,8 +107,38 @@ if git remote | grep -q "^github$"; then
                 if gh workflow run build-gui.yml --ref master --repo "$github_repo" 2>/dev/null; then
                     echo "✓ GitHub Actions Workflow erfolgreich gestartet!"
                     
+                    # Versuche GitHub Release zu erstellen (triggert Workflow mit release event)
+                    echo ""
+                    echo "Erstelle GitHub Release für automatischen Asset-Upload..."
+                    release_notes_file="RELEASE_NOTES_${version_number}.md"
+                    github_release_body=""
+                    
+                    if [ -f "$release_notes_file" ]; then
+                        github_release_body=$(cat "$release_notes_file")
+                    else
+                        github_release_body="Release $new_tag
+
+Siehe [Changelog](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag) für Details."
+                    fi
+                    
+                    # Erstelle GitHub Release
+                    if gh release create "$new_tag" --repo "$github_repo" --title "Release $new_tag" --notes "$github_release_body" --target master 2>/dev/null; then
+                        echo "✓ GitHub Release erfolgreich erstellt!"
+                        echo "  Build-Artefakte werden automatisch hochgeladen, wenn Builds abgeschlossen sind."
+                        echo "  Artefakte werden auch automatisch zu Codeberg hochgeladen (falls CODEBERG_TOKEN konfiguriert)."
+                    else
+                        # Prüfe ob Release bereits existiert
+                        if gh release view "$new_tag" --repo "$github_repo" >/dev/null 2>&1; then
+                            echo "ℹ GitHub Release für Tag $new_tag existiert bereits."
+                        else
+                            echo "⚠ Warnung: GitHub Release konnte nicht erstellt werden"
+                            echo "  Du kannst es manuell erstellen: gh release create $new_tag --repo $github_repo"
+                            echo "  Oder auf GitHub.com: https://github.com/$github_repo/releases/new"
+                        fi
+                    fi
+                    
                     # Warte kurz und hole Workflow-Run Status
-                    sleep 3
+                    sleep 5
                     latest_run=$(gh run list --workflow build-gui.yml --repo "$github_repo" --limit 1 --json databaseId,status,url,createdAt 2>/dev/null)
                     
                     if [ -n "$latest_run" ]; then
@@ -117,6 +147,8 @@ if git remote | grep -q "^github$"; then
                         run_url=$(echo "$latest_run" | grep -o '"url":"[^"]*"' | head -1 | cut -d'"' -f4)
                         
                         if [ -n "$run_id" ]; then
+                            echo ""
+                            echo "Workflow-Status:"
                             echo "  Run ID: $run_id"
                             echo "  Status: $run_status"
                             if [ -n "$run_url" ]; then
@@ -133,6 +165,7 @@ if git remote | grep -q "^github$"; then
                 else
                     echo "⚠ Warnung: Workflow konnte nicht gestartet werden"
                     echo "  Versuche manuell: gh workflow run build-gui.yml --ref master --repo $github_repo"
+                    echo "  Oder erstelle GitHub Release manuell: gh release create $new_tag --repo $github_repo"
                 fi
             else
                 echo "⚠ Warnung: Konnte GitHub Repository-Informationen nicht extrahieren"

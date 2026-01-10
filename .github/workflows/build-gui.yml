@@ -322,7 +322,7 @@ jobs:
           echo "Release assets prepared:"
           ls -lh release-assets/
 
-      - name: Upload release assets
+      - name: Upload release assets to GitHub
         uses: softprops/action-gh-release@v2
         with:
           files: release-assets/*
@@ -330,3 +330,135 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-to-codeberg:
+    name: Upload Assets to Codeberg
+    needs: release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && secrets.CODEBERG_TOKEN != ''
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare assets for upload
+        id: prepare
+        run: |
+          mkdir -p codeberg-assets
+          # Kopiere alle Build-Artefakte (ZIP/TAR.GZ Dateien bevorzugen)
+          find artifacts -type f \( -name "*.exe.zip" -o -name "*.tar.gz" -o -name "*.zip" -o -name "*.exe" -o -name "PerlentaucherGUI-*" \) | while read file; do
+            filename=$(basename "$file")
+            cp "$file" "codeberg-assets/$filename"
+          done
+          
+          echo "Assets prepared for Codeberg upload:"
+          ls -lh codeberg-assets/
+          
+          # Zähle Dateien
+          FILE_COUNT=$(find codeberg-assets -type f | wc -l)
+          echo "count=$FILE_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Get Codeberg Release ID
+        id: get-release
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+          CODEBERG_REPO: ${{ secrets.CODEBERG_REPO_OWNER || 'elpatron/perlentaucher' }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          echo "Looking for release with tag: $RELEASE_TAG"
+          echo "Repository: $CODEBERG_REPO"
+          
+          # Hole Release-ID über Tag
+          RELEASE_RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: token $CODEBERG_TOKEN" \
+            "https://codeberg.org/api/v1/repos/$CODEBERG_REPO/releases/tags/$RELEASE_TAG" 2>/dev/null)
+          
+          HTTP_CODE=$(echo "$RELEASE_RESPONSE" | tail -n1)
+          RELEASE_JSON=$(echo "$RELEASE_RESPONSE" | head -n-1)
+          
+          if [ "$HTTP_CODE" = "200" ] && [ -n "$RELEASE_JSON" ] && [ "$RELEASE_JSON" != "null" ]; then
+            RELEASE_ID=$(echo "$RELEASE_JSON" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
+            if [ -n "$RELEASE_ID" ]; then
+              echo "✓ Found Codeberg release ID: $RELEASE_ID"
+              echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
+              echo "release_url=$(echo "$RELEASE_JSON" | grep -o '"html_url":"[^"]*"' | cut -d'"' -f4)" >> $GITHUB_OUTPUT
+            else
+              echo "⚠ Could not extract release ID from response"
+              exit 1
+            fi
+          else
+            echo "⚠ Release not found on Codeberg (HTTP $HTTP_CODE)"
+            echo "Response: $RELEASE_JSON"
+            echo "ℹ Make sure the release was created on Codeberg first (via release script)"
+            echo "ℹ The release script should create the release before triggering GitHub Actions"
+            exit 1
+          fi
+
+      - name: Upload assets to Codeberg
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+          CODEBERG_REPO: ${{ secrets.CODEBERG_REPO_OWNER || 'elpatron/perlentaucher' }}
+          RELEASE_ID: ${{ steps.get-release.outputs.release_id }}
+        run: |
+          if [ -z "$RELEASE_ID" ]; then
+            echo "⚠ No release ID found, skipping upload"
+            exit 1
+          fi
+          
+          if [ "${{ steps.prepare.outputs.count }}" = "0" ]; then
+            echo "⚠ No assets found to upload"
+            exit 1
+          fi
+          
+          echo "Uploading assets to Codeberg release ID: $RELEASE_ID"
+          UPLOADED=0
+          FAILED=0
+          
+          for file in codeberg-assets/*; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              echo "Uploading: $filename"
+              
+              # Codeberg/Gitea API: Upload asset
+              UPLOAD_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+                -H "Authorization: token $CODEBERG_TOKEN" \
+                -F "attachment=@$file;filename=$filename" \
+                "https://codeberg.org/api/v1/repos/$CODEBERG_REPO/releases/$RELEASE_ID/assets" 2>/dev/null)
+              
+              HTTP_CODE=$(echo "$UPLOAD_RESPONSE" | tail -n1)
+              
+              if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+                echo "  ✓ Successfully uploaded: $filename"
+                UPLOADED=$((UPLOADED + 1))
+              else
+                echo "  ✗ Failed to upload: $filename (HTTP $HTTP_CODE)"
+                echo "    Response: $(echo "$UPLOAD_RESPONSE" | head -n-1)"
+                FAILED=$((FAILED + 1))
+              fi
+            fi
+          done
+          
+          echo ""
+          echo "Upload summary:"
+          echo "  ✓ Uploaded: $UPLOADED files"
+          echo "  ✗ Failed: $FAILED files"
+          
+          if [ "$FAILED" -gt 0 ]; then
+            echo "⚠ Some uploads failed. Check the logs above."
+            exit 1
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Codeberg Upload Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.get-release.outputs.release_url }}" ]; then
+            echo "✅ Assets uploaded to Codeberg Release: [${{ steps.get-release.outputs.release_url }}]" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠ Release not found on Codeberg. Make sure the release was created first." >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Uploaded ${{ steps.prepare.outputs.count }} assets to Codeberg." >> $GITHUB_STEP_SUMMARY
