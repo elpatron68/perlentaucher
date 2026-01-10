@@ -11,8 +11,6 @@ on:
       - 'build.spec'
       - 'requirements*.txt'
       - '.github/workflows/build-gui.yml'
-    # Ignoriere Sync-Commits um Endlosschleife zu vermeiden
-    if: github.event.head_commit.message != 'Sync from Codeberg' && github.event.head_commit.message != '[skip ci]'
   pull_request:
     branches:
       - main
@@ -30,6 +28,8 @@ jobs:
   build:
     name: Build GUI (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Ignoriere Sync-Commits um Endlosschleife zu vermeiden
+    if: github.event.head_commit.message != 'Sync from Codeberg' && github.event.head_commit.message != '[skip ci]'
     strategy:
       fail-fast: false
       matrix:

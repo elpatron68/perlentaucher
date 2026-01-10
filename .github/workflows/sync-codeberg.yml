@@ -10,15 +10,13 @@ on:
     branches:
       - main
       - master
-    # Nur ausführen, wenn nicht von Sync-Workflow selbst getriggert
-    if: github.event.head_commit.message != 'Sync from Codeberg' && github.event.head_commit.message != '[skip ci]'
 
 jobs:
   sync:
     name: Sync Codeberg → GitHub
     runs-on: ubuntu-latest
-    # Nur ausführen, wenn nicht gerade synchronisiert wird
-    if: github.event.head_commit.message != '[skip ci]' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Nur ausführen, wenn nicht von Sync-Workflow selbst getriggert
+    if: github.event.head_commit.message != 'Sync from Codeberg' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.head_commit.message != '[skip ci]')
     
     steps:
       - name: Checkout GitHub repository
