@@ -13,24 +13,46 @@ import sys
 
 block_cipher = None
 
+# Sammle System-Bibliotheken für Linux (SSL/TLS)
+# PyInstaller sollte diese automatisch finden, aber wir können explizit hinzufügen
+collect_binaries = []
+collect_datas = []
+
+# Hinweis: PyInstaller findet normalerweise automatisch SSL/Crypto-Bibliotheken
+# via certifi. Falls Probleme auftreten, können hier manuell Bibliotheken
+# hinzugefügt werden, z.B.:
+# if sys.platform == 'linux':
+#     collect_binaries.append(('/usr/lib64/libssl.so.3', '.'))
+#     collect_binaries.append(('/usr/lib64/libcrypto.so.3', '.'))
+
 # Alle Dateien und Daten die eingebunden werden sollen
 a = Analysis(
     ['perlentaucher_gui.py'],
     pathex=[],
-    binaries=[],
-    datas=[
+    binaries=collect_binaries,
+    datas=collect_datas + [
         # Icons/Assets falls vorhanden
         # ('assets/*.png', 'assets'),
     ],
     hiddenimports=[
         'feedparser',
         'requests',
+        'requests.packages.urllib3',
+        'requests.packages.urllib3.util.ssl_',
+        'urllib3',
+        'urllib3.util.ssl_',
+        'certifi',
+        'certifi.core',
+        'ssl',
+        '_ssl',
+        '_socket',
         'apprise',
         'semver',
         'PyQt6',
         'PyQt6.QtCore',
         'PyQt6.QtWidgets',
         'PyQt6.QtGui',
+        'PyQt6.QtNetwork',
         'perlentaucher',  # Import des Core-Moduls
     ],
     hookspath=[],

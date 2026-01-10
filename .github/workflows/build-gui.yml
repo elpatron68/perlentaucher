@@ -36,7 +36,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-gui.txt
-          pip install flake8 coverage
+          pip install flake8
+          # Installiere GUI-Test-Dependencies nur wenn PyQt6 verfügbar ist
+          pip install -r requirements-test-gui.txt 2>/dev/null || echo "GUI-Test-Dependencies übersprungen (PyQt6 nicht verfügbar)"
       
       - name: Linting mit flake8
         run: |
@@ -61,25 +63,15 @@ jobs:
           echo "=== Test: Dry-run ==="
           python perlentaucher.py --limit 1 --loglevel DEBUG --download-dir /tmp/test_downloads || true
       
-      - name: Run Coverage Analysis
+      - name: Run Unit Tests
         run: |
-          echo "=== Coverage Analysis ==="
-          # Starte Coverage-Sammlung
-          coverage run --source=. perlentaucher.py --help > /dev/null 2>&1 || true
-          coverage run --source=. -a perlentaucher.py --limit 1 --loglevel DEBUG --download-dir /tmp/test_downloads 2>&1 | head -50 || true
-          
-          # Zeige Coverage-Report
-          echo ""
-          echo "Coverage Report:"
-          coverage report --show-missing --skip-empty || true
-          
-          # Erstelle XML-Report für Codecov
-          coverage xml -o coverage.xml || true
-          
-          # Zeige Coverage-Zusammenfassung
-          echo ""
-          echo "Coverage Summary:"
-          coverage report --format=markdown || true
+          echo "=== Running Unit Tests ==="
+          pytest tests/ -v --tb=short --ignore=tests/test_gui_components.py -m "not gui and not slow and not network" || true
+      
+      - name: Run Tests with Coverage
+        run: |
+          echo "=== Running Tests with Coverage ==="
+          pytest tests/ -v --cov=. --cov=perlentaucher --cov=gui --cov-report=term-missing --cov-report=xml --cov-report=html --ignore=tests/test_gui_components.py -m "not gui and not slow and not network" || true
       
       - name: Upload Coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -91,6 +83,14 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
+      
+      - name: Upload Coverage HTML Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report-${{ matrix.python-version }}
+          path: htmlcov/
+          retention-days: 7
       
       - name: Tests abgeschlossen
         run: |

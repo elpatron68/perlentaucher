@@ -1,0 +1,4 @@
+# Optionale Test-Dependencies für GUI-Tests
+# Nur installieren wenn PyQt6 verfügbar ist
+-r requirements.txt
+pytest-qt>=4.2.0

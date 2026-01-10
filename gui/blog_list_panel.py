@@ -230,9 +230,89 @@ class BlogListPanel(QWidget):
             from PyQt6.QtWidgets import QApplication
             QApplication.processEvents()
             
-            # Parse RSS Feed - versuche zuerst mit erhöhtem Limit (falls Parameter hinzugefügt wurde)
-            feed = feedparser.parse(rss_url_with_limit)
-            feed_with_limit_count = len(feed.entries)
+            # Parse RSS Feed - verwende requests für besseres SSL-Handling
+            # feedparser.parse() kann direkt URLs laden, aber nutzt urllib
+            # Stattdessen laden wir mit requests (nutzt certifi) und parsen dann
+            try:
+                import requests
+                import certifi
+                
+                # Lade Feed mit requests für besseres SSL/CA-Zertifikate-Handling
+                response = requests.get(rss_url_with_limit, timeout=10, verify=True)
+                response.raise_for_status()
+                # Parse den Feed-Inhalt mit feedparser
+                feed = feedparser.parse(response.content)
+            except ImportError:
+                # Fallback: Direkt mit feedparser (ohne requests)
+                feed = feedparser.parse(rss_url_with_limit)
+            except requests.exceptions.SSLError as e:
+                error_msg = f"SSL-Fehler beim Laden des RSS-Feeds: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.status_label.setText(f"Fehler: SSL-Problem")
+                QMessageBox.critical(
+                    self,
+                    "SSL-Fehler",
+                    f"{error_msg}\n\n"
+                    f"Mögliche Lösungen:\n"
+                    f"- CA-Zertifikate installieren:\n"
+                    f"  Fedora/RHEL: sudo dnf install ca-certificates\n"
+                    f"- System-Bibliotheken aktualisieren:\n"
+                    f"  sudo dnf update openssl\n"
+                    f"- Prüfe ob certifi installiert ist:\n"
+                    f"  pip install certifi"
+                )
+                self.load_rss_btn.setEnabled(True)
+                self.refresh_btn.setEnabled(True)
+                self.load_older_btn.setEnabled(True)
+                return
+            except requests.exceptions.RequestException as e:
+                error_msg = f"Netzwerkfehler beim Laden des RSS-Feeds: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.status_label.setText(f"Fehler: Netzwerkproblem")
+                QMessageBox.critical(
+                    self,
+                    "Netzwerkfehler",
+                    f"{error_msg}\n\n"
+                    f"Mögliche Ursachen:\n"
+                    f"- Keine Internetverbindung\n"
+                    f"- Firewall blockiert Verbindung\n"
+                    f"- Feed-URL ist ungültig"
+                )
+                self.load_rss_btn.setEnabled(True)
+                self.refresh_btn.setEnabled(True)
+                self.load_older_btn.setEnabled(True)
+                return
+            except Exception as e:
+                error_msg = f"Fehler beim Laden des RSS-Feeds: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.status_label.setText(f"Fehler: {error_msg}")
+                QMessageBox.critical(
+                    self, 
+                    "Fehler beim Laden des RSS-Feeds",
+                    f"Der RSS-Feed konnte nicht geladen werden:\n\n{error_msg}\n\n"
+                    f"Mögliche Ursachen:\n"
+                    f"- Netzwerkverbindung fehlt\n"
+                    f"- SSL-Zertifikate fehlen\n"
+                    f"- Feed-URL ist ungültig\n\n"
+                    f"Details siehe Log."
+                )
+                self.load_rss_btn.setEnabled(True)
+                self.refresh_btn.setEnabled(True)
+                self.load_older_btn.setEnabled(True)
+                return
+            
+            # Prüfe ob Feed geladen wurde (feedparser gibt leeren Feed bei Fehlern zurück)
+            if not hasattr(feed, 'entries') or len(feed.entries) == 0:
+                error_msg = "RSS-Feed ist leer oder konnte nicht geparst werden"
+                logging.warning(error_msg)
+                self.status_label.setText(error_msg)
+                QMessageBox.warning(self, "Warnung", error_msg)
+                self.load_rss_btn.setEnabled(True)
+                self.refresh_btn.setEnabled(True)
+                self.load_older_btn.setEnabled(True)
+                return
+            
+            feed_with_limit_count = len(feed.entries) if hasattr(feed, 'entries') else 0
             
             # Falls Parameter hinzugefügt wurde, vergleiche mit Original-URL
             if rss_url_with_limit != rss_url:

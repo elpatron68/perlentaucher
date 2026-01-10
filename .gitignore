@@ -15,3 +15,13 @@ build/
 dist/
 *.spec.bak
 *.egg-info/
+
+# Test coverage
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.pytest_cache/
+coverage.xml
+*.cover
+.hypothesis/
