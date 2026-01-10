@@ -12,16 +12,21 @@
 
 Gehe zu: **GitHub Repository → Settings → Secrets and variables → Actions**
 
+> **Wichtig**: Verwende **Repository secrets** (klicke auf "New repository secret"), nicht Environment secrets!
+
 #### Secret 1: CODEBERG_TOKEN (erforderlich)
+- **Typ**: Repository Secret
 - **Name**: `CODEBERG_TOKEN`
 - **Value**: Dein Codeberg Personal Access Token
 - **Erstellen**:
-  1. Öffne https://codeberg.org/user/settings/applications
-  2. Klicke "Generate New Token"
-  3. Scope: `repo` (für private Repos) oder `public_repo` (für öffentliche Repos)
-  4. Kopiere den Token und füge ihn als Secret hinzu
+  1. Klicke auf **"New repository secret"**
+  2. Öffne https://codeberg.org/user/settings/applications
+  3. Klicke "Generate New Token"
+  4. Scope: `repo` (für private Repos) oder `public_repo` (für öffentliche Repos)
+  5. Kopiere den Token und füge ihn als Repository Secret hinzu
 
 #### Secret 2: CODEBERG_REPO_OWNER (optional)
+- **Typ**: Repository Secret
 - **Name**: `CODEBERG_REPO_OWNER`
 - **Value**: `elpatron/perlentaucher` (Standard-Wert, nur nötig wenn abweichend)
 

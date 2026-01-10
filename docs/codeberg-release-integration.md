@@ -14,18 +14,23 @@ Diese Anleitung beschreibt, wie die Build-Artefakte aus der GitHub Actions Pipel
 
 ### 1. GitHub Secrets konfigurieren
 
-Gehe zu deinem GitHub Repository → **Settings** → **Secrets and variables** → **Actions** und füge folgende Secrets hinzu:
+Gehe zu deinem GitHub Repository → **Settings** → **Secrets and variables** → **Actions** und füge folgende **Repository Secrets** hinzu:
+
+> **Wichtig**: Verwende **Repository secrets** (nicht Environment secrets), da der Workflow direkt auf `secrets.CODEBERG_TOKEN` zugreift.
 
 #### CODEBERG_TOKEN (erforderlich)
+- **Typ**: Repository Secret (nicht Environment Secret)
 - **Name**: `CODEBERG_TOKEN`
 - **Value**: Dein Codeberg Personal Access Token
 - **Erstellen**:
-  1. Gehe zu https://codeberg.org/user/settings/applications
-  2. Klicke auf "Generate New Token"
-  3. Wähle Scope: `repo` (für private Repos) oder `public_repo` (für öffentliche Repos)
-  4. Kopiere den Token
+  1. Klicke auf **"New repository secret"** (nicht "New environment secret")
+  2. Gehe zu https://codeberg.org/user/settings/applications
+  3. Klicke auf "Generate New Token"
+  4. Wähle Scope: `repo` (für private Repos) oder `public_repo` (für öffentliche Repos)
+  5. Kopiere den Token und füge ihn als Repository Secret hinzu
 
 #### CODEBERG_REPO_OWNER (optional)
+- **Typ**: Repository Secret (nicht Environment Secret)
 - **Name**: `CODEBERG_REPO_OWNER`
 - **Value**: `elpatron/perlentaucher` (Standard-Wert, wenn nicht gesetzt)
 - **Hinweis**: Nur nötig, wenn dein Repository einen anderen Namen/Owner hat
