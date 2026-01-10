@@ -468,9 +468,9 @@ class BlogListPanel(QWidget):
         self.table.setRowCount(len(filtered_entries))
         
         for row, entry_data in enumerate(filtered_entries):
-            # Checkbox
+            # Checkbox - standardmäßig deaktiviert
             checkbox = QCheckBox()
-            checkbox.setChecked(not entry_data['is_processed'])  # Nur neue Einträge standardmäßig ausgewählt
+            checkbox.setChecked(False)  # Alle Checkboxen standardmäßig deaktiviert
             self.table.setCellWidget(row, 0, checkbox)
             
             # Titel
