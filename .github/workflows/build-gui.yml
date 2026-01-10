@@ -29,7 +29,7 @@ jobs:
     name: Build GUI (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     # Ignoriere Sync-Commits um Endlosschleife zu vermeiden
-    if: github.event.head_commit.message != 'Sync from Codeberg' && github.event.head_commit.message != '[skip ci]'
+    if: github.event.head_commit.message != 'Sync from Codeberg' && (github.event.head_commit.message != '[skip ci]' || github.event_name == 'workflow_dispatch' || github.event_name == 'release')
     strategy:
       fail-fast: false
       matrix:
