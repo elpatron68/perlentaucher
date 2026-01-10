@@ -18,31 +18,31 @@ Die einfachste Installation erfolgt über die vorgebauten Executables von der [R
 
 #### Windows
 
-1. Laden Sie `PerlentaucherGUI-VERSION-windows.exe.zip` oder `PerlentaucherGUI-VERSION-windows.exe` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetzen Sie `VERSION` durch die aktuelle Versionsnummer)
-2. Entpacken Sie die ZIP-Datei (falls vorhanden)
-3. Doppelklicken Sie auf `PerlentaucherGUI.exe` um die Anwendung zu starten
+1. Lade `PerlentaucherGUI-VERSION-windows.exe.zip` oder `PerlentaucherGUI-VERSION-windows.exe` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetze `VERSION` durch die aktuelle Versionsnummer)
+2. Entpacke die ZIP-Datei (falls vorhanden)
+3. Doppelklicke auf `PerlentaucherGUI.exe` um die Anwendung zu starten
 
 #### Linux
 
-1. Laden Sie `PerlentaucherGUI-VERSION-linux.tar.gz` oder `PerlentaucherGUI-VERSION-linux` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetzen Sie `VERSION` durch die aktuelle Versionsnummer)
-2. Entpacken Sie die TAR.GZ-Datei (falls vorhanden):
+1. Lade `PerlentaucherGUI-VERSION-linux.tar.gz` oder `PerlentaucherGUI-VERSION-linux` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetze `VERSION` durch die aktuelle Versionsnummer)
+2. Entpacke die TAR.GZ-Datei (falls vorhanden):
    ```bash
    tar -xzf PerlentaucherGUI-VERSION-linux.tar.gz
    ```
-3. Machen Sie die Datei ausführbar:
+3. Mache die Datei ausführbar:
    ```bash
    chmod +x PerlentaucherGUI-VERSION-linux
    ```
-4. Führen Sie das Executable aus:
+4. Führe das Executable aus:
    ```bash
    ./PerlentaucherGUI-VERSION-linux
    ```
 
 #### macOS
 
-1. Laden Sie `PerlentaucherGUI-VERSION-macos.app.zip` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetzen Sie `VERSION` durch die aktuelle Versionsnummer)
-2. Entpacken Sie die ZIP-Datei (Doppelklick)
-3. Öffnen Sie `PerlentaucherGUI-VERSION-macos.app` im Finder
+1. Lade `PerlentaucherGUI-VERSION-macos.app.zip` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetze `VERSION` durch die aktuelle Versionsnummer)
+2. Entpacke die ZIP-Datei (Doppelklick)
+3. Öffne `PerlentaucherGUI-VERSION-macos.app` im Finder
    - Bei Warnung "App kann nicht geöffnet werden": Rechtsklick > Öffnen > Öffnen bestätigen
 4. Alternativ über Terminal:
    ```bash
@@ -51,7 +51,7 @@ Die einfachste Installation erfolgt über die vorgebauten Executables von der [R
 
 ### Alternative: Manuelle Installation für Development
 
-Für Entwickler oder wenn Sie die neueste Version aus dem Quellcode benötigen:
+Für Entwickler oder wenn du die neueste Version aus dem Quellcode benötigst:
 
 #### Voraussetzungen
 
@@ -74,7 +74,7 @@ python perlentaucher_gui.py
 
 Die GUI kann als einzelnes Executable für alle Plattformen gebaut werden. Die Builds werden automatisch bei jedem Release erstellt und auf der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) bereitgestellt.
 
-Falls Sie selbst bauen möchten:
+Falls du selbst bauen möchtest:
 
 ### Windows
 
@@ -136,20 +136,20 @@ Im ersten Tab "⚙️ Einstellungen" können alle Optionen konfiguriert werden:
 - **API-Keys**: Optionale TMDB/OMDb API-Keys für bessere Erkennung
 - **Benachrichtigungen**: Apprise-URL für Benachrichtigungen
 
-Klicken Sie auf "Einstellungen speichern" um die Konfiguration zu speichern.
+Klicke auf "Einstellungen speichern" um die Konfiguration zu speichern.
 
 ### 2. RSS-Feed laden
 
-Wechseln Sie zum Tab "📰 Blog-Liste" und klicken Sie auf "RSS-Feed laden (Letzte 30 Tage)".
+Wechsle zum Tab "📰 Blog-Liste" und klicke auf "RSS-Feed laden (Letzte 30 Tage)".
 
 **Standard-Verhalten:**
 - Beim Start werden automatisch alle Einträge der letzten 30 Tage geladen
 - Keine manuelle Eingabe einer Anzahl erforderlich
 
 **Ältere Einträge nachladen:**
-- Klicken Sie auf "Ältere Einträge nachladen..." um Einträge älter als 30 Tage zu laden
-- Sie können die Anzahl der Tage eingeben (z.B. 60 für die letzten 60 Tage)
-- Oder lassen Sie das Feld leer, um alle verfügbaren Einträge zu laden
+- Klicke auf "Ältere Einträge nachladen..." um Einträge älter als 30 Tage zu laden
+- Du kannst die Anzahl der Tage eingeben (z.B. 60 für die letzten 60 Tage)
+- Oder lasse das Feld leer, um alle verfügbaren Einträge zu laden
 - Neue Einträge werden zur bestehenden Liste hinzugefügt (Duplikate werden vermieden)
 
 Die Blog-Beiträge werden in einer Tabelle angezeigt mit:
@@ -163,20 +163,20 @@ Die Blog-Beiträge werden in einer Tabelle angezeigt mit:
 
 ### 3. Downloads auswählen
 
-- Wählen Sie die gewünschten Einträge durch Ankreuzen der Checkboxen
-- Nutzen Sie "Alle auswählen" / "Alle abwählen" für schnelle Auswahl
+- Wähle die gewünschten Einträge durch Ankreuzen der Checkboxen
+- Nutze "Alle auswählen" / "Alle abwählen" für schnelle Auswahl
 - Filter können verwendet werden um nach Status oder Typ zu filtern
 - Die Suche kann verwendet werden um nach Titel zu suchen
 
 ### 4. Downloads starten
 
-- Klicken Sie auf "Ausgewählte Downloads starten" im Blog-Liste-Tab
-- Oder nutzen Sie die Schaltfläche im Download-Tab
-- Oder nutzen Sie das Menü: Download > Ausgewählte Downloads starten (F5)
+- Klicke auf "Ausgewählte Downloads starten" im Blog-Liste-Tab
+- Oder nutze die Schaltfläche im Download-Tab
+- Oder nutze das Menü: Download > Ausgewählte Downloads starten (F5)
 
 ### 5. Download-Fortschritt überwachen
 
-Wechseln Sie zum Tab "⬇️ Downloads":
+Wechsle zum Tab "⬇️ Downloads":
 
 - Alle aktiven Downloads werden mit Progress Bars angezeigt
 - Status wird in Echtzeit aktualisiert
@@ -228,7 +228,7 @@ Format (kompatibel mit Quickstart-Scripts):
 
 ### PyQt6 Import-Fehler
 
-Wenn Sie einen Fehler wie "PyQt6 ist nicht installiert!" erhalten:
+Wenn du einen Fehler wie "PyQt6 ist nicht installiert!" erhältst:
 
 ```bash
 pip install PyQt6
@@ -236,25 +236,25 @@ pip install PyQt6
 
 ### Import-Fehler mit perlentaucher
 
-Stellen Sie sicher, dass `perlentaucher.py` im gleichen Verzeichnis wie `perlentaucher_gui.py` liegt.
+Stelle sicher, dass `perlentaucher.py` im gleichen Verzeichnis wie `perlentaucher_gui.py` liegt.
 
 ### Downloads funktionieren nicht
 
-- Prüfen Sie die Log-Ausgabe im Download-Tab für Fehlermeldungen
-- Stellen Sie sicher, dass alle Einstellungen korrekt konfiguriert sind
-- Prüfen Sie Ihre Internetverbindung
+- Prüfe die Log-Ausgabe im Download-Tab für Fehlermeldungen
+- Stelle sicher, dass alle Einstellungen korrekt konfiguriert sind
+- Prüfe deine Internetverbindung
 
 ### Executable startet nicht
 
-- Stellen Sie sicher, dass alle Abhängigkeiten im `build.spec` enthalten sind
-- Prüfen Sie die PyInstaller-Ausgabe für fehlende Module
-- Führen Sie das Executable mit `--debug` aus um mehr Informationen zu erhalten
+- Stelle sicher, dass alle Abhängigkeiten im `build.spec` enthalten sind
+- Prüfe die PyInstaller-Ausgabe für fehlende Module
+- Führe das Executable mit `--debug` aus um mehr Informationen zu erhalten
 
 ## Unterschiede zur CLI-Version
 
 Die GUI-Version bietet die gleiche Funktionalität wie die CLI-Version, aber:
 
-- **Interaktive Auswahl**: Sie können explizit auswählen, welche Downloads gestartet werden sollen
+- **Interaktive Auswahl**: Du kannst explizit auswählen, welche Downloads gestartet werden sollen
 - **Visuelles Feedback**: Progress Bars und Status-Anzeigen für jeden Download
 - **Parallele Downloads**: Mehrere Downloads können gleichzeitig laufen (jeder Eintrag läuft in einem eigenen Thread)
 - **Serien-Download-Auswahl**: Bei Serien kann vor jedem Download gewählt werden, ob nur die erste Episode oder alle Episoden heruntergeladen werden sollen
