@@ -5,7 +5,7 @@ Stellt alle konfigurierbaren Optionen als UI-Elemente dar.
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLineEdit, QSpinBox, 
     QComboBox, QPushButton, QFileDialog, QGroupBox, QHBoxLayout,
-    QLabel, QMessageBox, QCheckBox
+    QLabel, QMessageBox, QCheckBox, QSizePolicy
 )
 from PyQt6.QtCore import Qt
 import os
@@ -34,13 +34,20 @@ class SettingsPanel(QWidget):
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
         
+        # Minimale Höhe für Eingabefelder (verhindert gedrungenes Aussehen auf Linux)
+        MIN_FIELD_HEIGHT = 32
+        
         # Download-Einstellungen
         download_group = QGroupBox("Download-Einstellungen")
         download_layout = QFormLayout()
+        download_layout.setVerticalSpacing(10)  # Mehr Abstand zwischen Zeilen
+        download_layout.setHorizontalSpacing(15)  # Abstand zwischen Label und Feld
         
         self.download_dir_edit = QLineEdit()
         self.download_dir_edit.setReadOnly(True)
+        self.download_dir_edit.setMinimumHeight(MIN_FIELD_HEIGHT)
         self.download_dir_btn = QPushButton("Durchsuchen...")
+        self.download_dir_btn.setMinimumHeight(MIN_FIELD_HEIGHT)
         self.download_dir_btn.clicked.connect(lambda: self._select_directory(self.download_dir_edit))
         download_dir_layout = QHBoxLayout()
         download_dir_layout.setContentsMargins(0, 0, 0, 0)
@@ -57,6 +64,7 @@ class SettingsPanel(QWidget):
         download_layout.addRow("", info_label)
         
         self.state_file_edit = QLineEdit()
+        self.state_file_edit.setMinimumHeight(MIN_FIELD_HEIGHT)
         download_layout.addRow("State-Datei:", self.state_file_edit)
         
         # State-Tracking Checkbox
@@ -71,22 +79,29 @@ class SettingsPanel(QWidget):
         # Medien-Präferenzen
         preferences_group = QGroupBox("Medien-Präferenzen")
         preferences_layout = QFormLayout()
+        preferences_layout.setVerticalSpacing(10)
+        preferences_layout.setHorizontalSpacing(15)
         
         self.sprache_combo = QComboBox()
         self.sprache_combo.addItems(["deutsch", "englisch", "egal"])
+        self.sprache_combo.setMinimumHeight(MIN_FIELD_HEIGHT)
         preferences_layout.addRow("Bevorzugte Sprache:", self.sprache_combo)
         
         self.audiodeskription_combo = QComboBox()
         self.audiodeskription_combo.addItems(["mit", "ohne", "egal"])
+        self.audiodeskription_combo.setMinimumHeight(MIN_FIELD_HEIGHT)
         preferences_layout.addRow("Audiodeskription:", self.audiodeskription_combo)
         
         self.serien_download_combo = QComboBox()
         self.serien_download_combo.addItems(["erste", "staffel", "keine"])
+        self.serien_download_combo.setMinimumHeight(MIN_FIELD_HEIGHT)
         preferences_layout.addRow("Serien-Download:", self.serien_download_combo)
         
         self.serien_dir_edit = QLineEdit()
         self.serien_dir_edit.setReadOnly(True)
+        self.serien_dir_edit.setMinimumHeight(MIN_FIELD_HEIGHT)
         self.serien_dir_btn = QPushButton("Durchsuchen...")
+        self.serien_dir_btn.setMinimumHeight(MIN_FIELD_HEIGHT)
         self.serien_dir_btn.clicked.connect(lambda: self._select_directory(self.serien_dir_edit))
         serien_dir_layout = QHBoxLayout()
         serien_dir_layout.setContentsMargins(0, 0, 0, 0)
@@ -102,20 +117,25 @@ class SettingsPanel(QWidget):
         # API-Keys
         api_group = QGroupBox("API-Keys (optional)")
         api_layout = QFormLayout()
+        api_layout.setVerticalSpacing(10)
+        api_layout.setHorizontalSpacing(15)
         
         self.tmdb_api_key_edit = QLineEdit()
         self.tmdb_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.tmdb_api_key_edit.setPlaceholderText("TMDB API-Key eingeben")
+        self.tmdb_api_key_edit.setMinimumHeight(MIN_FIELD_HEIGHT)
         api_layout.addRow("TMDB API-Key:", self.tmdb_api_key_edit)
         
         self.omdb_api_key_edit = QLineEdit()
         self.omdb_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.omdb_api_key_edit.setPlaceholderText("OMDb API-Key eingeben")
+        self.omdb_api_key_edit.setMinimumHeight(MIN_FIELD_HEIGHT)
         api_layout.addRow("OMDb API-Key:", self.omdb_api_key_edit)
         
         # Sichtbarkeit für Passwort-Felder
         self.tmdb_show_btn = QPushButton("Anzeigen")
         self.tmdb_show_btn.setCheckable(True)
+        self.tmdb_show_btn.setMinimumHeight(MIN_FIELD_HEIGHT)
         self.tmdb_show_btn.toggled.connect(
             lambda checked: self.tmdb_api_key_edit.setEchoMode(
                 QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
@@ -125,6 +145,7 @@ class SettingsPanel(QWidget):
         
         self.omdb_show_btn = QPushButton("Anzeigen")
         self.omdb_show_btn.setCheckable(True)
+        self.omdb_show_btn.setMinimumHeight(MIN_FIELD_HEIGHT)
         self.omdb_show_btn.toggled.connect(
             lambda checked: self.omdb_api_key_edit.setEchoMode(
                 QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
@@ -138,9 +159,12 @@ class SettingsPanel(QWidget):
         # Benachrichtigungen
         notify_group = QGroupBox("Benachrichtigungen")
         notify_layout = QFormLayout()
+        notify_layout.setVerticalSpacing(10)
+        notify_layout.setHorizontalSpacing(15)
         
         self.notify_edit = QLineEdit()
         self.notify_edit.setPlaceholderText("z.B. mailto://user:pass@example.com oder discord://webhook_id/webhook_token")
+        self.notify_edit.setMinimumHeight(MIN_FIELD_HEIGHT)
         notify_layout.addRow("Apprise-URL:", self.notify_edit)
         
         notify_group.setLayout(notify_layout)
@@ -149,9 +173,12 @@ class SettingsPanel(QWidget):
         # Logging
         log_group = QGroupBox("Logging")
         log_layout = QFormLayout()
+        log_layout.setVerticalSpacing(10)
+        log_layout.setHorizontalSpacing(15)
         
         self.loglevel_combo = QComboBox()
         self.loglevel_combo.addItems(["DEBUG", "INFO", "WARNING", "ERROR"])
+        self.loglevel_combo.setMinimumHeight(MIN_FIELD_HEIGHT)
         log_layout.addRow("Log-Level:", self.loglevel_combo)
         
         log_group.setLayout(log_layout)
@@ -160,8 +187,11 @@ class SettingsPanel(QWidget):
         # RSS Feed URL
         rss_group = QGroupBox("RSS-Feed")
         rss_layout = QFormLayout()
+        rss_layout.setVerticalSpacing(10)
+        rss_layout.setHorizontalSpacing(15)
         
         self.rss_feed_edit = QLineEdit()
+        self.rss_feed_edit.setMinimumHeight(MIN_FIELD_HEIGHT)
         rss_layout.addRow("RSS-Feed URL:", self.rss_feed_edit)
         
         rss_group.setLayout(rss_layout)
