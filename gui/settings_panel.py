@@ -49,11 +49,11 @@ class SettingsPanel(QWidget):
         download_dir_widget.setLayout(download_dir_layout)
         download_layout.addRow("Download-Verzeichnis:", download_dir_widget)
         
-        self.limit_spin = QSpinBox()
-        self.limit_spin.setMinimum(1)
-        self.limit_spin.setMaximum(1000)
-        self.limit_spin.setValue(10)
-        download_layout.addRow("Anzahl RSS-Einträge:", self.limit_spin)
+        # Hinweis: Limit wurde entfernt - es werden automatisch die letzten 30 Tage geladen
+        info_label = QLabel("Hinweis: Beim Laden werden automatisch alle Einträge der letzten 30 Tage abgerufen.")
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("QLabel { color: #666; font-style: italic; }")
+        download_layout.addRow("", info_label)
         
         self.state_file_edit = QLineEdit()
         download_layout.addRow("State-Datei:", self.state_file_edit)
@@ -223,7 +223,6 @@ class SettingsPanel(QWidget):
         config = self.config_manager.get_all()
         
         self.download_dir_edit.setText(config.get('download_dir', './downloads'))
-        self.limit_spin.setValue(config.get('limit', 10))
         self.state_file_edit.setText(config.get('state_file', '.perlentaucher_state.json'))
         
         # no_state Option
@@ -278,7 +277,6 @@ class SettingsPanel(QWidget):
         
         config = {
             'download_dir': download_dir,
-            'limit': self.limit_spin.value(),
             'state_file': self.state_file_edit.text(),
             'no_state': self.no_state_checkbox.isChecked(),
             'sprache': self.sprache_combo.currentText(),
@@ -330,7 +328,6 @@ class SettingsPanel(QWidget):
         
         return {
             'download_dir': download_dir,
-            'limit': self.limit_spin.value(),
             'state_file': self.state_file_edit.text(),
             'no_state': self.no_state_checkbox.isChecked(),
             'sprache': self.sprache_combo.currentText(),

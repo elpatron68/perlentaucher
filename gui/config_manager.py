@@ -15,7 +15,6 @@ class ConfigManager:
     
     DEFAULT_CONFIG = {
         "download_dir": "./downloads",
-        "limit": 10,
         "loglevel": "INFO",
         "sprache": "deutsch",
         "audiodeskription": "egal",
@@ -27,6 +26,7 @@ class ConfigManager:
         "serien_download": "erste",
         "serien_dir": "",
         "rss_feed_url": "https://nexxtpress.de/author/mediathekperlen/feed/"  # GUI-spezifisch
+        # Hinweis: "limit" wurde entfernt - es werden automatisch die letzten 30 Tage geladen
     }
     
     def __init__(self, config_file: Optional[str] = None):

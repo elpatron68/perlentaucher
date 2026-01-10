@@ -5,14 +5,14 @@ Zeigt RSS-Feed-Einträge in einer scrollbaren Liste mit Checkboxen an.
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QCheckBox, QLabel, QMessageBox,
-    QComboBox, QLineEdit, QAbstractItemView
+    QComboBox, QLineEdit, QAbstractItemView, QInputDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 import sys
 import os
 import feedparser
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 # Importiere die Core-Funktionalität
@@ -52,12 +52,16 @@ class BlogListPanel(QWidget):
         # Toolbar
         toolbar = QHBoxLayout()
         
-        self.load_rss_btn = QPushButton("RSS-Feed laden")
+        self.load_rss_btn = QPushButton("RSS-Feed laden (Letzte 30 Tage)")
         self.load_rss_btn.setStyleSheet("QPushButton { background-color: #2196F3; color: white; padding: 8px; font-weight: bold; }")
-        self.load_rss_btn.clicked.connect(self._load_rss_feed)
+        self.load_rss_btn.clicked.connect(lambda: self._load_rss_feed(days=30))
         
         self.refresh_btn = QPushButton("Aktualisieren")
-        self.refresh_btn.clicked.connect(self._load_rss_feed)
+        self.refresh_btn.clicked.connect(lambda: self._load_rss_feed(days=30))
+        
+        self.load_older_btn = QPushButton("Ältere Einträge nachladen...")
+        self.load_older_btn.setToolTip("Lädt Einträge älter als 30 Tage nach")
+        self.load_older_btn.clicked.connect(self._load_older_entries)
         
         self.select_all_btn = QPushButton("Alle auswählen")
         self.select_all_btn.clicked.connect(self._select_all)
@@ -67,6 +71,7 @@ class BlogListPanel(QWidget):
         
         toolbar.addWidget(self.load_rss_btn)
         toolbar.addWidget(self.refresh_btn)
+        toolbar.addWidget(self.load_older_btn)
         toolbar.addWidget(self.select_all_btn)
         toolbar.addWidget(self.deselect_all_btn)
         
@@ -121,15 +126,65 @@ class BlogListPanel(QWidget):
         
         self.setLayout(layout)
     
-    def _load_rss_feed(self):
-        """Lädt den RSS-Feed und zeigt die Einträge an."""
+    def _filter_entries_by_date(self, entries, days: int) -> List:
+        """
+        Filtert Einträge nach Veröffentlichungsdatum (letzte N Tage).
+        
+        Args:
+            entries: Liste von feedparser Entry-Objekten
+            days: Anzahl der Tage (nur Einträge der letzten N Tage)
+            
+        Returns:
+            Gefilterte Liste von Einträgen
+        """
+        if days is None or days <= 0:
+            return entries  # Keine Filterung wenn days=None oder <=0
+        
+        cutoff_date = datetime.now() - timedelta(days=days)
+        filtered_entries = []
+        
+        for entry in entries:
+            # Hole Veröffentlichungsdatum
+            published = get_entry_attr(entry, 'published_parsed')
+            if published:
+                try:
+                    # published_parsed ist ein time.struct_time Objekt
+                    from time import mktime
+                    published_dt = datetime.fromtimestamp(mktime(published))
+                    if published_dt >= cutoff_date:
+                        filtered_entries.append(entry)
+                except (ValueError, TypeError, OSError):
+                    # Falls Parsing fehlschlägt, behalte Eintrag (besser zu viele als zu wenig)
+                    filtered_entries.append(entry)
+            else:
+                # Wenn kein Datum vorhanden, behalte Eintrag
+                filtered_entries.append(entry)
+        
+        return filtered_entries
+    
+    def _load_rss_feed(self, days: Optional[int] = 30, append: bool = False):
+        """
+        Lädt den RSS-Feed und zeigt die Einträge an.
+        
+        Args:
+            days: Anzahl der Tage für Filterung (None = alle Einträge)
+            append: Wenn True, werden neue Einträge zu bestehenden hinzugefügt (keine Duplikate)
+        """
         try:
             rss_url = self.config_manager.get('rss_feed_url', 'https://nexxtpress.de/author/mediathekperlen/feed/')
-            limit = self.config_manager.get('limit', 10)
             
             self.load_rss_btn.setEnabled(False)
-            self.status_label.setText(f"Lade RSS-Feed von {rss_url}...")
-            QWidget().repaint()  # Force UI update
+            self.refresh_btn.setEnabled(False)
+            self.load_older_btn.setEnabled(False)
+            
+            if days:
+                self.status_label.setText(f"Lade RSS-Feed (letzte {days} Tage) von {rss_url}...")
+            else:
+                self.status_label.setText(f"Lade RSS-Feed (alle Einträge) von {rss_url}...")
+            
+            # Force UI update
+            from PyQt6.QtWidgets import QApplication
+            QApplication.processEvents()
             
             # Parse RSS Feed
             feed = feedparser.parse(rss_url)
@@ -137,7 +192,11 @@ class BlogListPanel(QWidget):
             if feed.bozo:
                 QMessageBox.warning(self, "Warnung", "Beim Parsen des RSS-Feeds ist ein Fehler aufgetreten, fahre fort...")
             
-            feed_entries = feed.entries[:limit]
+            # Filtere nach Datum wenn days angegeben
+            if days and days > 0:
+                feed_entries = self._filter_entries_by_date(feed.entries, days)
+            else:
+                feed_entries = feed.entries
             
             # Lade State-Datei um verarbeitete Einträge zu erkennen (nur wenn no_state nicht aktiviert)
             no_state = self.config_manager.get('no_state', False)
@@ -150,8 +209,15 @@ class BlogListPanel(QWidget):
                 processed_entries = core.load_processed_entries(state_file) if state_file else set()
                 state_data = core.load_state_file(state_file) if state_file else {'entries': {}}
             
+            # Wenn append=True, starte mit bestehenden Einträgen und verhindere Duplikate
+            if append:
+                existing_entry_ids = {e['entry_id'] for e in self.entries}
+            else:
+                existing_entry_ids = set()
+                self.entries = []
+            
             # Parse Einträge
-            self.entries = []
+            new_count = 0
             for entry in feed_entries:
                 # Verwende Wrapper-Funktion für robusten Zugriff auf Entry-Attribute
                 entry_id = get_entry_attr(entry, 'id') or get_entry_attr(entry, 'link') or get_entry_attr(entry, 'title', '')
@@ -192,6 +258,10 @@ class BlogListPanel(QWidget):
                 
                 entry_link = get_entry_attr(entry, 'link', '')
                 
+                # Überspringe Duplikate wenn append=True
+                if entry_id in existing_entry_ids:
+                    continue
+                
                 entry_data = {
                     'entry_id': entry_id,
                     'entry': entry,  # Speichere original entry für später
@@ -206,9 +276,14 @@ class BlogListPanel(QWidget):
                 }
                 
                 self.entries.append(entry_data)
+                existing_entry_ids.add(entry_id)
+                new_count += 1
             
             self._populate_table()
-            self.status_label.setText(f"{len(self.entries)} Einträge geladen.")
+            if append and new_count > 0:
+                self.status_label.setText(f"{new_count} neue Einträge geladen. Gesamt: {len(self.entries)} Einträge.")
+            else:
+                self.status_label.setText(f"{len(self.entries)} Einträge geladen.")
             self.entries_loaded.emit(self.entries)
             
         except Exception as e:
@@ -216,6 +291,37 @@ class BlogListPanel(QWidget):
             self.status_label.setText("Fehler beim Laden des RSS-Feeds.")
         finally:
             self.load_rss_btn.setEnabled(True)
+            self.refresh_btn.setEnabled(True)
+            self.load_older_btn.setEnabled(True)
+    
+    def _load_older_entries(self):
+        """Lädt ältere Einträge nach (älter als 30 Tage)."""
+        # Dialog für Anzahl Tage
+        days_text, ok = QInputDialog.getText(
+            self,
+            "Ältere Einträge nachladen",
+            "Einträge der letzten wie vielen Tage laden?\n(Leer lassen für alle Einträge):",
+            text="60"
+        )
+        
+        if not ok:
+            return
+        
+        if days_text.strip() == "":
+            # Alle Einträge laden
+            days = None
+        else:
+            try:
+                days = int(days_text.strip())
+                if days <= 0:
+                    QMessageBox.warning(self, "Ungültiger Wert", "Die Anzahl der Tage muss eine positive Zahl sein!")
+                    return
+            except ValueError:
+                QMessageBox.warning(self, "Ungültiger Wert", "Bitte geben Sie eine gültige Zahl ein!")
+                return
+        
+        # Lade Einträge und füge sie zu bestehenden hinzu (append=True)
+        self._load_rss_feed(days=days, append=True)
     
     def _populate_table(self):
         """Füllt die Tabelle mit den Einträgen."""
