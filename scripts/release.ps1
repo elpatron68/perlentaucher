@@ -247,17 +247,25 @@ if ($remoteUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
         
         # Erstelle Release über Codeberg/Gitea API
         $apiUrl = "https://codeberg.org/api/v1/repos/$repoOwner/$repoName/releases"
+        
         $releaseData = @{
             tag_name = $newTag
             name = "Release $newTag"
             body = $releaseBody
             draft = $false
             prerelease = $false
-        } | ConvertTo-Json
+        }
+        
+        # Konvertiere zu JSON mit UTF-8 Encoding (sicherstellen, dass UTF-8 Zeichen korrekt behandelt werden)
+        $releaseDataJson = $releaseData | ConvertTo-Json -Depth 10 -Compress
+        
+        # Konvertiere JSON-String zu UTF-8 Bytes für korrektes Encoding
+        $utf8Encoding = [System.Text.Encoding]::UTF8
+        $releaseDataBytes = $utf8Encoding.GetBytes($releaseDataJson)
         
         $headers = @{
             "Authorization" = "token $codebergToken"
-            "Content-Type" = "application/json"
+            "Content-Type" = "application/json; charset=utf-8"
         }
         
         try {
@@ -269,9 +277,9 @@ if ($remoteUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
                     Write-Host "⚠ Release für Tag $newTag existiert bereits." -ForegroundColor Yellow
                     $update = Read-Host "Release aktualisieren? (j/n) [n]"
                     if ($update -match '^[JjYy]$') {
-                        # Update Release
+                        # Update Release mit UTF-8 Bytes
                         $updateUrl = "$apiUrl/$($existingRelease.id)"
-                        $response = Invoke-RestMethod -Uri $updateUrl -Method Patch -Headers $headers -Body $releaseData -ErrorAction Stop
+                        $response = Invoke-WebRequest -Uri $updateUrl -Method Patch -Headers $headers -Body $releaseDataBytes -ContentType "application/json; charset=utf-8" -UseBasicParsing | ConvertFrom-Json
                         Write-Host "✅ Release erfolgreich aktualisiert!" -ForegroundColor Green
                         Write-Host "  URL: $($response.html_url)" -ForegroundColor Gray
                     } else {
@@ -281,8 +289,8 @@ if ($remoteUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
                 }
             }
             catch {
-                # Release existiert nicht, erstelle neues Release
-                $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $releaseData -ErrorAction Stop
+                # Release existiert nicht, erstelle neues Release mit UTF-8 Bytes
+                $response = Invoke-WebRequest -Uri $apiUrl -Method Post -Headers $headers -Body $releaseDataBytes -ContentType "application/json; charset=utf-8" -UseBasicParsing | ConvertFrom-Json
                 Write-Host "✅ Release erfolgreich erstellt!" -ForegroundColor Green
                 Write-Host "  URL: $($response.html_url)" -ForegroundColor Gray
             }

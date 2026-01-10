@@ -239,9 +239,20 @@ Siehe [Changelog](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag) 
         # Erstelle Release über Codeberg/Gitea API
         api_url="https://codeberg.org/api/v1/repos/$repo_owner/$repo_name/releases"
         
-        # Escape JSON-String für release_body (ohne jq)
-        # macOS-kompatibel: verwende tr für Newline-Ersetzung statt sed multiline
-        release_body_escaped=$(echo "$release_body" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' '|' | sed 's/|/\\n/g')
+        # Verwende jq falls verfügbar für korrektes UTF-8 JSON Encoding, sonst manuelles Escaping
+        if command -v jq &> /dev/null; then
+            # Erstelle JSON mit jq (behandelt UTF-8 korrekt)
+            json_data=$(jq -n \
+                --arg tag "$new_tag" \
+                --arg name "Release $new_tag" \
+                --arg body "$release_body" \
+                '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')
+        else
+            # Fallback: Escape JSON-String manuell (UTF-8 sicher)
+            # Verwende printf für bessere UTF-8 Unterstützung statt echo
+            release_body_escaped=$(printf '%s' "$release_body" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+            json_data="{\"tag_name\":\"$new_tag\",\"name\":\"Release $new_tag\",\"body\":\"$release_body_escaped\",\"draft\":false,\"prerelease\":false}"
+        fi
         
         # Prüfe ob Release bereits existiert
         check_url="$api_url/tags/$new_tag"
@@ -257,11 +268,11 @@ Siehe [Changelog](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag) 
                 release_id=$(echo "$existing_release" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
                 if [ -n "$release_id" ]; then
                     update_url="$api_url/$release_id"
-                    json_data="{\"tag_name\":\"$new_tag\",\"name\":\"Release $new_tag\",\"body\":\"$release_body_escaped\",\"draft\":false,\"prerelease\":false}"
-                    response=$(curl -s -w "\n%{http_code}" -X PATCH \
+                    # Verwende --data-binary für korrektes UTF-8 Encoding
+                    response=$(printf '%s' "$json_data" | curl -s -w "\n%{http_code}" -X PATCH \
                         -H "Authorization: token $codeberg_token" \
-                        -H "Content-Type: application/json" \
-                        -d "$json_data" \
+                        -H "Content-Type: application/json; charset=utf-8" \
+                        --data-binary @- \
                         "$update_url" 2>/dev/null)
                     http_code=$(echo "$response" | tail -n1)
                     if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
@@ -278,12 +289,11 @@ Siehe [Changelog](https://codeberg.org/$repo_owner/$repo_name/commits/$new_tag) 
                 echo "Release wird nicht aktualisiert."
             fi
         else
-            # Erstelle neues Release
-            json_data="{\"tag_name\":\"$new_tag\",\"name\":\"Release $new_tag\",\"body\":\"$release_body_escaped\",\"draft\":false,\"prerelease\":false}"
-            response=$(curl -s -w "\n%{http_code}" -X POST \
+            # Erstelle neues Release mit --data-binary für korrektes UTF-8 Encoding
+            response=$(printf '%s' "$json_data" | curl -s -w "\n%{http_code}" -X POST \
                 -H "Authorization: token $codeberg_token" \
-                -H "Content-Type: application/json" \
-                -d "$json_data" \
+                -H "Content-Type: application/json; charset=utf-8" \
+                --data-binary @- \
                 "$api_url" 2>/dev/null)
             http_code=$(echo "$response" | tail -n1)
             if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
