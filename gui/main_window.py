@@ -44,22 +44,28 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
         
-        # Einstellungen Panel
-        self.settings_panel = SettingsPanel(self.config_manager)
-        self.tabs.addTab(self.settings_panel, "⚙️ Einstellungen")
-        
-        # Blog-Liste Panel
+        # Neue Reihenfolge: 1. Feed, 2. Downloads, 3. Einstellungen
+        # Blog-Liste Panel (Feed) - Tab 0
         self.blog_list_panel = BlogListPanel(self.config_manager)
-        self.tabs.addTab(self.blog_list_panel, "📰 Blog-Liste")
+        self.tabs.addTab(self.blog_list_panel, "📰 Feed")
         
-        # Download Panel
+        # Download Panel - Tab 1
         self.download_panel = DownloadPanel()
         self.tabs.addTab(self.download_panel, "⬇️ Downloads")
+        
+        # Einstellungen Panel - Tab 2
+        self.settings_panel = SettingsPanel(self.config_manager)
+        self.tabs.addTab(self.settings_panel, "⚙️ Einstellungen")
         
         # Statusleiste
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Bereit")
+        
+        # Öffne beim Start den richtigen Tab:
+        # - Einstellungen-Tab wenn keine Konfigurationsdatei gefunden wurde
+        # - Feed-Tab (Tab 0) wenn Konfigurationsdatei existiert
+        self._set_initial_tab()
     
     def _create_menu_bar(self):
         """Erstellt die Menüleiste."""
@@ -108,6 +114,20 @@ class MainWindow(QMainWindow):
         # Verbinde Download-Button mit Start-Funktion
         self.download_panel.start_downloads_btn.clicked.connect(self._start_selected_downloads)
     
+    def _set_initial_tab(self):
+        """Setzt den initialen Tab beim Start."""
+        # Prüfe ob Konfigurationsdatei existiert
+        config_file_exists = os.path.exists(self.config_manager.config_file)
+        
+        if config_file_exists:
+            # Konfiguration vorhanden: Öffne Feed-Tab (Tab 0)
+            self.tabs.setCurrentIndex(0)
+            self.status_bar.showMessage("Konfiguration geladen. Feed-Tab geöffnet.", 3000)
+        else:
+            # Keine Konfiguration: Öffne Einstellungen-Tab (Tab 2)
+            self.tabs.setCurrentIndex(2)
+            self.status_bar.showMessage("Keine Konfigurationsdatei gefunden. Bitte Einstellungen vornehmen.", 5000)
+    
     def _on_entries_loaded(self, entries):
         """Wird aufgerufen wenn Einträge geladen wurden."""
         # Aktiviere Download-Button wenn Einträge vorhanden
@@ -136,8 +156,8 @@ class MainWindow(QMainWindow):
         # Starte Downloads
         self.download_panel.start_downloads(selected_entries, config)
         
-        # Wechsle zum Download-Tab
-        self.tabs.setCurrentIndex(2)
+        # Wechsle zum Download-Tab (Tab 1 in neuer Reihenfolge)
+        self.tabs.setCurrentIndex(1)
         
         self.status_bar.showMessage(f"{len(selected_entries)} Download(s) gestartet.", 3000)
     
