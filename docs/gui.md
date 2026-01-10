@@ -97,7 +97,17 @@ Klicken Sie auf "Einstellungen speichern" um die Konfiguration zu speichern.
 
 ### 2. RSS-Feed laden
 
-Wechseln Sie zum Tab "📰 Blog-Liste" und klicken Sie auf "RSS-Feed laden".
+Wechseln Sie zum Tab "📰 Blog-Liste" und klicken Sie auf "RSS-Feed laden (Letzte 30 Tage)".
+
+**Standard-Verhalten:**
+- Beim Start werden automatisch alle Einträge der letzten 30 Tage geladen
+- Keine manuelle Eingabe einer Anzahl erforderlich
+
+**Ältere Einträge nachladen:**
+- Klicken Sie auf "Ältere Einträge nachladen..." um Einträge älter als 30 Tage zu laden
+- Sie können die Anzahl der Tage eingeben (z.B. 60 für die letzten 60 Tage)
+- Oder lassen Sie das Feld leer, um alle verfügbaren Einträge zu laden
+- Neue Einträge werden zur bestehenden Liste hinzugefügt (Duplikate werden vermieden)
 
 Die Blog-Beiträge werden in einer Tabelle angezeigt mit:
 - Checkbox für Auswahl
@@ -151,7 +161,6 @@ Format (kompatibel mit Quickstart-Scripts):
 ```json
 {
   "download_dir": "./downloads",
-  "limit": 10,
   "loglevel": "INFO",
   "sprache": "deutsch",
   "audiodeskription": "egal",
