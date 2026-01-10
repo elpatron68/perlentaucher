@@ -10,8 +10,8 @@ exclude =
     assets,
     test_downloads
 ignore = 
-    E501,  # line too long (handled by max-line-length)
-    W503,  # line break before binary operator
-    E203,  # whitespace before ':'
+    E501,
+    W503,
+    E203
 max-complexity = 10
 
