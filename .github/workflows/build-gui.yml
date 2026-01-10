@@ -58,7 +58,7 @@ jobs:
           echo "=== Test: --help Option ==="
           python perlentaucher.py --help
       
-      - name: Test: Dry-run
+      - name: Test Dry-run
         run: |
           echo "=== Test: Dry-run ==="
           python perlentaucher.py --limit 1 --loglevel DEBUG --download-dir /tmp/test_downloads || true
