@@ -24,6 +24,10 @@ on:
     types: [created]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   build:
     name: Build GUI (${{ matrix.os }})
@@ -326,8 +330,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: release-assets/*
-          draft: false
-          prerelease: false
+          tag_name: ${{ github.event.release.tag_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
