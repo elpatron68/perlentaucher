@@ -18,38 +18,36 @@ Die einfachste Installation erfolgt über die vorgebauten Executables von der [R
 
 #### Windows
 
-1. Laden Sie `PerlentaucherGUI-0.1.17-windows.exe.zip` oder `PerlentaucherGUI-0.1.17-windows.exe` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter
+1. Laden Sie `PerlentaucherGUI-VERSION-windows.exe.zip` oder `PerlentaucherGUI-VERSION-windows.exe` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetzen Sie `VERSION` durch die aktuelle Versionsnummer)
 2. Entpacken Sie die ZIP-Datei (falls vorhanden)
 3. Doppelklicken Sie auf `PerlentaucherGUI.exe` um die Anwendung zu starten
 
 #### Linux
 
-1. Laden Sie `PerlentaucherGUI-0.1.17-linux.tar.gz` oder `PerlentaucherGUI-0.1.17-linux` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter
+1. Laden Sie `PerlentaucherGUI-VERSION-linux.tar.gz` oder `PerlentaucherGUI-VERSION-linux` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetzen Sie `VERSION` durch die aktuelle Versionsnummer)
 2. Entpacken Sie die TAR.GZ-Datei (falls vorhanden):
    ```bash
-   tar -xzf PerlentaucherGUI-0.1.17-linux.tar.gz
+   tar -xzf PerlentaucherGUI-VERSION-linux.tar.gz
    ```
 3. Machen Sie die Datei ausführbar:
    ```bash
-   chmod +x PerlentaucherGUI-0.1.17-linux
+   chmod +x PerlentaucherGUI-VERSION-linux
    ```
 4. Führen Sie das Executable aus:
    ```bash
-   ./PerlentaucherGUI-0.1.17-linux
+   ./PerlentaucherGUI-VERSION-linux
    ```
 
 #### macOS
 
-1. Laden Sie `PerlentaucherGUI-0.1.17-macos.app.zip` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter
+1. Laden Sie `PerlentaucherGUI-VERSION-macos.app.zip` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetzen Sie `VERSION` durch die aktuelle Versionsnummer)
 2. Entpacken Sie die ZIP-Datei (Doppelklick)
-3. Öffnen Sie `PerlentaucherGUI-0.1.17-macos.app` im Finder
+3. Öffnen Sie `PerlentaucherGUI-VERSION-macos.app` im Finder
    - Bei Warnung "App kann nicht geöffnet werden": Rechtsklick > Öffnen > Öffnen bestätigen
 4. Alternativ über Terminal:
    ```bash
-   open PerlentaucherGUI-0.1.17-macos.app
+   open PerlentaucherGUI-VERSION-macos.app
    ```
-
-**Hinweis:** Ersetzen Sie `0.1.17` durch die neueste verfügbare Version aus den [Releases](https://codeberg.org/elpatron/Perlentaucher/releases).
 
 ### Alternative: Manuelle Installation für Development
 
