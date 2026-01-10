@@ -47,7 +47,10 @@ jobs:
 
       - name: Fetch from Codeberg
         run: |
-          git fetch codeberg --all --tags --force
+          # Fetche alle Branches und Tags von Codeberg
+          # Zuerst fetche Branches, dann Tags separat
+          git fetch codeberg
+          git fetch codeberg --tags --force
 
       - name: Sync branches from Codeberg
         run: |
@@ -61,21 +64,47 @@ jobs:
           DEFAULT_BRANCH=$(git remote show codeberg | grep 'HEAD branch' | cut -d' ' -f5)
           git checkout "$DEFAULT_BRANCH" 2>/dev/null || git checkout master || git checkout main
 
-      - name: Sync tags from Codeberg
+      - name: Verify sync
         run: |
-          # Synchronisiere alle Tags
-          git fetch codeberg --tags --force
+          # Zeige synchronisierte Branches und Tags
+          echo "Synchronized branches from Codeberg:"
+          git branch -r | grep 'codeberg/' | sed 's|codeberg/||' | grep -v HEAD || echo "No branches found"
+          echo ""
+          echo "Synchronized tags:"
+          git tag | tail -10 || echo "No tags found"
 
       - name: Check for changes
         id: changes
         run: |
-          # Prüfe ob es Änderungen gibt
-          if git diff --quiet codeberg/master origin/master 2>/dev/null || git diff --quiet codeberg/main origin/main 2>/dev/null; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "No changes detected, skipping push"
-          else
+          # Prüfe ob es Änderungen gibt (vergleiche Codeberg mit GitHub)
+          HAS_CHANGES=false
+          
+          # Prüfe master branch
+          if ! git diff --quiet codeberg/master origin/master 2>/dev/null; then
+            echo "Changes detected in master branch"
+            HAS_CHANGES=true
+          fi
+          
+          # Prüfe main branch (falls vorhanden)
+          if ! git diff --quiet codeberg/main origin/main 2>/dev/null; then
+            echo "Changes detected in main branch"
+            HAS_CHANGES=true
+          fi
+          
+          # Prüfe ob es neue Tags gibt (vereinfachter Check)
+          ORIGIN_TAGS=$(git ls-remote --tags origin 2>/dev/null | cut -f2 | sort || echo "")
+          CODEBERG_TAGS=$(git ls-remote --tags codeberg 2>/dev/null | cut -f2 | sort || echo "")
+          if [ "$CODEBERG_TAGS" != "$ORIGIN_TAGS" ]; then
+            echo "Tag differences detected"
+            HAS_CHANGES=true
+          fi
+          
+          if [ "$HAS_CHANGES" = "true" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
             echo "Changes detected, will push to GitHub"
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected, skipping push"
           fi
         continue-on-error: true
 
