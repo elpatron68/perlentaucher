@@ -322,7 +322,14 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release-assets
-          find artifacts -type f \( -name "*.exe" -o -name "*.exe.zip" -o -name "*.tar.gz" -o -name "*.zip" -o -name "PerlentaucherGUI" -o -name "PerlentaucherGUI-*" \) -exec cp {} release-assets/ \;
+          # Kopiere alle Build-Artefakte, aber keine PyInstaller-Interna
+          find artifacts -type f \( -name "*.exe" -o -name "*.exe.zip" -o -name "*.tar.gz" -o -name "*.zip" -o -name "PerlentaucherGUI" -o -name "PerlentaucherGUI-*" \) | while read file; do
+            filename=$(basename "$file")
+            # Filtere PyInstaller-Interne Dateien heraus
+            if [ "$filename" != "base_library.zip" ]; then
+              cp "$file" "release-assets/"
+            fi
+          done
           echo "Release assets prepared:"
           ls -lh release-assets/
 
@@ -350,10 +357,13 @@ jobs:
         id: prepare
         run: |
           mkdir -p codeberg-assets
-          # Kopiere alle Build-Artefakte (ZIP/TAR.GZ Dateien bevorzugen)
+          # Kopiere alle Build-Artefakte (ZIP/TAR.GZ Dateien bevorzugen, aber keine PyInstaller-Interna)
           find artifacts -type f \( -name "*.exe.zip" -o -name "*.tar.gz" -o -name "*.zip" -o -name "*.exe" -o -name "PerlentaucherGUI-*" \) | while read file; do
             filename=$(basename "$file")
-            cp "$file" "codeberg-assets/$filename"
+            # Filtere PyInstaller-Interne Dateien heraus
+            if [ "$filename" != "base_library.zip" ]; then
+              cp "$file" "codeberg-assets/$filename"
+            fi
           done
           
           echo "Assets prepared for Codeberg upload:"
