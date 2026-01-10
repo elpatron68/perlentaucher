@@ -227,19 +227,26 @@ class BlogListPanel(QWidget):
             from PyQt6.QtWidgets import QApplication
             QApplication.processEvents()
             
-            # Parse RSS Feed - versuche zuerst mit erhöhtem Limit
+            # Parse RSS Feed - versuche zuerst mit erhöhtem Limit (falls Parameter hinzugefügt wurde)
             feed = feedparser.parse(rss_url_with_limit)
+            feed_with_limit_count = len(feed.entries)
             
-            # Falls das nicht funktioniert oder gleich viele Einträge liefert, versuche ohne Parameter
-            # (falls Parameter hinzugefügt wurde)
+            # Falls Parameter hinzugefügt wurde, vergleiche mit Original-URL
             if rss_url_with_limit != rss_url:
                 feed_original = feedparser.parse(rss_url)
+                original_count = len(feed_original.entries)
+                
                 # Verwende den Feed mit mehr Einträgen
-                if len(feed_original.entries) > len(feed.entries):
+                if original_count > feed_with_limit_count:
                     feed = feed_original
-                    logging.debug(f"Original Feed liefert mehr Einträge: {len(feed.entries)} vs {len(feed_original.entries)}")
+                    logging.info(f"Original Feed liefert mehr Einträge: {original_count} vs {feed_with_limit_count}")
                     rss_url_used = rss_url
+                elif feed_with_limit_count > original_count:
+                    logging.info(f"Feed mit Parameter liefert mehr Einträge: {feed_with_limit_count} vs {original_count}")
+                    rss_url_used = rss_url_with_limit
                 else:
+                    # Beide liefern gleich viele - verwende den mit Parameter (vielleicht gibt es mehr, aber Server begrenzt)
+                    logging.info(f"Beide Feeds liefern {feed_with_limit_count} Einträge (Server-Begrenzung)")
                     rss_url_used = rss_url_with_limit
             else:
                 rss_url_used = rss_url
