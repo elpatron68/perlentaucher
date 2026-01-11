@@ -1210,8 +1210,14 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
         logging.debug(f"Suchbegriff normalisiert: '{series_title}' → '{normalized_search_title}'")
     
     logging.info(f"Suche in MediathekViewWeb nach Serie: '{series_title}' (normalisiert: '{normalized_search_title}')")
+    # Für Serien funktioniert das 'queries' Array Format mit 'fields' besser als das einfache 'query' Format
     payload = {
-        "query": normalized_search_title,
+        "queries": [
+            {
+                "fields": ["title", "topic"],
+                "query": normalized_search_title
+            }
+        ],
         "sortBy": "size",
         "sortOrder": "desc",
         "future": False,
