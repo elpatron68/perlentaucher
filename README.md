@@ -6,7 +6,7 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Codeberg](https://img.shields.io/badge/Codeberg-Codeberg-blue?logo=codeberg)](https://codeberg.org/elpatron/Perlentaucher)
 [![CI/CD](https://img.shields.io/badge/CI/CD-GitHub%20Actions-blue?logo=github)](https://github.com/elpatron68/perlentaucher/actions)
-[![Codecov](https://img.shields.io/codecov/c/github/elpatron68/perlentaucher?logo=codecov)](https://codecov.io/gh/elpatron68/perlentaucher)
+[![Code Coverage](https://img.shields.io/badge/coverage-Codecov-blue?logo=codecov)](https://codecov.io/gh/elpatron68/perlentaucher)
 [![Version](https://img.shields.io/badge/version-0.1.27-blue)](https://codeberg.org/elpatron/Perlentaucher/releases)
 
 Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/) parst, bei [MediathekViewWeb](https://mediathekviewweb.de) sucht und die beste Qualität herunterlädt.
