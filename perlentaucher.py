@@ -1139,7 +1139,7 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
                 body = f"Keine Ergebnisse in der Mediathek gefunden:\n\n"
                 body += f"📺 {series_title}\n"
                 if entry_link:
-                    body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                    body += f"\n🔗 Blog-Post: {entry_link}"
                 send_notification(notify_url, "Serie nicht gefunden", body, "warning")
             return []
         
@@ -1159,7 +1159,7 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
                 body = f"Keine Episoden für Serie gefunden:\n\n"
                 body += f"📺 {series_title}\n"
                 if entry_link:
-                    body += f"\n🔗 Blog-Eintrag: {entry_link}"
+                    body += f"\n🔗 Blog-Post: {entry_link}"
                 send_notification(notify_url, "Keine Episoden gefunden", body, "warning")
             return []
         
