@@ -411,6 +411,26 @@ class MainWindow(QMainWindow):
         
         event.accept()
     
+    def _get_resource_path(self, relative_path):
+        """
+        Gibt den absoluten Pfad zu einer Ressource zurück.
+        Funktioniert sowohl für normale Ausführung als auch für PyInstaller-Executables.
+        
+        Args:
+            relative_path: Relativer Pfad zur Ressource (z.B. 'assets/icon_256.png')
+        
+        Returns:
+            Absoluter Pfad zur Ressource
+        """
+        try:
+            # PyInstaller erstellt ein temporäres Verzeichnis und speichert den Pfad in _MEIPASS
+            base_path = sys._MEIPASS
+        except AttributeError:
+            # Normale Ausführung: Verwende das Verzeichnis zwei Ebenen höher (von gui/ zu root)
+            base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        return os.path.join(base_path, relative_path)
+    
     def _restore_window_geometry(self):
         """Stellt die gespeicherte Fenstergröße und Position wieder her."""
         x = self.config_manager.get('gui_window_x')

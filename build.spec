@@ -31,8 +31,9 @@ a = Analysis(
     pathex=[],
     binaries=collect_binaries,
     datas=collect_datas + [
-        # Icons/Assets falls vorhanden
-        # ('assets/*.png', 'assets'),
+        # Icons/Assets - müssen eingebunden werden für PyInstaller-Executables
+        ('assets/icon_256.png', 'assets'),
+        ('assets/icon_512.png', 'assets'),
     ],
     hiddenimports=[
         'feedparser',

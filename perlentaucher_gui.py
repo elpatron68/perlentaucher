@@ -23,6 +23,27 @@ from gui.config_manager import ConfigManager
 from gui.main_window import MainWindow
 
 
+def resource_path(relative_path):
+    """
+    Gibt den absoluten Pfad zu einer Ressource zurück.
+    Funktioniert sowohl für normale Ausführung als auch für PyInstaller-Executables.
+    
+    Args:
+        relative_path: Relativer Pfad zur Ressource (z.B. 'assets/icon_256.png')
+    
+    Returns:
+        Absoluter Pfad zur Ressource
+    """
+    try:
+        # PyInstaller erstellt ein temporäres Verzeichnis und speichert den Pfad in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # Normale Ausführung: Verwende das Verzeichnis der Hauptdatei
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    
+    return os.path.join(base_path, relative_path)
+
+
 def main():
     """Haupt-Funktion für die GUI-Anwendung."""
     # Erstelle QApplication
@@ -31,7 +52,7 @@ def main():
     app.setOrganizationName("Perlentaucher")
     
     # Setze Anwendungs-Icon
-    icon_path = os.path.join(os.path.dirname(__file__), 'assets', 'icon_256.png')
+    icon_path = resource_path('assets/icon_256.png')
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
     
