@@ -27,7 +27,7 @@ collect_datas = []
 
 # Alle Dateien und Daten die eingebunden werden sollen
 a = Analysis(
-    ['perlentaucher_gui.py'],
+    ['src/perlentaucher_gui.py'],
     pathex=[],
     binaries=collect_binaries,
     datas=collect_datas + [
@@ -55,7 +55,7 @@ a = Analysis(
         'PyQt6.QtWidgets',
         'PyQt6.QtGui',
         'PyQt6.QtNetwork',
-        'perlentaucher',  # Import des Core-Moduls
+        'src.perlentaucher',  # Import des Core-Moduls
     ],
     hookspath=[],
     hooksconfig={},
