@@ -69,8 +69,8 @@ import requests
 import semver
 
 try:
-    # Lese aktuelle Version aus _version.py
-    from _version import __version__
+    # Lese aktuelle Version aus src/_version.py
+    from src._version import __version__
     current_version = __version__
     
     # API-Aufruf zur Codeberg/Gitea API
@@ -140,7 +140,7 @@ while true; do
         SERIEN_DIR_ARGS="--serien-dir ${SERIEN_DIR}"
     fi
     
-    python perlentaucher.py \
+    python src/perlentaucher.py \
         --download-dir "${DOWNLOAD_DIR}" \
         --limit "${LIMIT}" \
         --loglevel "${LOGLEVEL}" \

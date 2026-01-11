@@ -49,19 +49,19 @@ jobs:
       - name: Python Syntax prüfen
         run: |
           echo "=== Python Syntax prüfen ==="
-          python -m py_compile perlentaucher.py
-          python -m py_compile perlentaucher_gui.py
-          python -m py_compile gui/*.py gui/utils/*.py 2>/dev/null || true
+          python -m py_compile src/perlentaucher.py
+          python -m py_compile src/perlentaucher_gui.py
+          python -m py_compile src/gui/*.py src/gui/utils/*.py 2>/dev/null || true
       
       - name: Test --help Option
         run: |
           echo "=== Test: --help Option ==="
-          python perlentaucher.py --help
+          python src/perlentaucher.py --help
       
       - name: Test Dry-run
         run: |
           echo "=== Test: Dry-run ==="
-          python perlentaucher.py --limit 1 --loglevel DEBUG --download-dir /tmp/test_downloads || true
+          python src/perlentaucher.py --limit 1 --loglevel DEBUG --download-dir /tmp/test_downloads || true
       
       - name: Run Unit Tests
         run: |
@@ -72,7 +72,7 @@ jobs:
         id: coverage
         run: |
           echo "=== Running Tests with Coverage ==="
-          pytest tests/ -v --cov=. --cov=perlentaucher --cov=gui --cov-report=term-missing --cov-report=xml --cov-report=html --ignore=tests/test_gui_components.py -m "not gui and not slow and not network" || true
+          pytest tests/ -v --cov=. --cov=src.perlentaucher --cov=src.gui --cov-report=term-missing --cov-report=xml --cov-report=html --ignore=tests/test_gui_components.py -m "not gui and not slow and not network" || true
           
           # Prüfe ob Coverage-Dateien erstellt wurden
           if [ -f "coverage.xml" ]; then
@@ -189,9 +189,9 @@ jobs:
               --hidden-import=PyQt6.QtCore \
               --hidden-import=PyQt6.QtWidgets \
               --hidden-import=PyQt6.QtGui \
-              --hidden-import=perlentaucher \
+              --hidden-import=src.perlentaucher \
               --clean --noconfirm \
-              perlentaucher_gui.py 2>&1
+              src/perlentaucher_gui.py 2>&1
           }
           echo ""
           echo "Build output in dist/:"
@@ -201,7 +201,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         id: artifact-windows
         run: |
-          $version = (python -c "import sys; sys.path.insert(0, '.'); from _version import __version__; print(__version__)").Trim()
+          $version = (python -c "import sys; sys.path.insert(0, '.'); from src._version import __version__; print(__version__)").Trim()
           $artifact = "PerlentaucherGUI-$version-windows.exe"
           echo "name=$artifact" >> $env:GITHUB_OUTPUT
           echo "path=dist\PerlentaucherGUI.exe" >> $env:GITHUB_OUTPUT
@@ -211,7 +211,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         id: artifact-linux
         run: |
-          VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from _version import __version__; print(__version__)")
+          VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from src._version import __version__; print(__version__)")
           ARTIFACT="PerlentaucherGUI-$VERSION-linux"
           echo "name=$ARTIFACT" >> $GITHUB_OUTPUT
           echo "path=dist/PerlentaucherGUI" >> $GITHUB_OUTPUT
@@ -220,7 +220,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         id: artifact-macos
         run: |
-          VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from _version import __version__; print(__version__)")
+          VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from src._version import __version__; print(__version__)")
           
           # Prüfe ob .app Bundle existiert
           if [ -d "dist/PerlentaucherGUI.app" ]; then
@@ -410,7 +410,7 @@ jobs:
             # Extrahiere Tag aus refs/tags/v1.2.3
             VERSION=$(echo "${{ github.ref }}" | sed 's|refs/tags/||' | sed 's|^v||')
           else
-            VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from _version import __version__; print(__version__)" 2>/dev/null || echo "unknown")
+            VERSION=$(python3 -c "import sys; sys.path.insert(0, '.'); from src._version import __version__; print(__version__)" 2>/dev/null || echo "unknown")
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Tag version: $VERSION"

@@ -10,7 +10,7 @@ from unittest.mock import patch, Mock
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-import perlentaucher as core
+from src import perlentaucher as core
 
 
 class TestYearExtraction:
@@ -139,7 +139,7 @@ class TestSeriesDetection:
     
     def test_is_series_by_category(self):
         """Test: Serien-Erkennung über Kategorie."""
-        from gui.utils.feedparser_helpers import get_entry_attr
+        from src.gui.utils.feedparser_helpers import get_entry_attr
         
         # Erstelle Mock-Entry mit Tags (als Liste, nicht Mock-Objekt)
         tag_mock = Mock()

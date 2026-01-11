@@ -81,7 +81,7 @@ Die einfachste Methode ist die grafische Benutzeroberfläche:
 pip install -r requirements-gui.txt
 
 # GUI starten
-python perlentaucher_gui.py
+python src/perlentaucher_gui.py
 ```
 
 Eine ausführliche Anleitung zur GUI findest du in der [GUI-Dokumentation](docs/gui.md).
@@ -96,7 +96,7 @@ Das Executable befindet sich nach dem Build in `dist/`.
 ### Kommandozeilen-Interface
 
 ```bash
-python perlentaucher.py [Optionen]
+python src/perlentaucher.py [Optionen]
 ```
 
 ### Argumente
@@ -118,57 +118,57 @@ python perlentaucher.py [Optionen]
 
 Die letzten 3 Filme suchen und in den Ordner `Filme` herunterladen:
 ```bash
-python perlentaucher.py --download-dir ./Filme --limit 3
+python src/perlentaucher.py --download-dir ./Filme --limit 3
 ```
 
 Nur deutsche Fassungen ohne Audiodeskription bevorzugen:
 ```bash
-python perlentaucher.py --sprache deutsch --audiodeskription ohne
+python src/perlentaucher.py --sprache deutsch --audiodeskription ohne
 ```
 
 Englische Originalfassungen bevorzugen:
 ```bash
-python perlentaucher.py --sprache englisch
+python src/perlentaucher.py --sprache englisch
 ```
 
 Mit Benachrichtigungen (z.B. Discord Webhook):
 ```bash
-python perlentaucher.py --notify "discord://webhook_id/webhook_token"
+python src/perlentaucher.py --notify "discord://webhook_id/webhook_token"
 ```
 
 Mit Email-Benachrichtigungen:
 ```bash
-python perlentaucher.py --notify "mailto://user:password@smtp.example.com"
+python src/perlentaucher.py --notify "mailto://user:password@smtp.example.com"
 ```
 
 Mit Metadata Provider-Integration (TMDB):
 ```bash
-python perlentaucher.py --tmdb-api-key "dein_tmdb_api_key"
+python src/perlentaucher.py --tmdb-api-key "dein_tmdb_api_key"
 ```
 
 Mit Metadata Provider-Integration (OMDB):
 ```bash
-python perlentaucher.py --omdb-api-key "dein_omdb_api_key"
+python src/perlentaucher.py --omdb-api-key "dein_omdb_api_key"
 ```
 
 Mit beiden Metadata Providern:
 ```bash
-python perlentaucher.py --tmdb-api-key "dein_tmdb_api_key" --omdb-api-key "dein_omdb_api_key"
+python src/perlentaucher.py --tmdb-api-key "dein_tmdb_api_key" --omdb-api-key "dein_omdb_api_key"
 ```
 
 Serien-Downloads (nur erste Episode):
 ```bash
-python perlentaucher.py --serien-download erste --serien-dir ./Serien
+python src/perlentaucher.py --serien-download erste --serien-dir ./Serien
 ```
 
 Serien-Downloads (gesamte Staffel):
 ```bash
-python perlentaucher.py --serien-download staffel --serien-dir ./Serien
+python src/perlentaucher.py --serien-download staffel --serien-dir ./Serien
 ```
 
 Serien überspringen:
 ```bash
-python perlentaucher.py --serien-download keine
+python src/perlentaucher.py --serien-download keine
 ```
 
 ### Dateinamen-Schema für Jellyfin/Plex

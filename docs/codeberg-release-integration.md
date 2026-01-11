@@ -60,7 +60,7 @@ Das Release-Script erstellt automatisch ein GitHub Release, wenn ein GitHub Remo
 ```
 
 Das Script:
-1. ✅ Aktualisiert Version in `_version.py`
+1. ✅ Aktualisiert Version in `src/_version.py`
 2. ✅ Erstellt Git-Tag
 3. ✅ Pusht Tag zu Codeberg
 4. ✅ **Erstellt Release auf Codeberg** (ohne Assets)

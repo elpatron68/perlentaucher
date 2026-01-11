@@ -57,11 +57,11 @@ if ($currentDir.Path -ne $projectRoot) {
     Set-Location $projectRoot
 }
 
-# Aktualisiere Version in _version.py
+# Aktualisiere Version in src/_version.py
 $versionNumber = $newTag.TrimStart('v')  # Entferne 'v' Präfix
-Write-Host "Aktualisiere Version in _version.py: $versionNumber" -ForegroundColor Cyan
+Write-Host "Aktualisiere Version in src/_version.py: $versionNumber" -ForegroundColor Cyan
 $versionContent = "# Version wird automatisch vom Release-Script aktualisiert`n__version__ = `"$versionNumber`"`n"
-Set-Content -Path "_version.py" -Value $versionContent -NoNewline
+Set-Content -Path "src/_version.py" -Value $versionContent -NoNewline
 
 # Generiere Release Notes VOR dem Tag
 Write-Host "`nGeneriere Release Notes..." -ForegroundColor Cyan
@@ -203,7 +203,7 @@ if (-not (Test-Path $releaseNotesFile)) {
 
 # Committe Version-Update und Release Notes zusammen
 Write-Host "`nCommitte Version-Update und Release Notes..." -ForegroundColor Cyan
-git add _version.py
+git add src/_version.py
 if (Test-Path $releaseNotesFile) {
     git add $releaseNotesFile
 }

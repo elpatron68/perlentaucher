@@ -449,7 +449,7 @@ REM Lese Argumente aus Python-Helper
 for /f "delims=" %%i in ('python run_perlentaucher_helper.py') do set ARGS=%%i
 
 REM Starte Perlentaucher
-python perlentaucher.py %ARGS%
+python src/perlentaucher.py %ARGS%
 "@
 
 $wrapperContent | Set-Content -Path $wrapperScript -Encoding ASCII
@@ -467,6 +467,6 @@ if ($venvActive -or (Test-Path ".venv")) {
 Write-Host "  .\run_perlentaucher.bat"
 Write-Host ""
 Write-Host "Oder manuell:"
-Write-Host "  python perlentaucher.py [Optionen]"
+Write-Host "  python src/perlentaucher.py [Optionen]"
 Write-Host ""
 

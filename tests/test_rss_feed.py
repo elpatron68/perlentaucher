@@ -15,12 +15,12 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-import perlentaucher as core
+from src import perlentaucher as core
 
 # GUI-Imports nur wenn verfügbar
 try:
-    from gui.blog_list_panel import BlogListPanel
-    from gui.config_manager import ConfigManager
+    from src.gui.blog_list_panel import BlogListPanel
+    from src.gui.config_manager import ConfigManager
     HAS_GUI = True
 except ImportError:
     HAS_GUI = False

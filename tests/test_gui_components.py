@@ -42,7 +42,7 @@ class TestConfigManager:
     
     def test_config_manager_init(self, temp_config_file):
         """Test: ConfigManager Initialisierung."""
-        from gui.config_manager import ConfigManager
+        from src.gui.config_manager import ConfigManager
         
         config_manager = ConfigManager(temp_config_file)
         assert config_manager is not None
@@ -50,7 +50,7 @@ class TestConfigManager:
     
     def test_config_manager_get_default(self, temp_config_file):
         """Test: ConfigManager gibt Standard-Werte zurück."""
-        from gui.config_manager import ConfigManager
+        from src.gui.config_manager import ConfigManager
         
         config_manager = ConfigManager(temp_config_file)
         assert config_manager.get('download_dir') == './downloads'
@@ -58,7 +58,7 @@ class TestConfigManager:
     
     def test_config_manager_update(self, temp_config_file):
         """Test: ConfigManager kann Werte aktualisieren."""
-        from gui.config_manager import ConfigManager
+        from src.gui.config_manager import ConfigManager
         
         config_manager = ConfigManager(temp_config_file)
         config_manager.update({'download_dir': '/custom/path'})
@@ -67,7 +67,7 @@ class TestConfigManager:
     
     def test_config_manager_save(self, temp_config_file):
         """Test: ConfigManager kann speichern."""
-        from gui.config_manager import ConfigManager
+        from src.gui.config_manager import ConfigManager
         
         config_manager = ConfigManager(temp_config_file)
         config_manager.update({'download_dir': '/test/path'})
@@ -93,8 +93,8 @@ class TestBlogListPanel:
     @patch('requests.get')
     def test_load_rss_feed_success(self, mock_requests_get, mock_feedparse, temp_config_file):
         """Test: RSS-Feed erfolgreich laden."""
-        from gui.blog_list_panel import BlogListPanel
-        from gui.config_manager import ConfigManager
+        from src.gui.blog_list_panel import BlogListPanel
+        from src.gui.config_manager import ConfigManager
         
         # Mock Feed
         mock_feed = Mock()
@@ -117,8 +117,8 @@ class TestBlogListPanel:
     @patch('requests.get')
     def test_load_rss_feed_ssl_error(self, mock_requests_get, temp_config_file, qapp):
         """Test: SSL-Fehler beim RSS-Feed-Laden."""
-        from gui.blog_list_panel import BlogListPanel
-        from gui.config_manager import ConfigManager
+        from src.gui.blog_list_panel import BlogListPanel
+        from src.gui.config_manager import ConfigManager
         from requests.exceptions import SSLError
         
         # Mock SSL-Fehler
@@ -136,8 +136,8 @@ class TestBlogListPanel:
     @patch('requests.get')
     def test_load_rss_feed_network_error(self, mock_requests_get, temp_config_file, qapp):
         """Test: Netzwerkfehler beim RSS-Feed-Laden."""
-        from gui.blog_list_panel import BlogListPanel
-        from gui.config_manager import ConfigManager
+        from src.gui.blog_list_panel import BlogListPanel
+        from src.gui.config_manager import ConfigManager
         from requests.exceptions import ConnectionError
         
         # Mock Netzwerkfehler
@@ -155,7 +155,7 @@ class TestFeedParserHelpers:
     
     def test_get_entry_attr_exists(self):
         """Test: Extraktion von existierendem Attribut."""
-        from gui.utils.feedparser_helpers import get_entry_attr
+        from src.gui.utils.feedparser_helpers import get_entry_attr
         
         entry = Mock()
         entry.title = 'Test Title'
@@ -165,7 +165,7 @@ class TestFeedParserHelpers:
     
     def test_get_entry_attr_missing(self):
         """Test: Extraktion von fehlendem Attribut."""
-        from gui.utils.feedparser_helpers import get_entry_attr
+        from src.gui.utils.feedparser_helpers import get_entry_attr
         
         entry = Mock()
         del entry.title
@@ -175,7 +175,7 @@ class TestFeedParserHelpers:
     
     def test_get_entry_attr_none(self):
         """Test: Extraktion von None-Wert."""
-        from gui.utils.feedparser_helpers import get_entry_attr
+        from src.gui.utils.feedparser_helpers import get_entry_attr
         
         entry = Mock()
         entry.title = None
