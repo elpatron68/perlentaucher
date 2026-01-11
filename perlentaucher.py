@@ -935,8 +935,14 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         logging.debug(f"Suchbegriff normalisiert: '{movie_title}' → '{normalized_search_title}'")
     
     logging.info(f"Suche in MediathekViewWeb nach: '{movie_title}' (normalisiert: '{normalized_search_title}')")
+    # Verwende 'queries' Array Format mit 'fields' für spezifischere Suche
     payload = {
-        "query": normalized_search_title,
+        "queries": [
+            {
+                "fields": ["title", "topic"],
+                "query": normalized_search_title
+            }
+        ],
         "sortBy": "size",  # Sort by size to get best quality easily
         "sortOrder": "desc",
         "future": False,
