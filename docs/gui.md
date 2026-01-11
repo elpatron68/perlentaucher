@@ -138,6 +138,10 @@ Im ersten Tab "⚙️ Einstellungen" können alle Optionen konfiguriert werden:
 
 Klicke auf "Einstellungen speichern" um die Konfiguration zu speichern.
 
+<a href="assets/Perlentaucher-GUI-Settings.png"><img src="assets/Perlentaucher-GUI-Settings.png" alt="Einstellungen" style="max-width: 600px; border: 1px solid #ccc;"></a>
+
+*Klicken Sie auf das Bild für eine größere Ansicht*
+
 ### 2. RSS-Feed laden
 
 Wechsle zum Tab "📰 Blog-Liste" und klicke auf "RSS-Feed laden (Letzte 30 Tage)".
@@ -161,6 +165,10 @@ Die Blog-Beiträge werden in einer Tabelle angezeigt mit:
 - Status (Neu, bereits verarbeitet, etc.)
 - Link zum Blog-Eintrag
 
+<a href="assets/Perlentaucher-GUI-Feed.png"><img src="assets/Perlentaucher-GUI-Feed.png" alt="Blog-Liste" style="max-width: 600px; border: 1px solid #ccc;"></a>
+
+*Klicken Sie auf das Bild für eine größere Ansicht*
+
 ### 3. Downloads auswählen
 
 - Wähle die gewünschten Einträge durch Ankreuzen der Checkboxen
@@ -183,6 +191,10 @@ Wechsle zum Tab "⬇️ Downloads":
 - Log-Ausgabe zeigt detaillierte Informationen
 - Einzelne Downloads können mit "Abbrechen" gestoppt werden
 - "Alle Downloads abbrechen" stoppt alle aktiven Downloads
+
+<a href="assets/Perlentaucher-GUI-Download.png"><img src="assets/Perlentaucher-GUI-Download.png" alt="Downloads" style="max-width: 600px; border: 1px solid #ccc;"></a>
+
+*Klicken Sie auf das Bild für eine größere Ansicht*
 
 ## Tastenkürzel
 
