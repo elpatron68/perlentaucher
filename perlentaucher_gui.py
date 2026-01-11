@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 try:
     from PyQt6.QtWidgets import QApplication
     from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QIcon
 except ImportError:
     print("PyQt6 ist nicht installiert!")
     print("Installieren Sie PyQt6 mit: pip install PyQt6")
@@ -28,6 +29,11 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Perlentaucher GUI")
     app.setOrganizationName("Perlentaucher")
+    
+    # Setze Anwendungs-Icon
+    icon_path = os.path.join(os.path.dirname(__file__), 'assets', 'icon_256.png')
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
     
     # In PyQt6 ist High-DPI-Skalierung standardmäßig aktiviert
     # Die alten Attribute (AA_EnableHighDpiScaling, AA_UseHighDpiPixmaps) existieren nicht mehr

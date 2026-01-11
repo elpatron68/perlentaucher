@@ -94,7 +94,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Kann Icon-Pfad hinzugefügt werden: 'assets/perlerntaucher_512.ico'
+    icon='assets/icon.ico',  # Icon für Windows Executable
 )
 
 # macOS: Erstelle zusätzlich APP Bundle aus dem EXE

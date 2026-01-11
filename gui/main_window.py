@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QApplication, QProgressDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QThread, pyqtSlot, QObject
-from PyQt6.QtGui import QAction, QDesktopServices
+from PyQt6.QtGui import QAction, QDesktopServices, QIcon
 from typing import Dict, Optional
 import sys
 import os
@@ -43,6 +43,11 @@ class MainWindow(QMainWindow):
     def _init_ui(self):
         """Initialisiert die UI-Komponenten."""
         self.setWindowTitle("Perlentaucher GUI")
+        
+        # Setze Fenster-Icon (falls nicht bereits von QApplication gesetzt)
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'icon_256.png')
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
         
         # Lade gespeicherte Fenstergröße und Position
         self._restore_window_geometry()
