@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Codeberg](https://img.shields.io/badge/Codeberg-Codeberg-blue?logo=codeberg)](https://codeberg.org/elpatron/Perlentaucher)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/elpatron68/perlentaucher/build-gui.yml?branch=master&logo=github)](https://github.com/elpatron68/perlentaucher/actions)
+[![CI/CD](https://img.shields.io/badge/CI/CD-GitHub%20Actions-blue?logo=github)](https://github.com/elpatron68/perlentaucher/actions)
 [![Codecov](https://img.shields.io/codecov/c/github/elpatron68/perlentaucher?logo=codecov)](https://codecov.io/gh/elpatron68/perlentaucher)
 [![Version](https://img.shields.io/badge/version-0.1.27-blue)](https://codeberg.org/elpatron/Perlentaucher/releases)
 
