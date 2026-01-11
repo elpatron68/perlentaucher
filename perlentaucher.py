@@ -7,6 +7,7 @@ import requests
 import feedparser
 import json
 import semver
+import unicodedata
 from datetime import datetime
 from typing import Optional, Dict, Tuple
 
@@ -167,6 +168,97 @@ def save_processed_entry(state_file, entry_id, status=None, movie_title=None, fi
             json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception as e:
         logging.error(f"Fehler beim Speichern der Status-Datei: {e}")
+
+def normalize_search_title(title: str) -> str:
+    """
+    Normalisiert einen Filmtitel für die Suche, indem Sonderzeichen entfernt/normalisiert werden.
+    Konvertiert z.B. 'Dalíland' zu 'Daliland' für bessere Suche in MediathekViewWeb.
+    
+    Behandelt:
+    - Akzente/Diakritika (í → i, é → e, etc.)
+    - Typografische Anführungszeichen („ " → ", ' → ')
+    - Em/En-Dashes (— → -, – → -)
+    - Andere häufige typografische Sonderzeichen
+    
+    Args:
+        title: Der Filmtitel mit möglichen Sonderzeichen
+    
+    Returns:
+        Normalisierter Titel mit ASCII-kompatiblen Zeichen
+    """
+    if not title:
+        return title
+    
+    # Schritt 1: Normalisiere typografische Anführungszeichen zu Standard-Anführungszeichen
+    # Mapping für typografische Anführungszeichen
+    quote_mapping = {
+        '\u201E': '"',  # „ (deutsches öffnendes Anführungszeichen)
+        '\u201C': '"',  # " (englisches öffnendes Anführungszeichen)
+        '\u201D': '"',  # " (englisches schließendes Anführungszeichen)
+        '\u201F': '"',  # „ (Doppel-Anführungszeichen hochkomma)
+        '\u2033': '"',  # " (Doppel-Prim)
+        '\u2036': '"',  # „ (Doppel-Prim umgekehrt)
+        '\u2018': "'",  # ' (englisches öffnendes einfaches Anführungszeichen)
+        '\u2019': "'",  # ' (englisches schließendes einfaches Anführungszeichen, auch Apostroph)
+        '\u201A': "'",  # ‚ (einfaches Anführungszeichen unten)
+        '\u201B': "'",  # ‛ (einfaches Anführungszeichen oben)
+        '\u2032': "'",  # ' (Prim)
+        '\u2035': "'",  # ‵ (umgekehrter Prim)
+        '\u275D': "'",  # ' (einfaches Anführungszeichen)
+        '\u275E': "'",  # ' (einfaches Anführungszeichen)
+    }
+    
+    # Schritt 2: Normalisiere Striche/Dashes
+    dash_mapping = {
+        '\u2014': '-',  # — (Em-Dash)
+        '\u2015': '-',  # ― (horizontal bar)
+        '\u2013': '-',  # – (En-Dash)
+        '\u2212': '-',  # − (Minus-Zeichen)
+    }
+    
+    # Schritt 3: Normalisiere andere häufige typografische Zeichen
+    other_mapping = {
+        '\u2026': '...',  # … (Ellipsis)
+        '\u00A0': ' ',   # (non-breaking space)
+        '\u2009': ' ',   # (thin space)
+        '\u2008': ' ',   # (punctuation space)
+        '\u2007': ' ',   # (figure space)
+        '\u2006': ' ',   # (six-per-em space)
+        '\u2005': ' ',   # (four-per-em space)
+        '\u2004': ' ',   # (three-per-em space)
+        '\u2003': ' ',   # (em space)
+        '\u2002': ' ',   # (en space)
+        '\u2001': ' ',   # (em quad)
+        '\u2000': ' ',   # (en quad)
+        '\u200B': '',    # (zero-width space)
+        '\uFEFF': '',    # (zero-width no-break space / BOM)
+    }
+    
+    # Kombiniere alle Mappings
+    char_mapping = {**quote_mapping, **dash_mapping, **other_mapping}
+    
+    # Wende Charakter-Mapping an
+    normalized = title
+    for old_char, new_char in char_mapping.items():
+        normalized = normalized.replace(old_char, new_char)
+    
+    # Schritt 4: Normalisiere zu NFKD (Normalization Form Compatibility Decomposition)
+    # Das trennt Zeichen wie í in i + Akut
+    nfkd_form = unicodedata.normalize('NFKD', normalized)
+    
+    # Schritt 5: Entferne alle Combining Characters (Akzente, Diakritika)
+    # und konvertiere zu ASCII (ignoriere Fehler für nicht-ASCII Zeichen)
+    normalized = ''.join(c for c in nfkd_form if not unicodedata.combining(c))
+    
+    # Schritt 6: Finale ASCII-Konvertierung
+    try:
+        result = normalized.encode('ascii', 'ignore').decode('ascii')
+        # Entferne überflüssige Leerzeichen (mehrfache Leerzeichen zu einem)
+        result = ' '.join(result.split())
+        return result
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        # Falls das fehlschlägt, gib den normalisierten String zurück (bereinigt)
+        return ' '.join(normalized.split())
 
 def extract_year_from_title(title: str) -> Optional[int]:
     """
@@ -837,12 +929,17 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         year: Optional - Das Jahr des Films (für bessere Matching)
         metadata: Optional - Dictionary mit 'provider_id' (tmdbid-XXX oder imdbid-XXX) für exaktes Matching
     """
-    logging.info(f"Suche in MediathekViewWeb nach: '{movie_title}'")
+    # Normalisiere Suchbegriff (entfernt Sonderzeichen/Akzente für bessere Suche)
+    normalized_search_title = normalize_search_title(movie_title)
+    if normalized_search_title != movie_title:
+        logging.debug(f"Suchbegriff normalisiert: '{movie_title}' → '{normalized_search_title}'")
+    
+    logging.info(f"Suche in MediathekViewWeb nach: '{movie_title}' (normalisiert: '{normalized_search_title}')")
     payload = {
         "queries": [
             {
                 "fields": ["title", "topic"],
-                "query": movie_title
+                "query": normalized_search_title
             }
         ],
         "sortBy": "size",  # Sort by size to get best quality easily
@@ -1112,12 +1209,17 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
     Returns:
         Liste von Episoden-Daten (sortiert nach Score), oder leere Liste wenn keine gefunden
     """
-    logging.info(f"Suche in MediathekViewWeb nach Serie: '{series_title}'")
+    # Normalisiere Suchbegriff (entfernt Sonderzeichen/Akzente für bessere Suche)
+    normalized_search_title = normalize_search_title(series_title)
+    if normalized_search_title != series_title:
+        logging.debug(f"Suchbegriff normalisiert: '{series_title}' → '{normalized_search_title}'")
+    
+    logging.info(f"Suche in MediathekViewWeb nach Serie: '{series_title}' (normalisiert: '{normalized_search_title}')")
     payload = {
         "queries": [
             {
                 "fields": ["title", "topic"],
-                "query": series_title
+                "query": normalized_search_title
             }
         ],
         "sortBy": "size",

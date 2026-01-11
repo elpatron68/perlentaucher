@@ -44,6 +44,96 @@ class TestYearExtraction:
         assert year_2101 is None or isinstance(year_2101, int)
 
 
+class TestNormalizeSearchTitle:
+    """Tests für Titel-Normalisierung für Suchanfragen."""
+    
+    def test_normalize_accents(self):
+        """Test: Normalisierung von Akzenten/Diakritika."""
+        test_cases = [
+            ('Dalíland', 'Daliland'),
+            ('Café', 'Cafe'),
+            ('Müller', 'Muller'),
+            ('Zoë', 'Zoe'),
+            ('José', 'Jose'),
+        ]
+        
+        for input_title, expected in test_cases:
+            result = core.normalize_search_title(input_title)
+            assert result == expected, f"Failed for: {input_title} (got '{result}', expected '{expected}')"
+    
+    def test_normalize_typographic_quotes(self):
+        """Test: Normalisierung von typografischen Anführungszeichen."""
+        test_cases = [
+            ('„Test" Film', '"Test" Film'),
+            ('"Test" Film', '"Test" Film'),  # Bereits normalisiert
+            ("'Film' Title", "'Film' Title"),  # Einfache Anführungszeichen
+        ]
+        
+        for input_title, expected in test_cases:
+            result = core.normalize_search_title(input_title)
+            assert result == expected, f"Failed for: {input_title} (got '{result}', expected '{expected}')"
+    
+    def test_normalize_dashes(self):
+        """Test: Normalisierung von Em/En-Dashes."""
+        test_cases = [
+            ('Film—mit—Dash', 'Film-mit-Dash'),  # Em-Dash
+            ('Film – mit En-Dash', 'Film - mit En-Dash'),  # En-Dash
+            ('Film-minus', 'Film-minus'),  # Normaler Bindestrich bleibt
+        ]
+        
+        for input_title, expected in test_cases:
+            result = core.normalize_search_title(input_title)
+            assert result == expected, f"Failed for: {input_title} (got '{result}', expected '{expected}')"
+    
+    def test_normalize_ellipsis(self):
+        """Test: Normalisierung von Ellipsis."""
+        test_cases = [
+            ('Film…mit Ellipsis', 'Film...mit Ellipsis'),
+            ('Film...mit normalen Punkten', 'Film...mit normalen Punkten'),
+        ]
+        
+        for input_title, expected in test_cases:
+            result = core.normalize_search_title(input_title)
+            assert result == expected, f"Failed for: {input_title} (got '{result}', expected '{expected}')"
+    
+    def test_normalize_whitespace(self):
+        """Test: Normalisierung von Leerzeichen."""
+        test_cases = [
+            ('Film  mit    mehreren    Spaces', 'Film mit mehreren Spaces'),
+            ('Film\tmit\tTabs', 'Film mit Tabs'),  # Tabs werden zu Leerzeichen
+            (' Film mit führendem Leerzeichen', 'Film mit fuhrendem Leerzeichen'),  # führende/trailing Spaces werden entfernt
+        ]
+        
+        for input_title, expected in test_cases:
+            result = core.normalize_search_title(input_title)
+            # Entferne führende/trailing Spaces für Vergleich
+            assert result.strip() == expected.strip(), f"Failed for: {input_title} (got '{result}', expected '{expected}')"
+    
+    def test_normalize_empty_and_simple_strings(self):
+        """Test: Behandlung von leeren und einfachen Strings."""
+        assert core.normalize_search_title('') == ''
+        assert core.normalize_search_title('Simple Title') == 'Simple Title'
+        assert core.normalize_search_title('Film 2023') == 'Film 2023'
+    
+    def test_normalize_preserves_ascii(self):
+        """Test: ASCII-Zeichen bleiben unverändert."""
+        ascii_title = 'The Matrix (1999)'
+        result = core.normalize_search_title(ascii_title)
+        assert result == ascii_title
+    
+    def test_normalize_combines_multiple_issues(self):
+        """Test: Kombination mehrerer Normalisierungen."""
+        complex_title = 'Café „Dalíland" — Ein Film…'
+        result = core.normalize_search_title(complex_title)
+        # Prüfe, dass alle Sonderzeichen normalisiert wurden
+        assert 'í' not in result
+        assert 'é' not in result
+        assert '„' not in result
+        assert '"' not in result or result.count('"') <= 2  # Nur normale Anführungszeichen
+        assert '—' not in result
+        assert '…' not in result
+
+
 class TestSeriesDetection:
     """Tests für Serien-Erkennung."""
     
