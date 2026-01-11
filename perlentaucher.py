@@ -950,7 +950,7 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
     }
     
     try:
-        response = requests.post(MVW_API_URL, json=payload, headers={"Content-Type": "text/plain"}, timeout=10)
+        response = requests.post(MVW_API_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
         response.raise_for_status()
         data = response.json()
         
@@ -1230,7 +1230,7 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
     }
     
     try:
-        response = requests.post(MVW_API_URL, json=payload, headers={"Content-Type": "text/plain"}, timeout=10)
+        response = requests.post(MVW_API_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
         response.raise_for_status()
         data = response.json()
         
