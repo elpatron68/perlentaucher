@@ -7,7 +7,8 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QCheckBox, QLabel, QMessageBox,
     QComboBox, QLineEdit, QAbstractItemView, QInputDialog, QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QUrl
+from PyQt6.QtGui import QDesktopServices
 import sys
 import os
 import feedparser
@@ -130,6 +131,9 @@ class BlogListPanel(QWidget):
         self.table.setColumnWidth(0, 80)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
+        # Verbinde Doppelklick-Signal zum Öffnen des Blog-Posts
+        self.table.cellDoubleClicked.connect(self._open_blog_post)
         
         layout.addWidget(self.table, stretch=1)  # Stretch-Faktor für vertikale Skalierung
         
@@ -583,11 +587,13 @@ class BlogListPanel(QWidget):
             
             # Titel
             title_item = QTableWidgetItem(entry_data['rss_title'])
+            title_item.setToolTip("Doppelklick zum Öffnen des Blog-Posts im Browser")
             self.table.setItem(row, 1, title_item)
             
             # Filmtitel
             movie_title = entry_data.get('movie_title', 'Nicht extrahiert')
             movie_item = QTableWidgetItem(movie_title if movie_title else 'Nicht extrahiert')
+            movie_item.setToolTip("Doppelklick zum Öffnen des Blog-Posts im Browser")
             if not movie_title:
                 movie_item.setForeground(Qt.GlobalColor.red)
             self.table.setItem(row, 2, movie_item)
@@ -595,14 +601,17 @@ class BlogListPanel(QWidget):
             # Jahr
             year = entry_data.get('year')
             year_item = QTableWidgetItem(str(year) if year else '')
+            year_item.setToolTip("Doppelklick zum Öffnen des Blog-Posts im Browser")
             self.table.setItem(row, 3, year_item)
             
             # Typ
             type_item = QTableWidgetItem("Serie" if entry_data.get('is_series') else "Film")
+            type_item.setToolTip("Doppelklick zum Öffnen des Blog-Posts im Browser")
             self.table.setItem(row, 4, type_item)
             
             # Status
             status_item = QTableWidgetItem(entry_data['status'])
+            status_item.setToolTip("Doppelklick zum Öffnen des Blog-Posts im Browser")
             if '✓' in entry_data['status']:
                 status_item.setForeground(Qt.GlobalColor.green)
             elif '✗' in entry_data['status']:
@@ -612,6 +621,7 @@ class BlogListPanel(QWidget):
             # Link
             link = entry_data.get('entry_link', '')
             link_item = QTableWidgetItem(link[:50] + '...' if len(link) > 50 else link)
+            link_item.setToolTip("Doppelklick zum Öffnen des Blog-Posts im Browser")
             self.table.setItem(row, 6, link_item)
             
             # Speichere Entry-Daten in der Zeile
@@ -690,3 +700,36 @@ class BlogListPanel(QWidget):
                         elif '✗' in status:
                             status_item.setForeground(Qt.GlobalColor.red)
                     break
+    
+    def _open_blog_post(self, row: int, column: int):
+        """
+        Öffnet den Blog-Post im Standard-Browser.
+        
+        Args:
+            row: Zeilen-Index
+            column: Spalten-Index (wird ignoriert)
+        """
+        # Hole Entry-Daten aus der Zeile
+        title_item = self.table.item(row, 1)
+        if not title_item:
+            return
+        
+        entry_data = title_item.data(Qt.ItemDataRole.UserRole)
+        if not entry_data:
+            return
+        
+        # Hole Link aus Entry-Daten
+        link = entry_data.get('entry_link', '')
+        if not link:
+            QMessageBox.warning(self, "Kein Link", "Für diesen Eintrag ist kein Link verfügbar.")
+            return
+        
+        # Öffne Link im Standard-Browser
+        try:
+            QDesktopServices.openUrl(QUrl(link))
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Fehler",
+                f"Der Link konnte nicht geöffnet werden:\n{str(e)}"
+            )
