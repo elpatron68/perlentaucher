@@ -935,89 +935,120 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         logging.debug(f"Suchbegriff normalisiert: '{movie_title}' → '{normalized_search_title}'")
     
     logging.info(f"Suche in MediathekViewWeb nach: '{movie_title}' (normalisiert: '{normalized_search_title}')")
-    # Verwende 'queries' Array Format mit 'fields' für spezifischere Suche
-    payload = {
-        "queries": [
-            {
-                "fields": ["title", "topic"],
-                "query": normalized_search_title
-            }
-        ],
-        "sortBy": "size",  # Sort by size to get best quality easily
-        "sortOrder": "desc",
-        "future": False,
-        "offset": 0,
-        "size": 20  # Mehr Ergebnisse für bessere Auswahl
-    }
+    # Versuche zuerst 'queries' Array Format (spezifischer), dann einfaches 'query' Format (Fallback)
+    payloads = [
+        {
+            "queries": [
+                {
+                    "fields": ["title", "topic"],
+                    "query": normalized_search_title
+                }
+            ],
+            "sortBy": "size",
+            "sortOrder": "desc",
+            "future": False,
+            "offset": 0,
+            "size": 20
+        },
+        {
+            "query": normalized_search_title,
+            "sortBy": "size",
+            "sortOrder": "desc",
+            "future": False,
+            "offset": 0,
+            "size": 20
+        }
+    ]
     
-    try:
-        response = requests.post(MVW_API_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        results = data.get("result", {}).get("results", [])
-        if not results:
-            logging.warning(f"Keine Ergebnisse gefunden für '{movie_title}'")
-            # Benachrichtigung für keine Ergebnisse
-            if notify_url and APPRISE_AVAILABLE:
-                body = f"Keine Ergebnisse in der Mediathek gefunden:\n\n"
-                body += f"📽️ {movie_title}\n"
-                if entry_link:
-                    body += f"\n🔗 Blog-Eintrag: {entry_link}"
-                send_notification(notify_url, "Film nicht gefunden", body, "warning")
-            return None
-        
-        # Bewerte alle Ergebnisse
-        scored_results = []
-        for result in results:
-            try:
-                score = score_movie(result, prefer_language, prefer_audio_desc, 
-                                  search_title=movie_title, search_year=year, metadata=metadata)
-                scored_results.append((score, result))
-            except Exception as e:
-                logging.debug(f"Fehler beim Bewerten eines Ergebnisses für '{movie_title}': {e}")
-                continue
-        
-        if not scored_results:
-            logging.warning(f"Keine gültigen Ergebnisse für '{movie_title}' gefunden")
-            # Benachrichtigung für erfolglose Suche
-            if notify_url and APPRISE_AVAILABLE:
-                body = f"Keine gültigen Ergebnisse für Film gefunden:\n\n"
-                body += f"📽️ {movie_title}\n"
-                body += f"ℹ️ Es wurden Ergebnisse gefunden, aber keine konnten verarbeitet werden.\n"
-                if entry_link:
-                    body += f"\n🔗 Blog-Eintrag: {entry_link}"
-                send_notification(notify_url, "Suche erfolglos", body, "warning")
-            return None
-        
-        # Sortiere nach Punktzahl (höchste zuerst)
-        scored_results.sort(key=lambda x: x[0], reverse=True)
-        
-        best_match = scored_results[0][1]
-        best_score = scored_results[0][0]
-        
-        language = detect_language(best_match)
-        has_ad = has_audio_description(best_match)
-        size = best_match.get("size") or 0
-        size_mb = size / (1024 * 1024) if size else 0
-        
-        logging.info(f"Beste Übereinstimmung gefunden: '{best_match.get('title')}' "
-                    f"({size_mb:.1f} MB, "
-                    f"Sprache: {language}, "
-                    f"AD: {'ja' if has_ad else 'nein'}, "
-                    f"Score: {best_score:.1f})")
-        
-        return best_match
-
-    except requests.RequestException as e:
-        logging.error(f"Netzwerkfehler bei der Suche nach '{movie_title}': {e}")
+    results = []
+    for payload in payloads:
+        try:
+            response = requests.post(MVW_API_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            results = data.get("result", {}).get("results", [])
+            if results:
+                # Prüfe, ob die Ergebnisse relevant sind (Filmtitel kommt im Titel/Topic vor)
+                normalized_lower = normalized_search_title.lower()
+                relevant_results = [
+                    r for r in results 
+                    if normalized_lower in r.get("title", "").lower() or 
+                       normalized_lower in r.get("topic", "").lower()
+                ]
+                # Wenn wir relevante Ergebnisse haben, verwende dieses Format
+                if relevant_results:
+                    results = relevant_results
+                    break
+                # Wenn 'queries' Format keine relevanten Ergebnisse hat, versuche nächstes Format
+                if "queries" in payload:
+                    logging.debug(f"'queries' Format lieferte {len(results)} Ergebnisse, aber keine relevanten für '{movie_title}'")
+                    results = []  # Setze zurück, versuche nächstes Format
+                    continue
+                # Für einfaches 'query' Format: akzeptiere auch wenn nicht alle relevant sind
+                # (besser als gar nichts, Scoring-Funktion filtert dann)
+                break
+        except requests.RequestException as e:
+            # Bei Fehler, versuche nächstes Format
+            logging.debug(f"Fehler mit Payload-Format, versuche nächstes: {e}")
+            continue
+        except (KeyError, ValueError, TypeError) as e:
+            # Bei JSON-Fehler, versuche nächstes Format
+            logging.debug(f"Ungültige Antwort, versuche nächstes Format: {e}")
+            continue
+    
+    if not results:
+        logging.warning(f"Keine Ergebnisse gefunden für '{movie_title}'")
+        # Benachrichtigung für keine Ergebnisse
+        if notify_url and APPRISE_AVAILABLE:
+            body = f"Keine Ergebnisse in der Mediathek gefunden:\n\n"
+            body += f"📽️ {movie_title}\n"
+            if entry_link:
+                body += f"\n🔗 Blog-Eintrag: {entry_link}"
+            send_notification(notify_url, "Film nicht gefunden", body, "warning")
         return None
-    except (KeyError, ValueError, TypeError) as e:
-        logging.error(f"Ungültige Antwort von MediathekViewWeb für '{movie_title}': {e}")
+    
+    # Bewerte alle Ergebnisse
+    scored_results = []
+    for result in results:
+        try:
+            score = score_movie(result, prefer_language, prefer_audio_desc, 
+                              search_title=movie_title, search_year=year, metadata=metadata)
+            scored_results.append((score, result))
+        except Exception as e:
+            logging.debug(f"Fehler beim Bewerten eines Ergebnisses für '{movie_title}': {e}")
+            continue
+    
+    if not scored_results:
+        logging.warning(f"Keine gültigen Ergebnisse für '{movie_title}' gefunden")
+        # Benachrichtigung für erfolglose Suche
+        if notify_url and APPRISE_AVAILABLE:
+            body = f"Keine gültigen Ergebnisse für Film gefunden:\n\n"
+            body += f"📽️ {movie_title}\n"
+            body += f"ℹ️ Es wurden Ergebnisse gefunden, aber keine konnten verarbeitet werden.\n"
+            if entry_link:
+                body += f"\n🔗 Blog-Eintrag: {entry_link}"
+            send_notification(notify_url, "Suche erfolglos", body, "warning")
         return None
-    except Exception as e:
-        logging.error(f"Unerwarteter Fehler bei der Suche nach '{movie_title}': {e}")
-        return None
+    
+    # Sortiere nach Punktzahl (höchste zuerst)
+    scored_results.sort(key=lambda x: x[0], reverse=True)
+    
+    best_match = scored_results[0][1]
+    best_score = scored_results[0][0]
+    
+    language = detect_language(best_match)
+    has_ad = has_audio_description(best_match)
+    size = best_match.get("size") or 0
+    size_mb = size / (1024 * 1024) if size else 0
+    
+    logging.info(f"Beste Übereinstimmung gefunden: '{best_match.get('title')}' "
+                f"({size_mb:.1f} MB, "
+                f"Sprache: {language}, "
+                f"AD: {'ja' if has_ad else 'nein'}, "
+                f"Score: {best_score:.1f})")
+    
+    return best_match
 
 def extract_episode_info(movie_data, series_title: str) -> Tuple[Optional[int], Optional[int]]:
     """
