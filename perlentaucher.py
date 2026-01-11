@@ -936,12 +936,7 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
     
     logging.info(f"Suche in MediathekViewWeb nach: '{movie_title}' (normalisiert: '{normalized_search_title}')")
     payload = {
-        "queries": [
-            {
-                "fields": ["title", "topic"],
-                "query": normalized_search_title
-            }
-        ],
+        "query": normalized_search_title,
         "sortBy": "size",  # Sort by size to get best quality easily
         "sortOrder": "desc",
         "future": False,
@@ -1216,12 +1211,7 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
     
     logging.info(f"Suche in MediathekViewWeb nach Serie: '{series_title}' (normalisiert: '{normalized_search_title}')")
     payload = {
-        "queries": [
-            {
-                "fields": ["title", "topic"],
-                "query": normalized_search_title
-            }
-        ],
+        "query": normalized_search_title,
         "sortBy": "size",
         "sortOrder": "desc",
         "future": False,
