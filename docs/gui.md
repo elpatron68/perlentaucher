@@ -70,59 +70,6 @@ pip install -r requirements-gui.txt
 python perlentaucher_gui.py
 ```
 
-## Building als Executable (für Entwickler)
-
-Die GUI kann als einzelnes Executable für alle Plattformen gebaut werden. Die Builds werden automatisch bei jedem Release erstellt und auf der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) bereitgestellt.
-
-Falls du selbst bauen möchtest:
-
-### Windows
-
-```bash
-scripts\build_gui_windows.bat
-```
-
-Oder manuell:
-```bash
-pip install pyinstaller
-pip install -r requirements-gui.txt
-pyinstaller build.spec --clean
-```
-
-Das Executable befindet sich in `dist/PerlentaucherGUI.exe`
-
-### Linux
-
-```bash
-chmod +x scripts/build_gui_linux.sh
-./scripts/build_gui_linux.sh
-```
-
-Oder manuell:
-```bash
-pip3 install pyinstaller
-pip3 install -r requirements-gui.txt
-pyinstaller build.spec --clean
-```
-
-Das Executable befindet sich in `dist/PerlentaucherGUI`
-
-### macOS
-
-```bash
-chmod +x scripts/build_gui_macos.sh
-./scripts/build_gui_macos.sh
-```
-
-Oder manuell:
-```bash
-pip3 install pyinstaller
-pip3 install -r requirements-gui.txt
-pyinstaller build.spec --clean
-```
-
-Das Executable befindet sich in `dist/PerlentaucherGUI.app`
-
 ## Nutzung
 
 ### 1. Einstellungen konfigurieren
@@ -235,6 +182,59 @@ Format (kompatibel mit Quickstart-Scripts):
 - `serien_dir` kann leer sein - dann wird `download_dir` verwendet
 - `rss_feed_url` ist GUI-spezifisch und wird von Quickstart-Scripts ignoriert (aber nicht gelöscht)
 - `no_state`: Wenn `true`, wird State-Tracking deaktiviert (entspricht `--no-state` CLI-Option)
+
+## Building als Executable (für Entwickler)
+
+Die GUI kann als einzelnes Executable für alle Plattformen gebaut werden. Die Builds werden automatisch bei jedem Release erstellt und auf der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) bereitgestellt.
+
+Falls du selbst bauen möchtest:
+
+### Windows
+
+```bash
+scripts\build_gui_windows.bat
+```
+
+Oder manuell:
+```bash
+pip install pyinstaller
+pip install -r requirements-gui.txt
+pyinstaller build.spec --clean
+```
+
+Das Executable befindet sich in `dist/PerlentaucherGUI.exe`
+
+### Linux
+
+```bash
+chmod +x scripts/build_gui_linux.sh
+./scripts/build_gui_linux.sh
+```
+
+Oder manuell:
+```bash
+pip3 install pyinstaller
+pip3 install -r requirements-gui.txt
+pyinstaller build.spec --clean
+```
+
+Das Executable befindet sich in `dist/PerlentaucherGUI`
+
+### macOS
+
+```bash
+chmod +x scripts/build_gui_macos.sh
+./scripts/build_gui_macos.sh
+```
+
+Oder manuell:
+```bash
+pip3 install pyinstaller
+pip3 install -r requirements-gui.txt
+pyinstaller build.spec --clean
+```
+
+Das Executable befindet sich in `dist/PerlentaucherGUI.app`
 
 ## Troubleshooting
 
