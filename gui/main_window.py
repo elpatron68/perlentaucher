@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QApplication, QProgressDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QThread, pyqtSlot, QObject
-from PyQt6.QtGui import QAction, QDesktopServices, QIcon
+from PyQt6.QtGui import QAction, QDesktopServices, QIcon, QPixmap
 from typing import Dict, Optional
 import sys
 import os
@@ -286,6 +286,15 @@ class MainWindow(QMainWindow):
         msg_box.setWindowTitle("Über Perlentaucher GUI")
         msg_box.setTextFormat(Qt.TextFormat.RichText)
         msg_box.setText(about_text)
+        
+        # Setze Logo als Icon
+        logo_path = self._get_resource_path('assets/logo_about.png')
+        if os.path.exists(logo_path):
+            pixmap = QPixmap(logo_path)
+            if not pixmap.isNull():
+                # Skaliere auf passende Größe für About-Dialog (max. 128x128)
+                scaled_pixmap = pixmap.scaled(128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                msg_box.setIconPixmap(scaled_pixmap)
         
         # Füge "Auf Updates prüfen"-Button hinzu
         check_update_btn = msg_box.addButton("Auf Updates prüfen", QMessageBox.ButtonRole.ActionRole)

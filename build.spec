@@ -34,6 +34,7 @@ a = Analysis(
         # Icons/Assets - müssen eingebunden werden für PyInstaller-Executables
         ('assets/icon_256.png', 'assets'),
         ('assets/icon_512.png', 'assets'),
+        ('assets/logo_about.png', 'assets'),
     ],
     hiddenimports=[
         'feedparser',
