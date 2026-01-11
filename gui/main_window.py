@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QPushButton, QButtonGroup, QRadioButton, QSizePolicy,
     QApplication, QProgressDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QThread, pyqtSlot, QObject
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QThread, pyqtSlot, QObject, QUrl
 from PyQt6.QtGui import QAction, QDesktopServices, QIcon, QPixmap
 from typing import Dict, Optional
 import sys
@@ -390,7 +390,7 @@ class MainWindow(QMainWindow):
         
         # Öffne Download-URL wenn "Zum Download" geklickt wurde
         if msg_box.clickedButton() == download_btn:
-            QDesktopServices.openUrl(download_url)
+            QDesktopServices.openUrl(QUrl(download_url))
     
     def closeEvent(self, event):
         """Wird aufgerufen wenn das Fenster geschlossen wird."""
