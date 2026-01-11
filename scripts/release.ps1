@@ -488,7 +488,7 @@ if ($remoteUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
 
 # Docker-Image bauen
 Write-Host "`nBaue Docker-Image: perlentaucher:$newTag" -ForegroundColor Cyan
-docker build -t perlentaucher:$newTag -t perlentaucher:latest .
+docker build -t perlentaucher:$newTag -t perlentaucher:latest -f docker/Dockerfile .
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Fehler beim Bauen des Docker-Images!" -ForegroundColor Red

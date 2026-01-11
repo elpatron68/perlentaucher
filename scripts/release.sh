@@ -480,7 +480,7 @@ fi
 # Docker-Image bauen
 echo ""
 echo "Baue Docker-Image: perlentaucher:$new_tag"
-docker build -t "perlentaucher:$new_tag" -t perlentaucher:latest .
+docker build -t "perlentaucher:$new_tag" -t perlentaucher:latest -f docker/Dockerfile .
 
 # Docker-Image für Codeberg Registry taggen
 registry_image="codeberg.org/elpatron/perlentaucher:$new_tag"

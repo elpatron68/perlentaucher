@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 
 # Kopiere das Entrypoint-Script
-COPY docker-entrypoint.sh .
+COPY docker/docker-entrypoint.sh .
 RUN chmod +x docker-entrypoint.sh
 
 # Erstelle Download-Verzeichnis
