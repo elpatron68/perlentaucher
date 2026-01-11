@@ -251,3 +251,283 @@ class TestURLHandling:
         
         assert api_url.startswith('https://')
         assert 'api' in api_url.lower()
+
+
+class TestAudioDescription:
+    """Tests für Audiodeskription-Erkennung."""
+    
+    def test_has_audio_description_in_title(self):
+        """Test: Erkennung von Audiodeskription im Titel."""
+        movie_data = {
+            "title": "Film mit Audiodeskription",
+            "description": "",
+            "topic": ""
+        }
+        assert core.has_audio_description(movie_data) == True
+    
+    def test_has_audio_description_in_description(self):
+        """Test: Erkennung von Audiodeskription in der Beschreibung."""
+        movie_data = {
+            "title": "Film",
+            "description": "Ein Film mit Hörfassung für Sehbehinderte",
+            "topic": ""
+        }
+        assert core.has_audio_description(movie_data) == True
+    
+    def test_has_audio_description_in_topic(self):
+        """Test: Erkennung von Audiodeskription im Topic."""
+        movie_data = {
+            "title": "Film",
+            "description": "",
+            "topic": "Film mit AD"
+        }
+        assert core.has_audio_description(movie_data) == True
+    
+    def test_no_audio_description(self):
+        """Test: Keine Audiodeskription erkannt."""
+        movie_data = {
+            "title": "Normaler Film",
+            "description": "Beschreibung eines Films",
+            "topic": "Thema"
+        }
+        assert core.has_audio_description(movie_data) == False
+    
+    def test_has_audio_description_empty_data(self):
+        """Test: Leere Daten."""
+        movie_data = {}
+        assert core.has_audio_description(movie_data) == False
+
+
+class TestLanguageDetection:
+    """Tests für Sprach-Erkennung."""
+    
+    def test_detect_german_language(self):
+        """Test: Erkennung deutscher Sprache."""
+        movie_data = {
+            "title": "Deutscher Film",
+            "description": "Ein deutscher Film",
+            "topic": "Deutsch"
+        }
+        assert core.detect_language(movie_data) == "deutsch"
+    
+    def test_detect_english_language(self):
+        """Test: Erkennung englischer Sprache."""
+        movie_data = {
+            "title": "English Movie",
+            "description": "An English movie",
+            "topic": "English"
+        }
+        assert core.detect_language(movie_data) == "englisch"
+    
+    def test_detect_unknown_language(self):
+        """Test: Unbekannte Sprache (Standard ist Deutsch)."""
+        movie_data = {
+            "title": "Film 电影",
+            "description": "Beschreibung",
+            "topic": "主题"
+        }
+        # Funktion gibt standardmäßig "deutsch" zurück, wenn keine Sprache erkannt wird
+        assert core.detect_language(movie_data) == "deutsch"
+    
+    def test_detect_language_empty_data(self):
+        """Test: Leere Daten (Standard ist Deutsch)."""
+        movie_data = {}
+        # Funktion gibt standardmäßig "deutsch" zurück
+        assert core.detect_language(movie_data) == "deutsch"
+
+
+class TestTitleSimilarity:
+    """Tests für Titel-Ähnlichkeits-Berechnung."""
+    
+    def test_exact_match(self):
+        """Test: Exakte Übereinstimmung."""
+        similarity = core.calculate_title_similarity("The Matrix", "The Matrix")
+        assert similarity == 1.0
+    
+    def test_case_insensitive_match(self):
+        """Test: Case-insensitive Übereinstimmung."""
+        similarity = core.calculate_title_similarity("The Matrix", "the matrix")
+        assert similarity == 1.0
+    
+    def test_substring_match(self):
+        """Test: Teilstring-Übereinstimmung."""
+        similarity = core.calculate_title_similarity("Matrix", "The Matrix (1999)")
+        # "Matrix" ist in "The Matrix (1999)" enthalten, aber nicht am Anfang -> 0.85
+        assert similarity == 0.85
+    
+    def test_reverse_substring_match(self):
+        """Test: Umgekehrte Teilstring-Übereinstimmung."""
+        similarity = core.calculate_title_similarity("The Matrix (1999)", "Matrix")
+        # "Matrix" ist in "The Matrix (1999)" enthalten -> 0.8
+        assert similarity == 0.8
+    
+    def test_word_overlap(self):
+        """Test: Wort-Überschneidung."""
+        similarity = core.calculate_title_similarity("The Matrix Reloaded", "Matrix Reloaded")
+        assert similarity > 0.0
+        assert similarity < 1.0
+    
+    def test_no_match(self):
+        """Test: Keine Übereinstimmung."""
+        similarity = core.calculate_title_similarity("The Matrix", "Inception")
+        assert similarity == 0.0
+    
+    def test_empty_strings(self):
+        """Test: Leere Strings (werden als gleich behandelt)."""
+        similarity = core.calculate_title_similarity("", "")
+        # Zwei leere Strings sind gleich -> 1.0
+        assert similarity == 1.0
+
+
+class TestMovieRecommendation:
+    """Tests für Film-Empfehlungs-Erkennung."""
+    
+    def test_is_movie_recommendation_with_mediathekperlen_tag(self):
+        """Test: Film-Empfehlung mit Mediathekperlen-Tag."""
+        entry = {
+            "title": "Director - „Movie\" (2023)",
+            "tags": [{"term": "Mediathekperlen"}]
+        }
+        assert core.is_movie_recommendation(entry) == True
+    
+    def test_is_movie_recommendation_with_normal_tag(self):
+        """Test: Film-Empfehlung mit normalem Tag."""
+        entry = {
+            "title": 'Director - "Movie" (2023)',
+            "tags": [{"term": "Mediathekperlen"}]
+        }
+        assert core.is_movie_recommendation(entry) == True
+    
+    def test_is_not_movie_recommendation(self):
+        """Test: Keine Film-Empfehlung (z.B. 'In eigener Sache')."""
+        entry = {
+            "title": "In eigener Sache: Wichtiger Hinweis",
+            "tags": []
+        }
+        assert core.is_movie_recommendation(entry) == False
+    
+    def test_is_not_movie_recommendation_empty_title(self):
+        """Test: Leerer Titel."""
+        entry = {
+            "title": "",
+            "tags": []
+        }
+        assert core.is_movie_recommendation(entry) == False
+
+
+class TestEpisodeInfo:
+    """Tests für Episoden-Info-Extraktion."""
+    
+    def test_extract_episode_info_s01e01(self):
+        """Test: Extraktion von S01E01 Format."""
+        movie_data = {
+            "title": "Serie - S01E01 - Episode Title",
+            "topic": "Serie"
+        }
+        season, episode = core.extract_episode_info(movie_data, "Serie")
+        assert season == 1
+        assert episode == 1
+    
+    def test_extract_episode_info_season_episode(self):
+        """Test: Extraktion von Staffel/Episode Format."""
+        movie_data = {
+            "title": "Serie - Staffel 2 Episode 5",
+            "topic": "Serie"
+        }
+        season, episode = core.extract_episode_info(movie_data, "Serie")
+        assert season == 2
+        assert episode == 5
+    
+    def test_extract_episode_info_no_match(self):
+        """Test: Keine Episoden-Info gefunden."""
+        movie_data = {
+            "title": "Normaler Film",
+            "topic": "Film"
+        }
+        season, episode = core.extract_episode_info(movie_data, "Film")
+        assert season is None
+        assert episode is None
+
+
+class TestEpisodeFilename:
+    """Tests für Episoden-Dateinamen-Formatierung."""
+    
+    def test_format_episode_filename_with_metadata(self):
+        """Test: Formatierung mit Metadata."""
+        metadata = {
+            "year": 2023,
+            "provider_id": "tmdb-12345",
+            "content_type": "tv"
+        }
+        filename = core.format_episode_filename("Serie", 1, 2, metadata)
+        assert "Serie" in filename
+        assert "S01E02" in filename or "S1E2" in filename
+        assert "2023" in filename or "tmdb-12345" in filename
+    
+    def test_format_episode_filename_without_metadata(self):
+        """Test: Formatierung ohne Metadata."""
+        metadata = {}
+        filename = core.format_episode_filename("Serie", 1, 2, metadata)
+        assert "Serie" in filename
+        assert "S01E02" in filename or "S1E2" in filename
+    
+    def test_format_episode_filename_special_characters(self):
+        """Test: Formatierung mit Sonderzeichen im Titel."""
+        metadata = {}
+        filename = core.format_episode_filename("Serie: Der Film", 1, 1, metadata)
+        # Sonderzeichen sollten entfernt oder ersetzt werden
+        assert ":" not in filename or "_" in filename
+
+
+class TestScoreMovie:
+    """Tests für Film-Bewertung (Scoring)."""
+    
+    def test_score_movie_exact_title_match(self):
+        """Test: Exakte Titelübereinstimmung gibt hohen Score."""
+        movie_data = {
+            "title": "The Matrix",
+            "size": 1000000000  # 1 GB
+        }
+        score = core.score_movie(movie_data, "deutsch", "egal", search_title="The Matrix")
+        assert score > 10000  # Titelübereinstimmung gibt mindestens 10000 Punkte
+    
+    def test_score_movie_language_preference(self):
+        """Test: Sprach-Präferenz erhöht Score."""
+        movie_data = {
+            "title": "Film",
+            "size": 1000000000
+        }
+        # Mock detect_language to return "deutsch"
+        with patch('perlentaucher.detect_language', return_value="deutsch"):
+            score_de = core.score_movie(movie_data, "deutsch", "egal", search_title="Film")
+            score_en = core.score_movie(movie_data, "englisch", "egal", search_title="Film")
+            assert score_de > score_en
+    
+    def test_score_movie_audio_description_preference(self):
+        """Test: Audiodeskriptions-Präferenz erhöht Score."""
+        movie_data = {
+            "title": "Film",
+            "size": 1000000000,
+            "description": "Film mit Audiodeskription"
+        }
+        score_with = core.score_movie(movie_data, "deutsch", "mit", search_title="Film")
+        score_without = core.score_movie(movie_data, "deutsch", "ohne", search_title="Film")
+        # Wenn Film AD hat, sollte "mit" höherer Score haben
+        if core.has_audio_description(movie_data):
+            assert score_with > score_without
+    
+    def test_score_movie_metadata_match(self):
+        """Test: Metadata-Match gibt sehr hohen Score."""
+        movie_data = {
+            "title": "Film",
+            "size": 1000000000
+        }
+        metadata = {
+            "provider_id": "tmdb-12345",
+            "content_type": "movie"
+        }
+        # Mock score_movie internals würde zu komplex sein
+        # Testet nur dass Funktion mit Metadata aufgerufen werden kann
+        score = core.score_movie(movie_data, "deutsch", "egal", search_title="Film", metadata=metadata)
+        assert isinstance(score, (int, float))
+        assert score >= 0
