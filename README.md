@@ -11,6 +11,16 @@
 
 Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/) parst, bei [MediathekViewWeb](https://mediathekviewweb.de) sucht und die beste Qualität herunterlädt.
 
+## Vorwort und Motivation
+
+Dieses Projekt entstand anlässlich des ersten [DI.DAY](https://di.day) #diday am 4 Januar 2026. Hintergrund war der Gedanke, einen kleinen Beitrag zur Unabhängigkeit von Big-Tech Unternehmen zu beizutragen. Der *Perlentaucher* soll euch die Entscheidung erleichtern, ob ihr vielleicht das eine oder andere Streaming-Abo kündigen könnt:
+
+Die [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/) sind für mich schon lange ein Quell sehenswerter Mediathekinhalte. Allein die Tatsache, dass ich die Empfehlungen manuell nachrecherchieren, mit [Mediathekview](https://mediathekview.de) herunterladen und anschließend in meine private Mediathek ([Jellyfin](https://github.com/jellyfin/jellyfin)) einpflegen musste, sorgte dafür, dass ich dann doch recht häufig die eine oder andere Perle verpasst hatte.
+
+Beim Frühstück am ersten DI.Day kam mir dann der Gedanke, zwei gute Dinge miteinander zu verbinden: Ein Script, dass das alles automatsch erledigt. Am Nachmittag war dann auch schon die erste funktionierende Version fertig.
+
+Das ursprüngliche Python-Script `perlentaucher.py` war für einen vollautomatischen Betrieb ohne Benutzerinteraktion ausgelegt. Es sucht nach neuen Blog-Posts und lädt dann direkt aus den Mediateken runter. Das hat den Nachteil, dass es nicht sehr niedrigschwellig war und einige Technik-Kenntnisse (Python bzw. Docker) erforderte. Inzwischen gibt´s auch eine GUI-Version, also eine ausführbare Datei mit grafischer Benutzer-Schnittstelle, siehe [GUI-Dokumentation](docs/gui.md). *Für Einsteiger auf jeden Fall der empfohlene Weg*!
+
 ## Features
 
 - **GUI-Anwendung** (neu): Moderne PyQt6-basierte grafische Benutzeroberfläche
@@ -37,7 +47,6 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 - Optionale Metadata Provider-Integration (TMDB/OMDB) für bessere Film- und Serien-Erkennung.
 - Konfigurierbarer Download-Ordner.
 - Logging.
-- Automatische Tests mit CI/CD-Pipeline (Codeberg Actions/Woodpecker CI).
 
 ## Programmablauf
 
@@ -81,7 +90,7 @@ Die einfachste Methode ist die grafische Benutzeroberfläche:
 pip install -r requirements-gui.txt
 
 # GUI starten
-python perlentaucher_gui.py
+python src/perlentaucher_gui.py
 ```
 
 Eine ausführliche Anleitung zur GUI findest du in der [GUI-Dokumentation](docs/gui.md).
@@ -96,7 +105,7 @@ Das Executable befindet sich nach dem Build in `dist/`.
 ### Kommandozeilen-Interface
 
 ```bash
-python perlentaucher.py [Optionen]
+python src/perlentaucher.py [Optionen]
 ```
 
 ### Argumente
@@ -118,57 +127,57 @@ python perlentaucher.py [Optionen]
 
 Die letzten 3 Filme suchen und in den Ordner `Filme` herunterladen:
 ```bash
-python perlentaucher.py --download-dir ./Filme --limit 3
+python src/perlentaucher.py --download-dir ./Filme --limit 3
 ```
 
 Nur deutsche Fassungen ohne Audiodeskription bevorzugen:
 ```bash
-python perlentaucher.py --sprache deutsch --audiodeskription ohne
+python src/perlentaucher.py --sprache deutsch --audiodeskription ohne
 ```
 
 Englische Originalfassungen bevorzugen:
 ```bash
-python perlentaucher.py --sprache englisch
+python src/perlentaucher.py --sprache englisch
 ```
 
 Mit Benachrichtigungen (z.B. Discord Webhook):
 ```bash
-python perlentaucher.py --notify "discord://webhook_id/webhook_token"
+python src/perlentaucher.py --notify "discord://webhook_id/webhook_token"
 ```
 
 Mit Email-Benachrichtigungen:
 ```bash
-python perlentaucher.py --notify "mailto://user:password@smtp.example.com"
+python src/perlentaucher.py --notify "mailto://user:password@smtp.example.com"
 ```
 
 Mit Metadata Provider-Integration (TMDB):
 ```bash
-python perlentaucher.py --tmdb-api-key "dein_tmdb_api_key"
+python src/perlentaucher.py --tmdb-api-key "dein_tmdb_api_key"
 ```
 
 Mit Metadata Provider-Integration (OMDB):
 ```bash
-python perlentaucher.py --omdb-api-key "dein_omdb_api_key"
+python src/perlentaucher.py --omdb-api-key "dein_omdb_api_key"
 ```
 
 Mit beiden Metadata Providern:
 ```bash
-python perlentaucher.py --tmdb-api-key "dein_tmdb_api_key" --omdb-api-key "dein_omdb_api_key"
+python src/perlentaucher.py --tmdb-api-key "dein_tmdb_api_key" --omdb-api-key "dein_omdb_api_key"
 ```
 
 Serien-Downloads (nur erste Episode):
 ```bash
-python perlentaucher.py --serien-download erste --serien-dir ./Serien
+python src/perlentaucher.py --serien-download erste --serien-dir ./Serien
 ```
 
 Serien-Downloads (gesamte Staffel):
 ```bash
-python perlentaucher.py --serien-download staffel --serien-dir ./Serien
+python src/perlentaucher.py --serien-download staffel --serien-dir ./Serien
 ```
 
 Serien überspringen:
 ```bash
-python perlentaucher.py --serien-download keine
+python src/perlentaucher.py --serien-download keine
 ```
 
 ### Dateinamen-Schema für Jellyfin/Plex

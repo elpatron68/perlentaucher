@@ -18,13 +18,13 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 # Importiere die Core-Funktionalität
-# Füge das Parent-Verzeichnis zum Python-Pfad hinzu
-parent_dir = os.path.dirname(os.path.dirname(__file__))
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-import perlentaucher as core
+# Füge src-Verzeichnis zum Pfad hinzu
+src_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+from src import perlentaucher as core
 
-from gui.utils.feedparser_helpers import get_entry_attr, make_entry_compatible
+from .utils.feedparser_helpers import get_entry_attr, make_entry_compatible
 
 
 class BlogListPanel(QWidget):

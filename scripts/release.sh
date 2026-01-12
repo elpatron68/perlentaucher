@@ -42,10 +42,10 @@ if [ -n "$(git status --porcelain)" ]; then
     fi
 fi
 
-# Aktualisiere Version in _version.py
+# Aktualisiere Version in src/_version.py
 version_number=$(echo "$new_tag" | sed 's/^v//')  # Entferne 'v' Präfix
-echo "Aktualisiere Version in _version.py: $version_number"
-cat > _version.py <<EOF
+echo "Aktualisiere Version in src/_version.py: $version_number"
+cat > src/_version.py <<EOF
 # Version wird automatisch vom Release-Script aktualisiert
 __version__ = "$version_number"
 EOF
@@ -181,7 +181,7 @@ fi
 # Committe Version-Update und Release Notes zusammen
 echo ""
 echo "Committe Version-Update und Release Notes..."
-git add _version.py
+git add src/_version.py
 if [ -f "$release_notes_file" ]; then
     git add "$release_notes_file"
 fi
@@ -480,7 +480,7 @@ fi
 # Docker-Image bauen
 echo ""
 echo "Baue Docker-Image: perlentaucher:$new_tag"
-docker build -t "perlentaucher:$new_tag" -t perlentaucher:latest .
+docker build -t "perlentaucher:$new_tag" -t perlentaucher:latest -f docker/Dockerfile .
 
 # Docker-Image für Codeberg Registry taggen
 registry_image="codeberg.org/elpatron/perlentaucher:$new_tag"

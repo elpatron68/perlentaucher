@@ -78,17 +78,17 @@ Unterstützt verschiedene Formate:
 
 **Nur erste Episode herunterladen:**
 ```bash
-python perlentaucher.py --serien-download erste
+python src/perlentaucher.py --serien-download erste
 ```
 
 **Gesamte Staffel herunterladen:**
 ```bash
-python perlentaucher.py --serien-download staffel --serien-dir ./Serien
+python src/perlentaucher.py --serien-download staffel --serien-dir ./Serien
 ```
 
 **Serien überspringen:**
 ```bash
-python perlentaucher.py --serien-download keine
+python src/perlentaucher.py --serien-download keine
 ```
 
 **Mit Docker:**

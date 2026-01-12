@@ -14,7 +14,7 @@ if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
 try:
-    import _version
+    from src import _version
     CURRENT_VERSION = _version.__version__
 except ImportError:
     CURRENT_VERSION = "unknown"

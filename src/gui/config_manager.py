@@ -43,15 +43,17 @@ class ConfigManager:
                         Standard: .perlentaucher_config.json (im Projekt-Root)
         """
         if config_file is None:
-            # Versuche Projekt-Root zu finden (wo perlentaucher.py liegt)
+            # Versuche Projekt-Root zu finden (wo src/ liegt)
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(script_dir)  # Ein Level höher (von gui/ zu root)
+            # Von src/gui/ zu src/ zu root
+            src_dir = os.path.dirname(script_dir)  # Von gui/ zu src/
+            project_root = os.path.dirname(src_dir)  # Von src/ zu root
             
             # Fallback: Versuche via perlentaucher_gui.py zu finden
-            # Wenn perlentaucher_gui.py im gleichen Verzeichnis wie perlentaucher.py ist
-            main_script_path = os.path.join(project_root, "perlentaucher_gui.py")
+            # Wenn perlentaucher_gui.py in src/ liegt
+            main_script_path = os.path.join(src_dir, "perlentaucher_gui.py")
             if os.path.exists(main_script_path):
-                project_root = os.path.dirname(os.path.abspath(main_script_path))
+                project_root = os.path.dirname(os.path.dirname(os.path.abspath(main_script_path)))
             
             # Fallback: Versuche via sys.argv[0] wenn vorhanden
             if hasattr(sys, 'argv') and len(sys.argv) > 0:
@@ -59,7 +61,12 @@ class ConfigManager:
                 if main_script and (os.path.exists(main_script) or os.path.basename(main_script) == 'perlentaucher_gui.py'):
                     main_script_abs = os.path.abspath(main_script)
                     if os.path.exists(main_script_abs):
-                        project_root = os.path.dirname(main_script_abs)
+                        # Wenn Script in src/ liegt, gehe ein Level höher
+                        script_dir = os.path.dirname(main_script_abs)
+                        if os.path.basename(script_dir) == 'src':
+                            project_root = os.path.dirname(script_dir)
+                        else:
+                            project_root = script_dir
                     else:
                         # Wenn script nicht existiert (z.B. bei PyInstaller), verwende CWD
                         project_root = os.getcwd()

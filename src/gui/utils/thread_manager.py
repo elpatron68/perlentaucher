@@ -9,11 +9,14 @@ import sys
 import os
 
 # Importiere die Core-Funktionalität von perlentaucher.py
-# Füge das Root-Verzeichnis zum Python-Pfad hinzu
-root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-if root_dir not in sys.path:
-    sys.path.insert(0, root_dir)
-import perlentaucher as core
+# Relativer Import da wir jetzt in src/gui/utils sind
+import sys
+import os
+# Füge src-Verzeichnis zum Pfad hinzu für relativen Import
+src_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+from src import perlentaucher as core
 
 
 class DownloadThread(QThread):

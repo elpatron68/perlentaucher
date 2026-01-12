@@ -7,9 +7,6 @@ Startet die PyQt6-basierte GUI-Anwendung.
 import sys
 import os
 
-# Stelle sicher, dass das GUI-Package gefunden wird
-sys.path.insert(0, os.path.dirname(__file__))
-
 try:
     from PyQt6.QtWidgets import QApplication
     from PyQt6.QtCore import Qt
@@ -19,8 +16,8 @@ except ImportError:
     print("Installieren Sie PyQt6 mit: pip install PyQt6")
     sys.exit(1)
 
-from gui.config_manager import ConfigManager
-from gui.main_window import MainWindow
+from .gui.config_manager import ConfigManager
+from .gui.main_window import MainWindow
 
 
 def resource_path(relative_path):

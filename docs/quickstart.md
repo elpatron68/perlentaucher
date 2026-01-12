@@ -229,7 +229,7 @@ Das Wrapper-Script:
 Du kannst Perlentaucher auch manuell mit allen Optionen aufrufen:
 
 ```bash
-python perlentaucher.py --download-dir ./downloads --limit 10 --sprache deutsch
+python src/perlentaucher.py --download-dir ./downloads --limit 10 --sprache deutsch
 ```
 
 Siehe [README.md](../README.md) für alle verfügbaren Optionen.

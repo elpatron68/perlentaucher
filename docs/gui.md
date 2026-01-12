@@ -67,7 +67,7 @@ pip install -r requirements-gui.txt
 #### Manuell starten
 
 ```bash
-python perlentaucher_gui.py
+python src/perlentaucher_gui.py
 ```
 
 ## Nutzung
@@ -248,7 +248,7 @@ pip install PyQt6
 
 ### Import-Fehler mit perlentaucher
 
-Stelle sicher, dass `perlentaucher.py` im gleichen Verzeichnis wie `perlentaucher_gui.py` liegt.
+Stelle sicher, dass `src/perlentaucher.py` im gleichen Verzeichnis wie `src/perlentaucher_gui.py` liegt.
 
 ### Downloads funktionieren nicht
 

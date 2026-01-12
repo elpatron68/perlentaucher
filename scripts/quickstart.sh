@@ -348,7 +348,7 @@ if [ "$download_dir_normalized" != "$serien_dir_normalized" ]; then
 fi
 
 # Starte Perlentaucher
-eval "python3 perlentaucher.py $ARGS"
+eval "python3 src/perlentaucher.py $ARGS"
 WRAPPER_EOF
 
 chmod +x "$wrapper_script"
@@ -366,6 +366,6 @@ fi
 echo "  ./run_perlentaucher.sh"
 echo ""
 echo "Oder manuell:"
-echo "  python3 perlentaucher.py [Optionen]"
+echo "  python3 src/perlentaucher.py [Optionen]"
 echo ""
 

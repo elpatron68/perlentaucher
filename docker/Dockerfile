@@ -6,14 +6,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Kopiere das Script
-COPY perlentaucher.py .
-
-# Kopiere die Versionsdatei
-COPY _version.py .
+# Kopiere das src-Verzeichnis
+COPY src/ ./src/
 
 # Kopiere das Entrypoint-Script
-COPY docker-entrypoint.sh .
+COPY docker/docker-entrypoint.sh .
 RUN chmod +x docker-entrypoint.sh
 
 # Erstelle Download-Verzeichnis

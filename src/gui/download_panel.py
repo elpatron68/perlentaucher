@@ -149,10 +149,10 @@ class DownloadPanel(QWidget):
                 # Importiere core-Modul
                 import sys
                 import os
-                root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-                if root_dir not in sys.path:
-                    sys.path.insert(0, root_dir)
-                import perlentaucher as core
+                src_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                if src_dir not in sys.path:
+                    sys.path.insert(0, src_dir)
+                from src import perlentaucher as core
                 
                 # Hole Metadata (das Jahr aus RSS-Feed wird beibehalten wenn keine API verwendet wird)
                 # get_metadata() initialisiert bereits mit year aus RSS-Feed

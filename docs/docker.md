@@ -5,12 +5,12 @@ Du kannst das Script auch als Docker-Container ausführen, der automatisch in ei
 ## Docker-Image erstellen
 
 ```bash
-docker build -t perlentaucher .
+docker build -t perlentaucher -f docker/Dockerfile .
 ```
 
 Mit Versions-Tag:
 ```bash
-docker build -t perlentaucher:v0.1.3 -t perlentaucher:latest .
+docker build -t perlentaucher:v0.1.3 -t perlentaucher:latest -f docker/Dockerfile .
 ```
 
 ## Docker-Image aus Codeberg Container Registry verwenden

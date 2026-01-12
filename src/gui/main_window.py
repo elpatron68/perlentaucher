@@ -45,7 +45,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Perlentaucher GUI")
         
         # Setze Fenster-Icon (falls nicht bereits von QApplication gesetzt)
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'icon_256.png')
+        # Von src/gui/ zu root/assets/
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'assets', 'icon_256.png')
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         
@@ -267,7 +268,7 @@ class MainWindow(QMainWindow):
     def _show_about(self):
         """Zeigt das About-Dialog."""
         try:
-            import _version
+            from src import _version
             version = _version.__version__
         except ImportError:
             version = "unknown"
@@ -341,7 +342,7 @@ class MainWindow(QMainWindow):
             else:
                 # Kein Update verfügbar
                 try:
-                    import _version
+                    from src import _version
                     current_version = _version.__version__
                 except ImportError:
                     current_version = "unknown"
@@ -365,7 +366,7 @@ class MainWindow(QMainWindow):
     def _show_update_available_dialog(self, latest_version: str, download_url: str):
         """Zeigt einen Dialog, wenn ein Update verfügbar ist."""
         try:
-            import _version
+            from src import _version
             current_version = _version.__version__
         except ImportError:
             current_version = "unknown"
