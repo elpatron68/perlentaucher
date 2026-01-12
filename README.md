@@ -11,6 +11,16 @@
 
 Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/) parst, bei [MediathekViewWeb](https://mediathekviewweb.de) sucht und die beste Qualität herunterlädt.
 
+## Vorwort und Motivation
+
+Dieses Projekt entstand anlässlich des ersten [DI.DAY](https://di.day) #diday am 4 Januar 2026. Hintergrund war der Gedanke, einen kleinen Beitrag zur Unabhängigkeit von Big-Tech Unternehmen zu beizutragen. Der *Perlentaucher* soll euch die Entscheidung erleichtern, ob ihr vielleicht das eine oder andere Streaming-Abo kündigen könnt:
+
+Die [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/) sind für mich schon lange ein Quell sehenswerter Mediathekinhalte. Allein die Tatsache, dass ich die Empfehlungen manuell nachrecherchieren, mit [Mediathekview](https://mediathekview.de) herunterladen und anschließend in meine private Mediathek ([Jellyfin](https://github.com/jellyfin/jellyfin)) einpflegen musste, sorgte dafür, dass ich dann doch recht häufig die eine oder andere Perle verpasst hatte.
+
+Beim Frühstück am ersten DI.Day kam mir dann der Gedanke, zwei gute Dinge miteinander zu verbinden: Ein Script, dass das alles automatsch erledigt. Am Nachmittag war dann auch schon die erste funktionierende Version fertig.
+
+Das ursprüngliche Python-Script `perlentaucher.py` war für einen vollautomatischen Betrieb ohne Benutzerinteraktion ausgelegt. Es sucht nach neuen Blog-Posts und lädt dann direkt aus den Mediateken runter. Das hat den Nachteil, dass es nicht sehr niedrigschwellig war und einige Technik-Kenntnisse (Python bzw. Docker) erforderte. Inzwischen gibt´s auch eine GUI-Version, also eine ausführbare Datei mit grafischer Benutzer-Schnittstelle, siehe [GUI-Dokumentation](docs/gui.md). *Für Einsteiger auf jeden Fall der empfohlene Weg*!
+
 ## Features
 
 - **GUI-Anwendung** (neu): Moderne PyQt6-basierte grafische Benutzeroberfläche
