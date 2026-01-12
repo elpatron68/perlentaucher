@@ -15,13 +15,13 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 
 Dieses Projekt entstand anlässlich des ersten [DI.DAY](https://di.day) #diday am 4. Januar 2026. Hintergrund war der Gedanke, einen kleinen Beitrag zur Unabhängigkeit von Big-Tech-Unternehmen zu leisten. Der *Perlentaucher* soll dir die Entscheidung erleichtern, ob du vielleicht das eine oder andere Streaming-Abo kündigen kannst:
 
-Die [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/) sind für mich schon lange eine fantastische Quelle sehenswerter Mediathek-Inhalte. Allein die Tatsache, dass ich die Empfehlungen manuell nachrecherchieren, mit [Mediathekview](https://mediathekview.de) herunterladen und anschließend in meine private Mediathek ([Jellyfin](https://github.com/jellyfin/jellyfin)) einpflegen musste, sorgte dafür, dass ich dann doch recht häufig die eine oder andere Perle verpasst hatte.
+Die [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/) sind für mich schon lange eine fantastische Quelle sehenswerter TV-Inhalte. Allein die Tatsache, dass ich die Empfehlungen manuell nachrecherchieren, mit [Mediathekview](https://mediathekview.de) herunterladen und anschließend in meine private Mediathek ([Jellyfin](https://github.com/jellyfin/jellyfin)) einpflegen musste, sorgte dafür, dass ich dann doch recht häufig die eine oder andere Perle verpasst hatte.
 
 Beim Frühstück am ersten DI.DAY kam mir dann der Gedanke, zwei gute Dinge miteinander zu verbinden: Ein Script, das das alles automatisch erledigt. Am Nachmittag war dann auch schon die erste funktionierende Version [fertig](https://digitalcourage.social/@elpatron/115836626605941873).
 
 Das ursprüngliche Python-Script `perlentaucher.py` war für einen vollautomatischen Betrieb ohne Benutzerinteraktion ausgelegt. Es sucht nach neuen Blog-Posts und lädt dann direkt aus den Mediateken herunter. Das hat den Nachteil, dass es nicht sehr niedrigschwellig war und einige Technik-Kenntnisse (Python bzw. Docker) erforderte. Inzwischen gibt es auch eine GUI-Version, also eine ausführbare Datei mit grafischer Benutzer-Schnittstelle, siehe [GUI-Dokumentation](docs/gui.md). *Für Einsteiger auf jeden Fall der empfohlene Weg*!
 
-Falls du Fehler findest, irgendetwas nicht funktioniert oder falls du eine Idee für eine neue Funktion hast, kannst du gern ein *Issue* [anlegen](https://codeberg.org/elpatron/Perlentaucher/issues) - oder, falls du keinen Codeberg Accounts hast eine [Mail](mailto:elpatron+perlentaucher@mailbox.org) schreiben.
+Falls du Fehler findest, irgendetwas nicht funktioniert oder falls du eine Idee für eine neue Funktion hast, kannst du gern ein *Issue* [anlegen](https://codeberg.org/elpatron/Perlentaucher/issues) - oder, falls du keinen Codeberg Accounts hast eine [Mail](mailto:elpatron+perlentaucher@mailbox.org) schreiben. Insbesondere bin ich für Informationen zu *Perlentaucher* auf MacOS denkbar, da ich das nicht selbst testen kann.
 
 ## Features
 
