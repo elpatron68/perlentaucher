@@ -13,7 +13,7 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 
 ## Vorwort und Motivation
 
-Dieses Projekt entstand anlässlich des ersten [DI.DAY](https://di.day) #diday am 4. Januar 2026. Hintergrund war der Gedanke, einen kleinen Beitrag zur Unabhängigkeit von Big-Tech-Unternehmen zu leisten. Der *Perlentaucher* soll ir die Entscheidung erleichtern, ob du vielleicht das eine oder andere Streaming-Abo kündigen kannst:
+Dieses Projekt entstand anlässlich des ersten [DI.DAY](https://di.day) #diday am 4. Januar 2026. Hintergrund war der Gedanke, einen kleinen Beitrag zur Unabhängigkeit von Big-Tech-Unternehmen zu leisten. Der *Perlentaucher* soll dir die Entscheidung erleichtern, ob du vielleicht das eine oder andere Streaming-Abo kündigen kannst:
 
 Die [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/) sind für mich schon lange eine fantastische Quelle sehenswerter Mediathek-Inhalte. Allein die Tatsache, dass ich die Empfehlungen manuell nachrecherchieren, mit [Mediathekview](https://mediathekview.de) herunterladen und anschließend in meine private Mediathek ([Jellyfin](https://github.com/jellyfin/jellyfin)) einpflegen musste, sorgte dafür, dass ich dann doch recht häufig die eine oder andere Perle verpasst hatte.
 
