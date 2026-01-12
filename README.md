@@ -37,7 +37,7 @@ Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperl
 - Optionale Metadata Provider-Integration (TMDB/OMDB) für bessere Film- und Serien-Erkennung.
 - Konfigurierbarer Download-Ordner.
 - Logging.
-- Automatische Tests mit CI/CD-Pipeline (Codeberg Actions/Woodpecker CI).
+- Automatische Tests mit CI/CD-Pipeline (via gespiegeltem privaten Repo bei GitHub).
 
 ## Programmablauf
 
