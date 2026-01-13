@@ -39,8 +39,6 @@ a = Analysis(
     hiddenimports=[
         'feedparser',
         'requests',
-        'requests.packages.urllib3',
-        'requests.packages.urllib3.util.ssl_',
         'urllib3',
         'urllib3.util.ssl_',
         'certifi',
