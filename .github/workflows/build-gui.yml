@@ -175,10 +175,11 @@ jobs:
       - name: Build with PyInstaller (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          # Auf macOS erstellt PyInstaller mit --windowed automatisch ein .app Bundle
-          # Verwende universal2 für Kompatibilität mit Intel- und Apple-Silicon-Macs
+          # Auf macOS erstellt PyInstaller mit console=False automatisch ein .app Bundle
+          # build.spec enthält bereits target_arch='universal2' für Intel + Apple Silicon
+          # WICHTIG: --windowed und --target-arch können NICHT mit .spec Dateien verwendet werden
           echo "Building universal2 app with build.spec (Intel + Apple Silicon)..."
-          pyinstaller build.spec --clean --noconfirm --windowed --target-arch universal2 2>&1 || {
+          pyinstaller build.spec --clean --noconfirm 2>&1 || {
             echo "Build with spec failed, trying direct command with universal2..."
             pyinstaller --windowed --name PerlentaucherGUI \
               --target-arch universal2 \
