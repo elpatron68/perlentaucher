@@ -377,6 +377,32 @@ class TestTitleSimilarity:
         similarity = core.calculate_title_similarity("", "")
         # Zwei leere Strings sind gleich -> 1.0
         assert similarity == 1.0
+    
+    def test_stopwords_ignored(self):
+        """Test: Stopwords werden bei der Ähnlichkeitsberechnung ignoriert."""
+        # "Die drei Tage des Condors" sollte NICHT mit "Konstituierende Sitzung des Bundestags" verwechselt werden
+        similarity = core.calculate_title_similarity(
+            "Die drei Tage des Condors", 
+            "Konstituierende Sitzung des Bundestags"
+        )
+        # Die Ähnlichkeit sollte sehr niedrig sein, da nur "des" übereinstimmt (Stopword)
+        assert similarity < 0.2, f"Ähnlichkeit zu hoch: {similarity}"
+    
+    def test_significant_words_only(self):
+        """Test: Nur signifikante Wörter werden für Ähnlichkeit verwendet."""
+        # "Die drei Tage des Condors" sollte mit "Drei Tage Condor" gut übereinstimmen
+        similarity1 = core.calculate_title_similarity(
+            "Die drei Tage des Condors", 
+            "Drei Tage Condor"
+        )
+        assert similarity1 >= 0.4, f"Ähnlichkeit sollte mindestens 0.4 sein: {similarity1}"
+        
+        # Aber nicht mit etwas völlig anderem
+        similarity2 = core.calculate_title_similarity(
+            "Die drei Tage des Condors", 
+            "Konstituierende Sitzung des Bundestags"
+        )
+        assert similarity2 < similarity1, f"Ähnlichkeit sollte niedriger sein: {similarity2} < {similarity1}"
 
 
 class TestMovieRecommendation:

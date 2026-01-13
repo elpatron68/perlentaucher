@@ -766,10 +766,35 @@ def detect_language(movie_data):
     else:
         return "unbekannt"
 
+def get_significant_words(text: str) -> set:
+    """
+    Extrahiert signifikante Wörter aus einem Text, ignoriert Stopwords.
+    
+    Args:
+        text: Der Text, aus dem Wörter extrahiert werden sollen
+    
+    Returns:
+        Set von signifikanten Wörtern (ohne Stopwords)
+    """
+    # Deutsche und englische Stopwords, die bei der Titelübereinstimmung ignoriert werden sollten
+    stopwords = {
+        'die', 'der', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einer', 'einem', 'einen', 'eines',
+        'und', 'oder', 'aber', 'doch', 'sondern', 'sowie', 'wie', 'als', 'wenn', 'ob', 'dass',
+        'the', 'a', 'an', 'and', 'or', 'but', 'if', 'of', 'to', 'in', 'on', 'at', 'for', 'with',
+        'von', 'zu', 'in', 'auf', 'für', 'mit', 'über', 'unter', 'durch', 'bei', 'nach', 'vor',
+        'am', 'im', 'zum', 'zur', 'vom', 'beim', 'ins', 'ans', 'durchs', 'übers', 'unters'
+    }
+    
+    words = set(text.lower().split())
+    # Entferne Stopwords und sehr kurze Wörter (< 2 Zeichen)
+    significant = {w for w in words if w not in stopwords and len(w) >= 2}
+    return significant
+
 def calculate_title_similarity(search_title: str, result_title: str) -> float:
     """
     Berechnet die Ähnlichkeit zwischen Suchtitel und Ergebnis-Titel.
     Gibt einen Wert zwischen 0.0 (keine Übereinstimmung) und 1.0 (exakte Übereinstimmung) zurück.
+    Ignoriert Stopwords bei der Berechnung.
     """
     search_lower = search_title.lower().strip()
     result_lower = result_title.lower().strip()
@@ -790,9 +815,20 @@ def calculate_title_similarity(search_title: str, result_title: str) -> float:
     if result_lower in search_lower:
         return 0.80
     
-    # Wortweise Übereinstimmung
-    search_words = set(search_lower.split())
-    result_words = set(result_lower.split())
+    # Extrahiere signifikante Wörter (ohne Stopwords)
+    search_significant = get_significant_words(search_title)
+    result_significant = get_significant_words(result_title)
+    
+    # Wenn keine signifikanten Wörter vorhanden sind, verwende alle Wörter
+    if not search_significant:
+        search_words = set(search_lower.split())
+    else:
+        search_words = search_significant
+    
+    if not result_significant:
+        result_words = set(result_lower.split())
+    else:
+        result_words = result_significant
     
     if not search_words or not result_words:
         return 0.0
@@ -806,8 +842,10 @@ def calculate_title_similarity(search_title: str, result_title: str) -> float:
     
     jaccard = len(intersection) / len(union)
     
-    # Wenn alle Suchwörter im Ergebnis enthalten sind, erhöhe den Score
-    if search_words.issubset(result_words):
+    # Wenn alle signifikanten Suchwörter im Ergebnis enthalten sind, erhöhe den Score
+    if search_significant and search_significant.issubset(result_words):
+        jaccard = min(1.0, jaccard * 1.5)
+    elif search_words.issubset(result_words):
         jaccard = min(1.0, jaccard * 1.3)
     
     return jaccard
@@ -969,13 +1007,32 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
             
             results = data.get("result", {}).get("results", [])
             if results:
-                # Prüfe, ob die Ergebnisse relevant sind (Filmtitel kommt im Titel/Topic vor)
-                normalized_lower = normalized_search_title.lower()
-                relevant_results = [
-                    r for r in results 
-                    if normalized_lower in r.get("title", "").lower() or 
-                       normalized_lower in r.get("topic", "").lower()
-                ]
+                # Prüfe, ob die Ergebnisse relevant sind
+                # Verwende signifikante Wörter statt einfacher Substring-Suche
+                search_significant = get_significant_words(normalized_search_title)
+                if not search_significant:
+                    # Fallback: wenn keine signifikanten Wörter, verwende alle Wörter
+                    search_significant = set(normalized_search_title.lower().split())
+                
+                relevant_results = []
+                for r in results:
+                    title = r.get("title", "").lower()
+                    topic = r.get("topic", "").lower()
+                    combined = f"{title} {topic}"
+                    result_words = get_significant_words(combined)
+                    if not result_words:
+                        result_words = set(combined.split())
+                    
+                    # Prüfe, ob mindestens 2 signifikante Wörter übereinstimmen
+                    # oder wenn der Suchtitel sehr kurz ist, mindestens 1 Wort
+                    min_matches = 2 if len(search_significant) >= 2 else 1
+                    matches = search_significant & result_words
+                    
+                    # Zusätzlich: prüfe ob der normalisierte Suchtitel als Ganzes enthalten ist
+                    normalized_lower = normalized_search_title.lower()
+                    if len(matches) >= min_matches or normalized_lower in title or normalized_lower in topic:
+                        relevant_results.append(r)
+                
                 # Wenn wir relevante Ergebnisse haben, verwende dieses Format
                 if relevant_results:
                     results = relevant_results
@@ -1037,6 +1094,27 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
     best_match = scored_results[0][1]
     best_score = scored_results[0][0]
     
+    # Berechne die Titel-Ähnlichkeit separat für die Mindest-Schwelle
+    best_title = best_match.get("title", "")
+    title_similarity = calculate_title_similarity(movie_title, best_title)
+    
+    # Mindest-Schwelle: Wenn die Titel-Ähnlichkeit zu niedrig ist (< 0.2), 
+    # ist das Ergebnis wahrscheinlich nicht relevant
+    MIN_TITLE_SIMILARITY = 0.2
+    if title_similarity < MIN_TITLE_SIMILARITY:
+        logging.warning(f"Beste Übereinstimmung hat zu niedrige Titel-Ähnlichkeit "
+                       f"({title_similarity:.2f} < {MIN_TITLE_SIMILARITY}): "
+                       f"'{best_match.get('title')}' für Suche nach '{movie_title}'")
+        if notify_url and APPRISE_AVAILABLE:
+            body = f"Keine relevante Übereinstimmung gefunden:\n\n"
+            body += f"📽️ Gesucht: {movie_title}\n"
+            body += f"❌ Gefunden: {best_match.get('title')}\n"
+            body += f"ℹ️ Titel-Ähnlichkeit zu niedrig ({title_similarity:.2f})\n"
+            if entry_link:
+                body += f"\n🔗 Blog-Eintrag: {entry_link}"
+            send_notification(notify_url, "Keine relevante Übereinstimmung", body, "warning")
+        return None
+    
     language = detect_language(best_match)
     has_ad = has_audio_description(best_match)
     size = best_match.get("size") or 0
@@ -1046,7 +1124,8 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
                 f"({size_mb:.1f} MB, "
                 f"Sprache: {language}, "
                 f"AD: {'ja' if has_ad else 'nein'}, "
-                f"Score: {best_score:.1f})")
+                f"Score: {best_score:.1f}, "
+                f"Titel-Ähnlichkeit: {title_similarity:.2f})")
     
     return best_match
 
