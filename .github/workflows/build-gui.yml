@@ -539,7 +539,7 @@ jobs:
           path: |
             dist/${{ steps.artifact-windows.outputs.name }}
             dist/${{ steps.artifact-windows.outputs.name }}.zip
-          retention-days: 30
+          retention-days: 7
 
       - name: Verify artifacts before upload (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -564,7 +564,7 @@ jobs:
           path: |
             dist/${{ steps.artifact-linux.outputs.name }}
             dist/${{ steps.artifact-linux.outputs.name }}.tar.gz
-          retention-days: 30
+          retention-days: 7
 
       - name: Verify artifacts before upload (macOS)
         if: matrix.os == 'macos-latest'
@@ -596,12 +596,13 @@ jobs:
       - name: Upload artifact (macOS)
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: PerlentaucherGUI-macos-${{ github.sha }}
           path: |
             dist/${{ steps.artifact-macos.outputs.name }}
             dist/${{ steps.artifact-macos.outputs.name }}.zip
-          retention-days: 30
+          retention-days: 7
 
   release:
     name: Create Release Assets
