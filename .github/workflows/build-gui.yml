@@ -164,7 +164,19 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           # Pillow wird benötigt um .ico Icons auf macOS zu .icns zu konvertieren
-          pip install Pillow
+          # Installiere Pillow als Universal Binary für --target-arch universal2
+          echo "=== Installing Pillow as Universal Binary ==="
+          pip uninstall -y Pillow || true
+          # Installiere Pillow als Universal Binary (Intel + Apple Silicon)
+          ARCHFLAGS='-arch arm64 -arch x86_64' pip install --no-binary=:all: Pillow || {
+            echo "⚠ Building Pillow from source failed, trying to install universal2 wheel if available..."
+            # Fallback: Versuche universal2 wheel zu finden
+            pip install Pillow --upgrade || {
+              echo "✗ Failed to install Pillow as Universal Binary"
+              exit 1
+            }
+          }
+          echo "✓ Pillow installed"
         
       - name: Reinstall PyYAML as Universal Binary (macOS)
         if: matrix.os == 'macos-latest'
