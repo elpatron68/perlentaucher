@@ -157,7 +157,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-gui.txt
-          pip install --upgrade pyinstaller
+          # PyInstaller 5.0+ wird für --target-arch universal2 benötigt
+          pip install --upgrade "pyinstaller>=5.0"
 
       - name: Build with PyInstaller (Windows)
         if: matrix.os == 'windows-latest'
@@ -175,12 +176,40 @@ jobs:
       - name: Build with PyInstaller (macOS)
         if: matrix.os == 'macos-latest'
         run: |
+          set -e
+          echo "=== Building macOS Universal Binary (Intel + Apple Silicon) ==="
+          echo "Python version: $(python3 --version)"
+          echo "PyInstaller version: $(pyinstaller --version)"
+          echo "Current architecture: $(uname -m)"
+          echo ""
+          
+          # Prüfe ob Python Universal Binary ist
+          PYTHON_ARCH=$(file $(which python3) | grep -o "x86_64\|arm64" | head -1 || echo "unknown")
+          echo "Python architecture: $PYTHON_ARCH"
+          
           # Auf macOS erstellt PyInstaller mit console=False automatisch ein .app Bundle
-          # build.spec enthält bereits target_arch='universal2' für Intel + Apple Silicon
-          # WICHTIG: --windowed und --target-arch können NICHT mit .spec Dateien verwendet werden
-          echo "Building universal2 app with build.spec (Intel + Apple Silicon)..."
-          pyinstaller build.spec --clean --noconfirm 2>&1 || {
-            echo "Build with spec failed, trying direct command with universal2..."
+          # WICHTIG: Für Universal Binary MUSS --target-arch universal2 verwendet werden
+          echo ""
+          echo "=== Building universal2 app (Intel + Apple Silicon) ==="
+          
+          # Prüfe ob --target-arch unterstützt wird
+          if pyinstaller --help 2>&1 | grep -q "target-arch"; then
+            echo "✓ PyInstaller supports --target-arch, building universal2 binary..."
+            BUILD_CMD="pyinstaller build.spec --clean --noconfirm --target-arch universal2"
+          else
+            echo "✗ ERROR: PyInstaller does not support --target-arch"
+            echo "This is required for Universal Binary creation!"
+            echo "Please upgrade PyInstaller to version 5.0 or later"
+            pyinstaller --version
+            exit 1
+          fi
+          
+          # Versuche zuerst mit build.spec
+          if eval "$BUILD_CMD" 2>&1; then
+            echo "✓ Build with build.spec successful"
+          else
+            echo "⚠ Build with spec failed, trying direct command with universal2..."
+            # Fallback: Direkter Befehl mit --target-arch universal2
             pyinstaller --windowed --name PerlentaucherGUI \
               --target-arch universal2 \
               --hidden-import=feedparser \
@@ -192,16 +221,72 @@ jobs:
               --hidden-import=PyQt6.QtWidgets \
               --hidden-import=PyQt6.QtGui \
               --hidden-import=src.perlentaucher \
+              --add-data "assets:assets" \
+              --icon=assets/icon.ico \
               --clean --noconfirm \
-              src/perlentaucher_gui.py 2>&1
-          }
+              src/perlentaucher_gui.py 2>&1 || {
+              echo "✗ Both build methods failed"
+              echo "Build logs:"
+              cat build/*.log 2>/dev/null || echo "No build logs found"
+              exit 1
+            }
+          fi
+          
           echo ""
-          echo "Build output in dist/:"
-          ls -la dist/ 2>/dev/null || echo "dist/ not found"
+          echo "=== Build output in dist/ ==="
+          ls -la dist/ 2>/dev/null || { echo "✗ dist/ directory not found"; exit 1; }
           echo ""
-          echo "Verifying app architecture (should show both x86_64 and arm64):"
+          
+          # Prüfe ob .app Bundle oder Executable erstellt wurde
           if [ -d "dist/PerlentaucherGUI.app" ]; then
-            file "dist/PerlentaucherGUI.app/Contents/MacOS/PerlentaucherGUI" 2>/dev/null || echo "Could not verify architecture"
+            echo "✓ Found PerlentaucherGUI.app bundle"
+            echo "App bundle size:"
+            du -sh "dist/PerlentaucherGUI.app"
+            echo ""
+            echo "=== Verifying Universal Binary architecture ==="
+            if [ -f "dist/PerlentaucherGUI.app/Contents/MacOS/PerlentaucherGUI" ]; then
+              EXECUTABLE="dist/PerlentaucherGUI.app/Contents/MacOS/PerlentaucherGUI"
+              file "$EXECUTABLE"
+              
+              # Prüfe ob es ein Universal Binary ist (sollte beide Architekturen enthalten)
+              ARCHS=$(lipo -archs "$EXECUTABLE" 2>/dev/null || echo "")
+              echo "Architectures in binary: $ARCHS"
+              
+              if echo "$ARCHS" | grep -q "x86_64" && echo "$ARCHS" | grep -q "arm64"; then
+                echo "✓ SUCCESS: Universal Binary created (Intel + Apple Silicon)"
+              elif echo "$ARCHS" | grep -q "x86_64"; then
+                echo "⚠ WARNING: Only Intel (x86_64) architecture found"
+                echo "  This is NOT a Universal Binary!"
+                exit 1
+              elif echo "$ARCHS" | grep -q "arm64"; then
+                echo "⚠ WARNING: Only Apple Silicon (arm64) architecture found"
+                echo "  This is NOT a Universal Binary!"
+                exit 1
+              else
+                echo "⚠ WARNING: Could not determine architecture"
+                echo "  Verifying with lipo -info:"
+                lipo -info "$EXECUTABLE" || echo "  lipo command failed"
+              fi
+            else
+              echo "✗ Executable not found in app bundle"
+              exit 1
+            fi
+          elif [ -f "dist/PerlentaucherGUI" ]; then
+            echo "✓ Found PerlentaucherGUI executable (no .app bundle)"
+            file "dist/PerlentaucherGUI"
+            ARCHS=$(lipo -archs "dist/PerlentaucherGUI" 2>/dev/null || echo "")
+            echo "Architectures in binary: $ARCHS"
+            if echo "$ARCHS" | grep -q "x86_64" && echo "$ARCHS" | grep -q "arm64"; then
+              echo "✓ SUCCESS: Universal Binary created (Intel + Apple Silicon)"
+            else
+              echo "⚠ WARNING: Not a Universal Binary!"
+              exit 1
+            fi
+          else
+            echo "✗ No build output found in dist/"
+            echo "Contents of dist/:"
+            find dist -type f -o -type d | head -20
+            exit 1
           fi
 
       - name: Determine artifact name (Windows)
@@ -372,28 +457,86 @@ jobs:
           ls -lh dist/
         continue-on-error: true
 
+      - name: Verify artifacts before upload (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          $exeFile = "dist\${{ steps.artifact-windows.outputs.name }}"
+          $zipFile = "dist\${{ steps.artifact-windows.outputs.name }}.zip"
+          if (-not (Test-Path $exeFile)) { Write-Host "✗ EXE not found: $exeFile"; exit 1 }
+          if (-not (Test-Path $zipFile)) { Write-Host "✗ ZIP not found: $zipFile"; exit 1 }
+          Write-Host "✓ All Windows artifacts verified"
+        shell: pwsh
+
       - name: Upload artifact (Windows)
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: PerlentaucherGUI-windows-${{ github.sha }}
-          path: dist/*.exe*
+          path: |
+            dist/${{ steps.artifact-windows.outputs.name }}
+            dist/${{ steps.artifact-windows.outputs.name }}.zip
           retention-days: 30
+
+      - name: Verify artifacts before upload (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          if [ ! -f "dist/${{ steps.artifact-linux.outputs.name }}" ]; then
+            echo "✗ Executable not found: dist/${{ steps.artifact-linux.outputs.name }}"
+            exit 1
+          fi
+          if [ ! -f "dist/${{ steps.artifact-linux.outputs.name }}.tar.gz" ]; then
+            echo "✗ TAR.GZ not found: dist/${{ steps.artifact-linux.outputs.name }}.tar.gz"
+            exit 1
+          fi
+          echo "✓ All Linux artifacts verified"
+          ls -lh "dist/${{ steps.artifact-linux.outputs.name }}"*
+        continue-on-error: true
 
       - name: Upload artifact (Linux)
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: PerlentaucherGUI-linux-${{ github.sha }}
-          path: dist/PerlentaucherGUI*
+          path: |
+            dist/${{ steps.artifact-linux.outputs.name }}
+            dist/${{ steps.artifact-linux.outputs.name }}.tar.gz
           retention-days: 30
+
+      - name: Verify artifacts before upload (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "Checking for macOS artifacts..."
+          if [ "${{ steps.artifact-macos.outputs.type }}" = "app" ]; then
+            if [ ! -d "dist/${{ steps.artifact-macos.outputs.name }}" ]; then
+              echo "✗ App bundle not found: dist/${{ steps.artifact-macos.outputs.name }}"
+              exit 1
+            fi
+            if [ ! -f "dist/${{ steps.artifact-macos.outputs.name }}.zip" ]; then
+              echo "✗ ZIP not found: dist/${{ steps.artifact-macos.outputs.name }}.zip"
+              exit 1
+            fi
+          else
+            if [ ! -f "dist/${{ steps.artifact-macos.outputs.name }}" ]; then
+              echo "✗ Executable not found: dist/${{ steps.artifact-macos.outputs.name }}"
+              exit 1
+            fi
+            if [ ! -f "dist/${{ steps.artifact-macos.outputs.name }}.zip" ]; then
+              echo "✗ ZIP not found: dist/${{ steps.artifact-macos.outputs.name }}.zip"
+              exit 1
+            fi
+          fi
+          echo "✓ All macOS artifacts verified"
+          ls -lh "dist/${{ steps.artifact-macos.outputs.name }}"*
+        continue-on-error: true
 
       - name: Upload artifact (macOS)
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: PerlentaucherGUI-macos-${{ github.sha }}
-          path: dist/PerlentaucherGUI*
+          path: |
+            dist/${{ steps.artifact-macos.outputs.name }}
+            dist/${{ steps.artifact-macos.outputs.name }}.zip
           retention-days: 30
 
   release:
