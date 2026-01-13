@@ -76,28 +76,54 @@ a = Analysis(
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 # Erstelle EXE für alle Plattformen
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
-    name='PerlentaucherGUI',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,  # Keine Konsole für GUI
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch='universal2' if sys.platform == 'darwin' else None,  # Universal Binary für macOS (Intel + Apple Silicon)
-    codesign_identity=None,
-    entitlements_file=None,
-    icon='assets/icon.ico',  # Icon für Windows Executable
-)
+# Für macOS: Verwende universal2 für Intel + Apple Silicon Kompatibilität
+if sys.platform == 'darwin':
+    # macOS: Universal Binary (Intel + Apple Silicon)
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        [],
+        name='PerlentaucherGUI',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,  # Keine Konsole für GUI
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch='universal2',  # Universal Binary für Intel + Apple Silicon
+        codesign_identity=None,
+        entitlements_file=None,
+        icon='assets/icon.ico',
+    )
+else:
+    # Windows/Linux: Standard-Build
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        [],
+        name='PerlentaucherGUI',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,  # Keine Konsole für GUI
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        codesign_identity=None,
+        entitlements_file=None,
+        icon='assets/icon.ico',  # Icon für Windows Executable
+    )
 
 # macOS: Erstelle zusätzlich APP Bundle aus dem EXE
 # PyInstaller erstellt auf macOS automatisch ein .app Bundle wenn console=False
