@@ -160,6 +160,12 @@ jobs:
           # PyInstaller 5.0+ wird für --target-arch universal2 benötigt
           pip install --upgrade "pyinstaller>=5.0"
         
+      - name: Install Pillow for macOS icon conversion
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Pillow wird benötigt um .ico Icons auf macOS zu .icns zu konvertieren
+          pip install Pillow
+        
       - name: Reinstall PyYAML as Universal Binary (macOS)
         if: matrix.os == 'macos-latest'
         run: |
@@ -220,10 +226,7 @@ jobs:
           echo "=== Building universal2 app (Intel + Apple Silicon) ==="
           
           # Prüfe ob --target-arch unterstützt wird
-          if pyinstaller --help 2>&1 | grep -q "target-arch"; then
-            echo "✓ PyInstaller supports --target-arch, building universal2 binary..."
-            BUILD_CMD="pyinstaller build.spec --clean --noconfirm --target-arch universal2"
-          else
+          if ! pyinstaller --help 2>&1 | grep -q "target-arch"; then
             echo "✗ ERROR: PyInstaller does not support --target-arch"
             echo "This is required for Universal Binary creation!"
             echo "Please upgrade PyInstaller to version 5.0 or later"
@@ -231,13 +234,13 @@ jobs:
             exit 1
           fi
           
-          # Versuche zuerst mit build.spec
-          if eval "$BUILD_CMD" 2>&1; then
-            echo "✓ Build with build.spec successful"
-          else
-            echo "⚠ Build with spec failed, trying direct command with universal2..."
-            # Fallback: Direkter Befehl mit --target-arch universal2
-            pyinstaller --windowed --name PerlentaucherGUI \
+          echo "✓ PyInstaller supports --target-arch, building universal2 binary..."
+          echo "⚠ Note: --target-arch cannot be used with .spec files, using direct command instead"
+          
+          # WICHTIG: --target-arch funktioniert NICHT mit .spec Dateien
+          # Verwende direkten PyInstaller-Befehl für Universal Binary
+          # Versuche zuerst mit Icon (Pillow sollte .ico zu .icns konvertieren)
+          if pyinstaller --windowed --name PerlentaucherGUI \
               --target-arch universal2 \
               --hidden-import=feedparser \
               --hidden-import=requests \
@@ -253,8 +256,28 @@ jobs:
               --add-data "assets:assets" \
               --icon=assets/icon.ico \
               --clean --noconfirm \
+              src/perlentaucher_gui.py 2>&1; then
+            echo "✓ Build with icon successful"
+          else
+            # Fallback: Versuche ohne Icon falls Icon-Konvertierung fehlschlägt
+            echo "⚠ Build with icon failed, trying without icon..."
+            pyinstaller --windowed --name PerlentaucherGUI \
+              --target-arch universal2 \
+              --hidden-import=feedparser \
+              --hidden-import=requests \
+              --hidden-import=urllib3 \
+              --hidden-import=urllib3.util.ssl_ \
+              --hidden-import=apprise \
+              --hidden-import=semver \
+              --hidden-import=PyQt6 \
+              --hidden-import=PyQt6.QtCore \
+              --hidden-import=PyQt6.QtWidgets \
+              --hidden-import=PyQt6.QtGui \
+              --hidden-import=src.perlentaucher \
+              --add-data "assets:assets" \
+              --clean --noconfirm \
               src/perlentaucher_gui.py 2>&1 || {
-              echo "✗ Both build methods failed"
+              echo "✗ All build methods failed"
               echo "Build logs:"
               cat build/*.log 2>/dev/null || echo "No build logs found"
               exit 1
