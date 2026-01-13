@@ -176,11 +176,12 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           # Auf macOS erstellt PyInstaller mit --windowed automatisch ein .app Bundle
-          # Versuche zuerst mit build.spec, dann mit direkter Kommandozeile
-          echo "Building with build.spec..."
-          pyinstaller build.spec --clean --noconfirm --windowed 2>&1 || {
-            echo "Build with spec failed, trying direct command..."
+          # Verwende universal2 für Kompatibilität mit Intel- und Apple-Silicon-Macs
+          echo "Building universal2 app with build.spec (Intel + Apple Silicon)..."
+          pyinstaller build.spec --clean --noconfirm --windowed --target-arch universal2 2>&1 || {
+            echo "Build with spec failed, trying direct command with universal2..."
             pyinstaller --windowed --name PerlentaucherGUI \
+              --target-arch universal2 \
               --hidden-import=feedparser \
               --hidden-import=requests \
               --hidden-import=apprise \
@@ -196,6 +197,11 @@ jobs:
           echo ""
           echo "Build output in dist/:"
           ls -la dist/ 2>/dev/null || echo "dist/ not found"
+          echo ""
+          echo "Verifying app architecture (should show both x86_64 and arm64):"
+          if [ -d "dist/PerlentaucherGUI.app" ]; then
+            file "dist/PerlentaucherGUI.app/Contents/MacOS/PerlentaucherGUI" 2>/dev/null || echo "Could not verify architecture"
+          fi
 
       - name: Determine artifact name (Windows)
         if: matrix.os == 'windows-latest'

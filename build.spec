@@ -93,7 +93,7 @@ exe = EXE(
     console=False,  # Keine Konsole für GUI
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,
+    target_arch='universal2' if sys.platform == 'darwin' else None,  # Universal Binary für macOS (Intel + Apple Silicon)
     codesign_identity=None,
     entitlements_file=None,
     icon='assets/icon.ico',  # Icon für Windows Executable
