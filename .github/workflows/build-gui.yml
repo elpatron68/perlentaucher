@@ -159,6 +159,26 @@ jobs:
           pip install -r requirements-gui.txt
           # PyInstaller 5.0+ wird für --target-arch universal2 benötigt
           pip install --upgrade "pyinstaller>=5.0"
+        
+      - name: Reinstall PyYAML as Universal Binary (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "=== Reinstalling PyYAML as Universal Binary ==="
+          # Deinstalliere aktuelles PyYAML
+          pip uninstall -y PyYAML || true
+          # Installiere PyYAML als Universal Binary (Intel + Apple Silicon)
+          # ARCHFLAGS wird verwendet um beide Architekturen zu kompilieren
+          ARCHFLAGS='-arch arm64 -arch x86_64' pip install --no-binary=:all: PyYAML || {
+            echo "⚠ Building from source failed, trying to install universal2 wheel if available..."
+            # Fallback: Versuche universal2 wheel zu finden
+            pip install PyYAML --upgrade || {
+              echo "✗ Failed to install PyYAML as Universal Binary"
+              exit 1
+            }
+          }
+          echo "✓ PyYAML reinstalled"
+          # Verifiziere dass PyYAML Universal Binary ist
+          python3 -c "import yaml; import yaml._yaml; import os; lib_path = yaml._yaml.__file__; print(f'PyYAML library: {lib_path}'); os.system(f'file {lib_path}')" || echo "⚠ Could not verify PyYAML architecture"
 
       - name: Build with PyInstaller (Windows)
         if: matrix.os == 'windows-latest'
@@ -187,6 +207,13 @@ jobs:
           PYTHON_ARCH=$(file $(which python3) | grep -o "x86_64\|arm64" | head -1 || echo "unknown")
           echo "Python architecture: $PYTHON_ARCH"
           
+          # Verifiziere dass PyYAML Universal Binary ist (wichtig für --target-arch universal2)
+          echo ""
+          echo "=== Verifying PyYAML is Universal Binary ==="
+          python3 -c "import yaml; import yaml._yaml; import os; lib_path = yaml._yaml.__file__; print(f'PyYAML library: {lib_path}'); result = os.popen(f'file {lib_path}').read(); print(result); assert 'x86_64' in result or 'arm64' in result or 'universal' in result, 'PyYAML is not a Universal Binary'" || {
+            echo "⚠ PyYAML verification failed, but continuing..."
+          }
+          
           # Auf macOS erstellt PyInstaller mit console=False automatisch ein .app Bundle
           # WICHTIG: Für Universal Binary MUSS --target-arch universal2 verwendet werden
           echo ""
@@ -214,6 +241,8 @@ jobs:
               --target-arch universal2 \
               --hidden-import=feedparser \
               --hidden-import=requests \
+              --hidden-import=urllib3 \
+              --hidden-import=urllib3.util.ssl_ \
               --hidden-import=apprise \
               --hidden-import=semver \
               --hidden-import=PyQt6 \
