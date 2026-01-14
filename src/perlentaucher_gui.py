@@ -16,8 +16,16 @@ except ImportError:
     print("Installieren Sie PyQt6 mit: pip install PyQt6")
     sys.exit(1)
 
-from .gui.config_manager import ConfigManager
-from .gui.main_window import MainWindow
+# Imports so anpassen, dass sie sowohl im Paket-Kontext (normaler Aufruf)
+# als auch im PyInstaller-Executable (kein Paketkontext) funktionieren.
+try:
+    # Paket-Import (z.B. beim Ausführen innerhalb von src als Modul)
+    from .gui.config_manager import ConfigManager
+    from .gui.main_window import MainWindow
+except ImportError:
+    # Fallback für PyInstaller / Standalone-Executable
+    from gui.config_manager import ConfigManager
+    from gui.main_window import MainWindow
 
 
 def resource_path(relative_path):
