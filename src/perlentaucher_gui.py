@@ -23,9 +23,11 @@ try:
     from .gui.config_manager import ConfigManager
     from .gui.main_window import MainWindow
 except ImportError:
-    # Fallback für PyInstaller / Standalone-Executable
-    from gui.config_manager import ConfigManager
-    from gui.main_window import MainWindow
+    # Fallback für PyInstaller / Standalone-Executable:
+    # In diesem Kontext existiert kein Paket-Elternteil mehr,
+    # die Module liegen aber weiterhin unter dem Paketnamen `src`.
+    from src.gui.config_manager import ConfigManager
+    from src.gui.main_window import MainWindow
 
 
 def resource_path(relative_path):
