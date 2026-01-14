@@ -54,6 +54,15 @@ a = Analysis(
         'PyQt6.QtGui',
         'PyQt6.QtNetwork',
         'src.perlentaucher',  # Import des Core-Moduls
+        'src.gui',  # GUI-Paket
+        'src.gui.config_manager',
+        'src.gui.main_window',
+        'src.gui.settings_panel',
+        'src.gui.blog_list_panel',
+        'src.gui.download_panel',
+        'src.gui.utils.thread_manager',
+        'src.gui.utils.update_checker',
+        'src.gui.utils.feedparser_helpers',
     ],
     hookspath=[],
     hooksconfig={},
