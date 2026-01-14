@@ -122,7 +122,7 @@ class DownloadPanel(QWidget):
         self._config = config
         
         # Import hier um Circular Import zu vermeiden
-        from gui.utils.thread_manager import DownloadThread
+        from .utils.thread_manager import DownloadThread
         
         for entry_data in entries:
             entry_id = entry_data['entry_id']

@@ -13,11 +13,11 @@ from typing import Dict, Optional
 import sys
 import os
 
-from gui.settings_panel import SettingsPanel
-from gui.blog_list_panel import BlogListPanel
-from gui.download_panel import DownloadPanel
-from gui.config_manager import ConfigManager
-from gui.utils.update_checker import check_for_updates
+from .settings_panel import SettingsPanel
+from .blog_list_panel import BlogListPanel
+from .download_panel import DownloadPanel
+from .config_manager import ConfigManager
+from .utils.update_checker import check_for_updates
 
 
 class MainWindow(QMainWindow):
