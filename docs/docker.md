@@ -4,7 +4,11 @@ Du kannst das Script auch als Docker-Container ausführen, der automatisch in ei
 
 ## Docker-Image erstellen
 
+**Wichtig:** Der Docker-Build muss aus dem **Root-Verzeichnis** des Projekts ausgeführt werden, nicht aus dem `docker/` Verzeichnis. Der Build-Kontext (der Punkt `.` am Ende) muss auf das Root-Verzeichnis zeigen, damit Docker die Dateien `requirements.txt`, `src/` und `docker/docker-entrypoint.sh` finden kann.
+
+**Aus dem Root-Verzeichnis:**
 ```bash
+cd /pfad/zum/projekt/root
 docker build -t perlentaucher -f docker/Dockerfile .
 ```
 
@@ -12,6 +16,14 @@ Mit Versions-Tag:
 ```bash
 docker build -t perlentaucher:v0.1.3 -t perlentaucher:latest -f docker/Dockerfile .
 ```
+
+**Alternative: Aus dem docker-Verzeichnis mit Build-Kontext auf Root:**
+```bash
+cd /pfad/zum/projekt/root/docker
+docker build -t perlentaucher:0.1.29 -t perlentaucher:latest -f Dockerfile ..
+```
+
+**Hinweis:** Die Build-Scripts `docker/build.sh` (Linux/macOS) und `docker/build.ps1` (Windows) können ebenfalls verwendet werden und führen den Build automatisch korrekt aus.
 
 ## Docker-Image aus Codeberg Container Registry verwenden
 

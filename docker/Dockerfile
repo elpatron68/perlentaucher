@@ -1,3 +1,9 @@
+# WICHTIG: Dieser Build muss mit dem Build-Kontext auf das Root-Verzeichnis ausgeführt werden!
+# Korrekter Befehl aus dem Root-Verzeichnis:
+#   docker build -t perlentaucher:latest -f docker/Dockerfile .
+# Oder aus dem docker-Verzeichnis:
+#   docker build -t perlentaucher:latest -f Dockerfile ..
+
 FROM python:3.11-slim
 
 WORKDIR /app
