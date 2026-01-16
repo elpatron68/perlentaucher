@@ -871,12 +871,14 @@ def score_movie(movie_data, prefer_language, prefer_audio_desc, search_title: st
     """
     score = 0
     
-    # TITELÜBEREINSTIMMUNG - höchste Priorität (10000+ Punkte)
+    # TITELÜBEREINSTIMMUNG - höchste Priorität (100000+ Punkte)
+    # Erhöht von 10000 auf 100000, um sicherzustellen, dass Titelübereinstimmung immer
+    # wichtiger ist als andere Faktoren (Dateigröße, Sprache, etc.)
     if search_title:
         result_title = movie_data.get("title", "")
         title_similarity = calculate_title_similarity(search_title, result_title)
-        # Titelübereinstimmung ist sehr wichtig - multipliziere mit hohem Faktor
-        score += title_similarity * 10000
+        # Titelübereinstimmung ist sehr wichtig - multipliziere mit sehr hohem Faktor
+        score += title_similarity * 100000
     
     # METADATA-MATCHING - sehr hohe Priorität (50000+ Punkte)
     # Wenn wir eine TMDB/IMDB-ID haben, prüfe ob der Film diese ID enthält
@@ -1013,51 +1015,12 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
             
             results = data.get("result", {}).get("results", [])
             if results:
-                # Lockerere Relevanz-Prüfung: Lasse Scoring-Funktion die Bewertung übernehmen
+                # Entferne Relevanz-Filterung komplett: Lasse Scoring-Funktion alle Bewertungen übernehmen
                 # Die Scoring-Funktion ist bereits sehr gut und kann irrelevante Ergebnisse herausfiltern
-                # Prüfe nur auf sehr offensichtlich irrelevante Ergebnisse
-                search_significant = get_significant_words(normalized_search_title)
-                if not search_significant:
-                    # Fallback: wenn keine signifikanten Wörter, verwende alle Wörter
-                    search_significant = set(normalized_search_title.lower().split())
-                
-                # Wenn der Suchtitel sehr kurz ist (1-2 Wörter), verwende alle Ergebnisse
-                # Für längere Titel, prüfe auf mindestens 1 übereinstimmendes signifikantes Wort
-                if len(search_significant) <= 2:
-                    # Für kurze Titel: akzeptiere alle Ergebnisse, Scoring-Funktion filtert
-                    relevant_results = results
-                else:
-                    # Für längere Titel: prüfe auf mindestens 1 übereinstimmendes Wort
-                    # (statt 2, um mehr Ergebnisse durchzulassen)
-                    relevant_results = []
-                    normalized_lower = normalized_search_title.lower()
-                    for r in results:
-                        title = r.get("title", "").lower()
-                        topic = r.get("topic", "").lower()
-                        combined = f"{title} {topic}"
-                        result_words = get_significant_words(combined)
-                        if not result_words:
-                            result_words = set(combined.split())
-                        
-                        matches = search_significant & result_words
-                        
-                        # Akzeptiere wenn:
-                        # 1. Mindestens 1 signifikantes Wort übereinstimmt, ODER
-                        # 2. Der normalisierte Suchtitel als Ganzes enthalten ist
-                        if len(matches) >= 1 or normalized_lower in title or normalized_lower in topic:
-                            relevant_results.append(r)
-                
-                # Wenn wir relevante Ergebnisse haben, verwende dieses Format
-                if relevant_results:
-                    results = relevant_results
-                    break
-                # Wenn 'queries' Format keine relevanten Ergebnisse hat, versuche nächstes Format
-                if "queries" in payload:
-                    logging.debug(f"'queries' Format lieferte {len(results)} Ergebnisse, aber keine relevanten für '{movie_title}'")
-                    results = []  # Setze zurück, versuche nächstes Format
-                    continue
-                # Für einfaches 'query' Format: akzeptiere auch wenn nicht alle relevant sind
-                # (besser als gar nichts, Scoring-Funktion filtert dann)
+                # Die Relevanz-Filterung hat den Nachteil, dass sie exakte Matches herausfiltern kann
+                # wenn die Wort-Erkennung oder Normalisierung nicht perfekt funktioniert
+                logging.debug(f"Gefunden: {len(results)} Ergebnisse für '{movie_title}', lasse Scoring-Funktion bewerten")
+                # Verwende alle Ergebnisse, Scoring-Funktion filtert dann
                 break
         except requests.RequestException as e:
             # Bei Fehler, versuche nächstes Format
@@ -1079,10 +1042,20 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
             send_notification(notify_url, "Film nicht gefunden", body, "warning")
         return None
     
-    # Bewerte alle Ergebnisse
+    # Bewerte alle Ergebnisse, aber filtere zuerst Ergebnisse mit sehr niedriger Titel-Ähnlichkeit heraus
+    # Dies verhindert, dass irrelevante Ergebnisse durch andere Faktoren (z.B. Dateigröße) bevorzugt werden
+    MIN_TITLE_SIMILARITY_FOR_SCORING = 0.1  # Mindest-Titel-Ähnlichkeit für Bewertung
     scored_results = []
     for result in results:
         try:
+            result_title = result.get("title", "")
+            title_similarity = calculate_title_similarity(movie_title, result_title)
+            
+            # Überspringe Ergebnisse mit sehr niedriger Titel-Ähnlichkeit
+            if title_similarity < MIN_TITLE_SIMILARITY_FOR_SCORING:
+                logging.debug(f"Überspringe Ergebnis mit zu niedriger Titel-Ähnlichkeit ({title_similarity:.2f}): '{result_title}'")
+                continue
+            
             score = score_movie(result, prefer_language, prefer_audio_desc, 
                               search_title=movie_title, search_year=year, metadata=metadata)
             scored_results.append((score, result))
