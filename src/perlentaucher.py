@@ -981,8 +981,24 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         logging.debug(f"Suchbegriff normalisiert: '{movie_title}' → '{normalized_search_title}'")
     
     logging.info(f"Suche in MediathekViewWeb nach: '{movie_title}' (normalisiert: '{normalized_search_title}')")
-    # Versuche zuerst 'queries' Array Format (spezifischer), dann einfaches 'query' Format (Fallback)
+    # Versuche verschiedene Suchformate:
+    # 1. Titel-Selektor Syntax (+ für Titel) - explizite Titel-Suche
+    # 2. Queries Array Format mit title/topic fields
+    # 3. Einfaches query Format (Fallback)
     payloads = [
+        {
+            "queries": [
+                {
+                    "fields": ["title"],
+                    "query": normalized_search_title
+                }
+            ],
+            "sortBy": "size",
+            "sortOrder": "desc",
+            "future": False,
+            "offset": 0,
+            "size": 50  # Erhöht für bessere Chance, alle Ergebnisse zu finden
+        },
         {
             "queries": [
                 {
@@ -994,7 +1010,7 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
             "sortOrder": "desc",
             "future": False,
             "offset": 0,
-            "size": 20
+            "size": 50
         },
         {
             "query": normalized_search_title,
@@ -1002,7 +1018,7 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
             "sortOrder": "desc",
             "future": False,
             "offset": 0,
-            "size": 20
+            "size": 50
         }
     ]
     
@@ -1014,15 +1030,26 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
             data = response.json()
             
             results = data.get("result", {}).get("results", [])
+            # Debug: Zeige Query-Info falls vorhanden
+            query_info = data.get("result", {}).get("query_info", {})
+            if query_info:
+                logging.debug(f"API Query-Info: total_results={query_info.get('total_results', 'N/A')}, result_count={query_info.get('result_count', 'N/A')}")
+            
             if results:
                 # Entferne Relevanz-Filterung komplett: Lasse Scoring-Funktion alle Bewertungen übernehmen
                 # Die Scoring-Funktion ist bereits sehr gut und kann irrelevante Ergebnisse herausfiltern
                 # Die Relevanz-Filterung hat den Nachteil, dass sie exakte Matches herausfiltern kann
                 # wenn die Wort-Erkennung oder Normalisierung nicht perfekt funktioniert
                 logging.info(f"Gefunden: {len(results)} Ergebnisse für '{movie_title}', lasse Scoring-Funktion bewerten")
-                # Debug: Zeige erste 5 Ergebnisse
-                for i, r in enumerate(results[:5]):
-                    logging.debug(f"  Ergebnis {i+1}: '{r.get('title', '')}' (Topic: '{r.get('topic', '')}')")
+                # Debug: Zeige ALLE Ergebnisse (nicht nur erste 5), um zu sehen, ob "Swiss Army Man" dabei ist
+                for i, r in enumerate(results):
+                    title = r.get('title', '')
+                    topic = r.get('topic', '')
+                    # Prüfe ob "Swiss Army Man" im Titel oder Topic enthalten ist
+                    if 'swiss' in title.lower() or 'army' in title.lower() or 'man' in title.lower():
+                        logging.info(f"  ⭐ Potentieller Match {i+1}: '{title}' (Topic: '{topic}')")
+                    else:
+                        logging.debug(f"  Ergebnis {i+1}: '{title}' (Topic: '{topic}')")
                 # Verwende alle Ergebnisse, Scoring-Funktion filtert dann
                 break
         except requests.RequestException as e:
