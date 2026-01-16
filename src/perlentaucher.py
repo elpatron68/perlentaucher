@@ -1019,7 +1019,10 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
                 # Die Scoring-Funktion ist bereits sehr gut und kann irrelevante Ergebnisse herausfiltern
                 # Die Relevanz-Filterung hat den Nachteil, dass sie exakte Matches herausfiltern kann
                 # wenn die Wort-Erkennung oder Normalisierung nicht perfekt funktioniert
-                logging.debug(f"Gefunden: {len(results)} Ergebnisse für '{movie_title}', lasse Scoring-Funktion bewerten")
+                logging.info(f"Gefunden: {len(results)} Ergebnisse für '{movie_title}', lasse Scoring-Funktion bewerten")
+                # Debug: Zeige erste 5 Ergebnisse
+                for i, r in enumerate(results[:5]):
+                    logging.debug(f"  Ergebnis {i+1}: '{r.get('title', '')}' (Topic: '{r.get('topic', '')}')")
                 # Verwende alle Ergebnisse, Scoring-Funktion filtert dann
                 break
         except requests.RequestException as e:
@@ -1046,22 +1049,34 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
     # Dies verhindert, dass irrelevante Ergebnisse durch andere Faktoren (z.B. Dateigröße) bevorzugt werden
     MIN_TITLE_SIMILARITY_FOR_SCORING = 0.1  # Mindest-Titel-Ähnlichkeit für Bewertung
     scored_results = []
+    filtered_count = 0
     for result in results:
         try:
             result_title = result.get("title", "")
             title_similarity = calculate_title_similarity(movie_title, result_title)
             
             # Überspringe Ergebnisse mit sehr niedriger Titel-Ähnlichkeit
-            if title_similarity < MIN_TITLE_SIMILARITY_FOR_SCORING:
+            # ABER: Wenn der Suchtitel im Ergebnis-Titel enthalten ist, akzeptiere es trotzdem
+            # (für Fälle wie "Swiss Army Man" in "Swiss Army Man (2016)")
+            normalized_search = movie_title.lower().strip()
+            normalized_result = result_title.lower().strip()
+            title_contained = normalized_search in normalized_result or normalized_result in normalized_search
+            
+            if title_similarity < MIN_TITLE_SIMILARITY_FOR_SCORING and not title_contained:
                 logging.debug(f"Überspringe Ergebnis mit zu niedriger Titel-Ähnlichkeit ({title_similarity:.2f}): '{result_title}'")
+                filtered_count += 1
                 continue
             
             score = score_movie(result, prefer_language, prefer_audio_desc, 
                               search_title=movie_title, search_year=year, metadata=metadata)
             scored_results.append((score, result))
+            logging.debug(f"Bewertet: '{result_title}' - Ähnlichkeit: {title_similarity:.2f}, Score: {score:.1f}")
         except Exception as e:
             logging.debug(f"Fehler beim Bewerten eines Ergebnisses für '{movie_title}': {e}")
             continue
+    
+    if filtered_count > 0:
+        logging.debug(f"{filtered_count} Ergebnisse wurden wegen zu niedriger Titel-Ähnlichkeit herausgefiltert")
     
     if not scored_results:
         logging.warning(f"Keine gültigen Ergebnisse für '{movie_title}' gefunden")
