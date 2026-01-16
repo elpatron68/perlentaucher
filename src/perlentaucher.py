@@ -687,11 +687,17 @@ def parse_rss_feed(limit, state_file=None):
         # Suche nach öffnendem „ (U+201E) und dann alles bis zum nächsten Anführungszeichen
         # Unterstützt: „ " (U+201E + U+201C), „ " (U+201E + U+201D), „ " (U+201E + normales ")
         # Verwendet Unicode-Escape-Sequenzen für bessere Kompatibilität
-        # U+201E = „, U+201C = ", U+201D = ", U+0022 = "
-        match = re.search(r'\u201E(.+?)(?:[\u201C\u201D\u0022])', title)
-        # Fallback: Normale Anführungszeichen
+        # U+201E = „, U+201C = ", U+201D = ", U+0022 = ", U+201F = „, U+2033 = ", U+2036 = „
+        # Erweitertes Pattern: Unterstützt auch andere Unicode-Anführungszeichen
+        match = re.search(r'\u201E(.+?)(?:[\u201C\u201D\u201F\u2033\u2036\u0022])', title)
+        # Fallback 1: Normale Anführungszeichen
         if not match:
             match = re.search(r'"([^"]+?)"', title)
+        # Fallback 2: Suche nach Text zwischen Anführungszeichen (beliebige Variante)
+        if not match:
+            # Suche nach Text zwischen öffnendem und schließendem Anführungszeichen
+            # Unterstützt: „...", "...", '...', etc.
+            match = re.search(r'[\u201E\u201C\u201D\u201F\u2033\u2036\u0022\u2018\u2019\u201A\u201B]([^\u201C\u201D\u201F\u2033\u2036\u0022\u2018\u2019\u201A\u201B]+?)[\u201C\u201D\u201F\u2033\u2036\u0022\u2018\u2019\u201A\u201B]', title)
         if match:
             movie_title = match.group(1)
             # Extrahiere Jahr aus dem RSS-Feed-Titel
@@ -1007,31 +1013,39 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
             
             results = data.get("result", {}).get("results", [])
             if results:
-                # Prüfe, ob die Ergebnisse relevant sind
-                # Verwende signifikante Wörter statt einfacher Substring-Suche
+                # Lockerere Relevanz-Prüfung: Lasse Scoring-Funktion die Bewertung übernehmen
+                # Die Scoring-Funktion ist bereits sehr gut und kann irrelevante Ergebnisse herausfiltern
+                # Prüfe nur auf sehr offensichtlich irrelevante Ergebnisse
                 search_significant = get_significant_words(normalized_search_title)
                 if not search_significant:
                     # Fallback: wenn keine signifikanten Wörter, verwende alle Wörter
                     search_significant = set(normalized_search_title.lower().split())
                 
-                relevant_results = []
-                for r in results:
-                    title = r.get("title", "").lower()
-                    topic = r.get("topic", "").lower()
-                    combined = f"{title} {topic}"
-                    result_words = get_significant_words(combined)
-                    if not result_words:
-                        result_words = set(combined.split())
-                    
-                    # Prüfe, ob mindestens 2 signifikante Wörter übereinstimmen
-                    # oder wenn der Suchtitel sehr kurz ist, mindestens 1 Wort
-                    min_matches = 2 if len(search_significant) >= 2 else 1
-                    matches = search_significant & result_words
-                    
-                    # Zusätzlich: prüfe ob der normalisierte Suchtitel als Ganzes enthalten ist
+                # Wenn der Suchtitel sehr kurz ist (1-2 Wörter), verwende alle Ergebnisse
+                # Für längere Titel, prüfe auf mindestens 1 übereinstimmendes signifikantes Wort
+                if len(search_significant) <= 2:
+                    # Für kurze Titel: akzeptiere alle Ergebnisse, Scoring-Funktion filtert
+                    relevant_results = results
+                else:
+                    # Für längere Titel: prüfe auf mindestens 1 übereinstimmendes Wort
+                    # (statt 2, um mehr Ergebnisse durchzulassen)
+                    relevant_results = []
                     normalized_lower = normalized_search_title.lower()
-                    if len(matches) >= min_matches or normalized_lower in title or normalized_lower in topic:
-                        relevant_results.append(r)
+                    for r in results:
+                        title = r.get("title", "").lower()
+                        topic = r.get("topic", "").lower()
+                        combined = f"{title} {topic}"
+                        result_words = get_significant_words(combined)
+                        if not result_words:
+                            result_words = set(combined.split())
+                        
+                        matches = search_significant & result_words
+                        
+                        # Akzeptiere wenn:
+                        # 1. Mindestens 1 signifikantes Wort übereinstimmt, ODER
+                        # 2. Der normalisierte Suchtitel als Ganzes enthalten ist
+                        if len(matches) >= 1 or normalized_lower in title or normalized_lower in topic:
+                            relevant_results.append(r)
                 
                 # Wenn wir relevante Ergebnisse haben, verwende dieses Format
                 if relevant_results:
