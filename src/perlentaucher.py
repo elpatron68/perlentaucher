@@ -36,6 +36,7 @@ def setup_logging(level_name):
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
+
 def check_for_updates(current_version: str) -> None:
     """
     Prüft, ob eine neuere Version auf Codeberg verfügbar ist.
@@ -981,59 +982,37 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         logging.debug(f"Suchbegriff normalisiert: '{movie_title}' → '{normalized_search_title}'")
     
     logging.info(f"Suche in MediathekViewWeb nach: '{movie_title}' (normalisiert: '{normalized_search_title}')")
-    # Versuche verschiedene Suchformate:
-    # 1. Titel-Selektor Syntax (+ für Titel) - explizite Titel-Suche
-    # 2. Queries Array Format mit title/topic fields
-    # 3. Einfaches query Format (Fallback)
+    # Verwendung minimaler Payloads: diese liefern in der Praxis die passenden Treffer.
     payloads = [
         {
-            "queries": [
-                {
-                    "fields": ["title"],
-                    "query": normalized_search_title
-                }
-            ],
-            "sortBy": "size",
-            "sortOrder": "desc",
-            "future": False,
-            "offset": 0,
-            "size": 50  # Erhöht für bessere Chance, alle Ergebnisse zu finden
+            "headers": {"Content-Type": "application/json"},
+            "payload": {
+                "queries": [
+                    {
+                        "fields": ["title"],
+                        "query": normalized_search_title
+                    }
+                ]
+            }
         },
         {
-            "queries": [
-                {
-                    "fields": ["title", "topic"],
-                    "query": normalized_search_title
-                }
-            ],
-            "sortBy": "size",
-            "sortOrder": "desc",
-            "future": False,
-            "offset": 0,
-            "size": 50
-        },
-        {
-            "query": normalized_search_title,
-            "sortBy": "size",
-            "sortOrder": "desc",
-            "future": False,
-            "offset": 0,
-            "size": 50
+            "headers": {"Content-Type": "application/json"},
+            "payload": {
+                "query": normalized_search_title
+            }
         }
     ]
     
     results = []
-    for payload in payloads:
+    for payload_entry in payloads:
         try:
-            response = requests.post(MVW_API_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+            payload = payload_entry.get("payload", {})
+            headers = payload_entry.get("headers", {"Content-Type": "application/json"})
+            response = requests.post(MVW_API_URL, json=payload, headers=headers, timeout=10)
             response.raise_for_status()
             data = response.json()
             
             results = data.get("result", {}).get("results", [])
-            # Debug: Zeige Query-Info falls vorhanden
-            query_info = data.get("result", {}).get("query_info", {})
-            if query_info:
-                logging.debug(f"API Query-Info: total_results={query_info.get('total_results', 'N/A')}, result_count={query_info.get('result_count', 'N/A')}")
             
             if results:
                 # Entferne Relevanz-Filterung komplett: Lasse Scoring-Funktion alle Bewertungen übernehmen
@@ -1041,15 +1020,6 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
                 # Die Relevanz-Filterung hat den Nachteil, dass sie exakte Matches herausfiltern kann
                 # wenn die Wort-Erkennung oder Normalisierung nicht perfekt funktioniert
                 logging.info(f"Gefunden: {len(results)} Ergebnisse für '{movie_title}', lasse Scoring-Funktion bewerten")
-                # Debug: Zeige ALLE Ergebnisse (nicht nur erste 5), um zu sehen, ob "Swiss Army Man" dabei ist
-                for i, r in enumerate(results):
-                    title = r.get('title', '')
-                    topic = r.get('topic', '')
-                    # Prüfe ob "Swiss Army Man" im Titel oder Topic enthalten ist
-                    if 'swiss' in title.lower() or 'army' in title.lower() or 'man' in title.lower():
-                        logging.info(f"  ⭐ Potentieller Match {i+1}: '{title}' (Topic: '{topic}')")
-                    else:
-                        logging.debug(f"  Ergebnis {i+1}: '{title}' (Topic: '{topic}')")
                 # Verwende alle Ergebnisse, Scoring-Funktion filtert dann
                 break
         except requests.RequestException as e:
