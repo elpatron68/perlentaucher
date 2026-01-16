@@ -10,12 +10,22 @@ if [ ! -f "requirements.txt" ] || [ ! -d "src" ]; then
     echo ""
     echo "Verwendung:"
     echo "  cd /pfad/zum/projekt/root"
-    echo "  docker build -t perlentaucher:0.1.29 -t perlentaucher:latest -f docker/Dockerfile ."
+    echo "  docker build -t perlentaucher:VERSION -t perlentaucher:latest -f docker/Dockerfile ."
     echo ""
     echo "Oder wenn du im docker-Verzeichnis bist:"
-    echo "  docker build -t perlentaucher:0.1.29 -t perlentaucher:latest -f Dockerfile .."
+    echo "  docker build -t perlentaucher:VERSION -t perlentaucher:latest -f Dockerfile .."
     exit 1
 fi
 
+# Lese Version aus src/_version.py
+VERSION=$(python3 -c "from src._version import __version__; print(__version__)" 2>/dev/null || python -c "from src._version import __version__; print(__version__)" 2>/dev/null)
+
+if [ -z "$VERSION" ]; then
+    echo "Fehler: Konnte Version nicht aus src/_version.py lesen."
+    exit 1
+fi
+
+echo "Baue Docker-Image mit Version: $VERSION"
+
 # Führe den Build aus
-docker build -t perlentaucher:0.1.29 -t perlentaucher:latest -f docker/Dockerfile .
+docker build -t "perlentaucher:$VERSION" -t perlentaucher:latest -f docker/Dockerfile .
