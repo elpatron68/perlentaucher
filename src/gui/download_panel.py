@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QTextEdit, QLabel, QProgressBar,
     QAbstractItemView, QMessageBox, QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QFont
 from typing import Dict, List, Optional
 import logging
@@ -506,23 +506,39 @@ class DownloadPanel(QWidget):
             self.cancel_all_btn.setEnabled(False)
 
 
+class LogEmitter(QObject):
+    """Qt signal emitter for thread-safe log output."""
+
+    log_message = pyqtSignal(str)
+
+
 class TextEditLogHandler(logging.Handler):
-    """Custom Log Handler der in ein QTextEdit schreibt."""
-    
+    """Custom log handler that writes to QTextEdit in a thread-safe way."""
+
     def __init__(self, text_widget):
         super().__init__()
         self.text_widget = text_widget
-        self.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', 
+        self.emitter = LogEmitter()
+        # Force queued connection for thread-safety
+        self.emitter.log_message.connect(self._append_message, Qt.ConnectionType.QueuedConnection)
+        self.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s',
                                            datefmt='%H:%M:%S'))
-    
-    def emit(self, record):
-        """Schreibt Log-Eintrag in das Text-Widget."""
+
+    def _append_message(self, msg: str):
         try:
-            msg = self.format(record)
             self.text_widget.append(msg)
-            # Auto-Scroll zum Ende
+            # Auto-scroll to end
             self.text_widget.verticalScrollBar().setValue(
                 self.text_widget.verticalScrollBar().maximum()
             )
         except Exception:
             pass
+
+    def emit(self, record):
+        """Write log entry to QTextEdit (thread-safe)."""
+        try:
+            msg = self.format(record)
+            self.emitter.log_message.emit(msg)
+        except Exception:
+            pass
+
