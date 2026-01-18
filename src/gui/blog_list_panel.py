@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QCheckBox, QLabel, QMessageBox,
     QComboBox, QLineEdit, QAbstractItemView, QInputDialog, QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QUrl
+from PyQt6.QtCore import Qt, pyqtSignal, QUrl, QThread
 from PyQt6.QtGui import QDesktopServices
 import sys
 import os
@@ -16,6 +16,7 @@ import re
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
+from functools import partial
 
 # Importiere die Core-Funktionalität
 # Füge src-Verzeichnis zum Pfad hinzu
@@ -25,6 +26,55 @@ if src_dir not in sys.path:
 from src import perlentaucher as core
 
 from .utils.feedparser_helpers import get_entry_attr, make_entry_compatible
+
+
+class RssSslError(Exception):
+    """Spezifischer Fehler für SSL-Probleme beim RSS-Feed."""
+
+
+class RssNetworkError(Exception):
+    """Spezifischer Fehler für Netzwerkprobleme beim RSS-Feed."""
+
+
+class RssFeedWorker(QThread):
+    """Lädt RSS-Feeds in einem Hintergrund-Thread."""
+    
+    loaded = pyqtSignal(object, object)  # feed_with_limit, feed_original
+    error = pyqtSignal(str, str)  # error_type, message
+    
+    def __init__(self, rss_url: str, rss_url_with_limit: str):
+        super().__init__()
+        self.rss_url = rss_url
+        self.rss_url_with_limit = rss_url_with_limit
+    
+    def _fetch_feed(self, url: str):
+        try:
+            import requests
+        except ImportError:
+            return feedparser.parse(url)
+        
+        try:
+            response = requests.get(url, timeout=10, verify=True)
+            response.raise_for_status()
+            return feedparser.parse(response.content)
+        except requests.exceptions.SSLError as e:
+            raise RssSslError(str(e))
+        except requests.exceptions.RequestException as e:
+            raise RssNetworkError(str(e))
+    
+    def run(self):
+        try:
+            feed_with_limit = self._fetch_feed(self.rss_url_with_limit)
+            feed_original = None
+            if self.rss_url_with_limit != self.rss_url:
+                feed_original = self._fetch_feed(self.rss_url)
+            self.loaded.emit(feed_with_limit, feed_original)
+        except RssSslError as e:
+            self.error.emit("ssl", str(e))
+        except RssNetworkError as e:
+            self.error.emit("network", str(e))
+        except Exception as e:
+            self.error.emit("generic", str(e))
 
 
 class BlogListPanel(QWidget):
@@ -43,6 +93,7 @@ class BlogListPanel(QWidget):
         super().__init__(parent)
         self.config_manager = config_manager
         self.entries = []  # Liste von Entry-Dictionaries
+        self._rss_thread = None
         self._init_ui()
         
         # Auto-Lade beim Start (nach kurzer Verzögerung um UI zu initialisieren)
@@ -207,335 +258,132 @@ class BlogListPanel(QWidget):
             days: Anzahl der Tage für Filterung (None = alle Einträge)
             append: Wenn True, werden neue Einträge zu bestehenden hinzugefügt (keine Duplikate)
         """
+        rss_url = self.config_manager.get('rss_feed_url', 'https://nexxtpress.de/author/mediathekperlen/feed/')
+        
+        # Versuche mehr Einträge zu bekommen, wenn Feed-URL WordPress ist
+        # WordPress unterstützt ?posts_per_page= Parameter (max 50)
+        # Füge Parameter hinzu wenn nicht bereits vorhanden
+        if 'posts_per_page' not in rss_url and 'nexxtpress.de' in rss_url:
+            # Füge Parameter hinzu um mehr Einträge zu bekommen
+            separator = '&' if '?' in rss_url else '?'
+            rss_url_with_limit = f"{rss_url}{separator}posts_per_page=50"
+            logging.debug(f"Versuche RSS-Feed mit erhöhtem Limit: {rss_url_with_limit}")
+        else:
+            rss_url_with_limit = rss_url
+        
+        # Falls bereits ein Load läuft, nicht erneut starten
+        if self._rss_thread and self._rss_thread.isRunning():
+            self.status_label.setText("RSS-Feed wird bereits geladen...")
+            return
+        
+        self.load_rss_btn.setEnabled(False)
+        self.refresh_btn.setEnabled(False)
+        self.load_older_btn.setEnabled(False)
+        
+        if days:
+            self.status_label.setText(f"Lade RSS-Feed (letzte {days} Tage) von {rss_url}...")
+        else:
+            self.status_label.setText(f"Lade RSS-Feed (alle Einträge) von {rss_url}...")
+        
+        # Force UI update
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+        
+        self._rss_thread = RssFeedWorker(rss_url, rss_url_with_limit)
+        self._rss_thread.loaded.connect(
+            partial(self._on_rss_loaded, rss_url=rss_url, rss_url_with_limit=rss_url_with_limit, days=days, append=append)
+        )
+        self._rss_thread.error.connect(self._on_rss_error)
+        self._rss_thread.finished.connect(self._cleanup_rss_thread)
+        self._rss_thread.start()
+
+    def _cleanup_rss_thread(self):
+        """Räumt den RSS-Thread auf."""
+        if self._rss_thread:
+            self._rss_thread.deleteLater()
+            self._rss_thread = None
+    
+    def _on_rss_error(self, error_type: str, message: str):
+        """Behandelt Fehler beim RSS-Laden."""
+        if error_type == "ssl":
+            error_msg = f"SSL-Fehler beim Laden des RSS-Feeds: {message}"
+            logging.error(error_msg, exc_info=True)
+            self.status_label.setText("Fehler: SSL-Problem")
+            QMessageBox.critical(
+                self,
+                "SSL-Fehler",
+                f"{error_msg}\n\n"
+                f"Mögliche Lösungen:\n"
+                f"- CA-Zertifikate installieren:\n"
+                f"  Fedora/RHEL: sudo dnf install ca-certificates\n"
+                f"- System-Bibliotheken aktualisieren:\n"
+                f"  sudo dnf update openssl\n"
+                f"- Prüfe ob certifi installiert ist:\n"
+                f"  pip install certifi"
+            )
+        elif error_type == "network":
+            error_msg = f"Netzwerkfehler beim Laden des RSS-Feeds: {message}"
+            logging.error(error_msg, exc_info=True)
+            self.status_label.setText("Fehler: Netzwerkproblem")
+            QMessageBox.critical(
+                self,
+                "Netzwerkfehler",
+                f"{error_msg}\n\n"
+                f"Mögliche Ursachen:\n"
+                f"- Keine Internetverbindung\n"
+                f"- Firewall blockiert Verbindung\n"
+                f"- Feed-URL ist ungültig"
+            )
+        else:
+            error_msg = f"Fehler beim Laden des RSS-Feeds: {message}"
+            logging.error(error_msg, exc_info=True)
+            self.status_label.setText(f"Fehler: {error_msg}")
+            QMessageBox.critical(
+                self, 
+                "Fehler beim Laden des RSS-Feeds",
+                f"Der RSS-Feed konnte nicht geladen werden:\n\n{error_msg}\n\n"
+                f"Mögliche Ursachen:\n"
+                f"- Netzwerkverbindung fehlt\n"
+                f"- SSL-Zertifikate fehlen\n"
+                f"- Feed-URL ist ungültig\n\n"
+                f"Details siehe Log."
+            )
+        
+        self.load_rss_btn.setEnabled(True)
+        self.refresh_btn.setEnabled(True)
+        self.load_older_btn.setEnabled(True)
+    
+    def _on_rss_loaded(self, feed, feed_original, *, rss_url: str, rss_url_with_limit: str, days: Optional[int], append: bool):
+        """Verarbeitet geladenen RSS-Feed (läuft im UI-Thread)."""
         try:
-            rss_url = self.config_manager.get('rss_feed_url', 'https://nexxtpress.de/author/mediathekperlen/feed/')
-            
-            # Versuche mehr Einträge zu bekommen, wenn Feed-URL WordPress ist
-            # WordPress unterstützt ?posts_per_page= Parameter (max 50)
-            # Füge Parameter hinzu wenn nicht bereits vorhanden
-            if 'posts_per_page' not in rss_url and 'nexxtpress.de' in rss_url:
-                # Füge Parameter hinzu um mehr Einträge zu bekommen
-                separator = '&' if '?' in rss_url else '?'
-                rss_url_with_limit = f"{rss_url}{separator}posts_per_page=50"
-                logging.debug(f"Versuche RSS-Feed mit erhöhtem Limit: {rss_url_with_limit}")
-            else:
-                rss_url_with_limit = rss_url
-            
-            self.load_rss_btn.setEnabled(False)
-            self.refresh_btn.setEnabled(False)
-            self.load_older_btn.setEnabled(False)
-            
-            if days:
-                self.status_label.setText(f"Lade RSS-Feed (letzte {days} Tage) von {rss_url}...")
-            else:
-                self.status_label.setText(f"Lade RSS-Feed (alle Einträge) von {rss_url}...")
-            
-            # Force UI update
-            from PyQt6.QtWidgets import QApplication
-            QApplication.processEvents()
-            
-            # Parse RSS Feed - verwende requests für besseres SSL-Handling
-            # feedparser.parse() kann direkt URLs laden, aber nutzt urllib
-            # Stattdessen laden wir mit requests (nutzt certifi) und parsen dann
-            try:
-                import requests
-                import certifi
-                
-                # Lade Feed mit requests für besseres SSL/CA-Zertifikate-Handling
-                response = requests.get(rss_url_with_limit, timeout=10, verify=True)
-                response.raise_for_status()
-                # Parse den Feed-Inhalt mit feedparser
-                feed = feedparser.parse(response.content)
-            except ImportError:
-                # Fallback: Direkt mit feedparser (ohne requests)
-                feed = feedparser.parse(rss_url_with_limit)
-            except requests.exceptions.SSLError as e:
-                error_msg = f"SSL-Fehler beim Laden des RSS-Feeds: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.status_label.setText(f"Fehler: SSL-Problem")
-                QMessageBox.critical(
-                    self,
-                    "SSL-Fehler",
-                    f"{error_msg}\n\n"
-                    f"Mögliche Lösungen:\n"
-                    f"- CA-Zertifikate installieren:\n"
-                    f"  Fedora/RHEL: sudo dnf install ca-certificates\n"
-                    f"- System-Bibliotheken aktualisieren:\n"
-                    f"  sudo dnf update openssl\n"
-                    f"- Prüfe ob certifi installiert ist:\n"
-                    f"  pip install certifi"
-                )
-                self.load_rss_btn.setEnabled(True)
-                self.refresh_btn.setEnabled(True)
-                self.load_older_btn.setEnabled(True)
-                return
-            except requests.exceptions.RequestException as e:
-                error_msg = f"Netzwerkfehler beim Laden des RSS-Feeds: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.status_label.setText(f"Fehler: Netzwerkproblem")
-                QMessageBox.critical(
-                    self,
-                    "Netzwerkfehler",
-                    f"{error_msg}\n\n"
-                    f"Mögliche Ursachen:\n"
-                    f"- Keine Internetverbindung\n"
-                    f"- Firewall blockiert Verbindung\n"
-                    f"- Feed-URL ist ungültig"
-                )
-                self.load_rss_btn.setEnabled(True)
-                self.refresh_btn.setEnabled(True)
-                self.load_older_btn.setEnabled(True)
-                return
-            except Exception as e:
-                error_msg = f"Fehler beim Laden des RSS-Feeds: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.status_label.setText(f"Fehler: {error_msg}")
-                QMessageBox.critical(
-                    self, 
-                    "Fehler beim Laden des RSS-Feeds",
-                    f"Der RSS-Feed konnte nicht geladen werden:\n\n{error_msg}\n\n"
-                    f"Mögliche Ursachen:\n"
-                    f"- Netzwerkverbindung fehlt\n"
-                    f"- SSL-Zertifikate fehlen\n"
-                    f"- Feed-URL ist ungültig\n\n"
-                    f"Details siehe Log."
-                )
-                self.load_rss_btn.setEnabled(True)
-                self.refresh_btn.setEnabled(True)
-                self.load_older_btn.setEnabled(True)
-                return
-            
             # Prüfe ob Feed geladen wurde (feedparser gibt leeren Feed bei Fehlern zurück)
             if not hasattr(feed, 'entries') or len(feed.entries) == 0:
                 error_msg = "RSS-Feed ist leer oder konnte nicht geparst werden"
                 logging.warning(error_msg)
                 self.status_label.setText(error_msg)
                 QMessageBox.warning(self, "Warnung", error_msg)
-                self.load_rss_btn.setEnabled(True)
-                self.refresh_btn.setEnabled(True)
-                self.load_older_btn.setEnabled(True)
                 return
             
             feed_with_limit_count = len(feed.entries) if hasattr(feed, 'entries') else 0
             
             # Falls Parameter hinzugefügt wurde, vergleiche mit Original-URL
-            if rss_url_with_limit != rss_url:
-                feed_original = feedparser.parse(rss_url)
+            if rss_url_with_limit != rss_url and feed_original is not None:
                 original_count = len(feed_original.entries)
                 
                 # Verwende den Feed mit mehr Einträgen
                 if original_count > feed_with_limit_count:
                     feed = feed_original
                     logging.info(f"Original Feed liefert mehr Einträge: {original_count} vs {feed_with_limit_count}")
-                    rss_url_used = rss_url
                 elif feed_with_limit_count > original_count:
                     logging.info(f"Feed mit Parameter liefert mehr Einträge: {feed_with_limit_count} vs {original_count}")
-                    rss_url_used = rss_url_with_limit
                 else:
                     # Beide liefern gleich viele - verwende den mit Parameter (vielleicht gibt es mehr, aber Server begrenzt)
                     logging.info(f"Beide Feeds liefern {feed_with_limit_count} Einträge (Server-Begrenzung)")
-                    rss_url_used = rss_url_with_limit
-            else:
-                rss_url_used = rss_url
             
             if feed.bozo:
                 QMessageBox.warning(self, "Warnung", "Beim Parsen des RSS-Feeds ist ein Fehler aufgetreten, fahre fort...")
             
-            # WICHTIG: feed.entries enthält ALLE Einträge, die der RSS-Feed zurückgibt
-            # Viele RSS-Feeds limitieren die Anzahl selbst (z.B. nur die neuesten 10-20 Einträge)
-            # Das ist eine Feed-Begrenzung auf Server-Seite, nicht unsere Filterung
-            total_entries_from_feed = len(feed.entries)
-            
-            # Debug: Zeige Datum des ersten und letzten Eintrags
-            if feed.entries:
-                first_entry = feed.entries[0]
-                last_entry = feed.entries[-1]
-                first_pub = get_entry_attr(first_entry, 'published', 'unbekannt')
-                last_pub = get_entry_attr(last_entry, 'published', 'unbekannt')
-                logging.debug(f"Erster Eintrag: {first_pub}, Letzter Eintrag: {last_pub}")
-            
-            logging.info(f"RSS-Feed liefert {total_entries_from_feed} Einträge vom Feed-Server")
-            
-            # Filtere nach Datum wenn days angegeben
-            # WICHTIG: Wenn der Feed selbst nur wenige Einträge liefert (<=15),
-            # zeige ALLE verfügbaren Einträge, da Server-Begrenzung bereits Filterung ist
-            status_text = None  # Initialisiere Variable
-            
-            if days and days > 0:
-                feed_entries_filtered = self._filter_entries_by_date(feed.entries, days)
-                filtered_count = len(feed_entries_filtered)
-                removed_count = total_entries_from_feed - filtered_count
-                
-                # Wenn Feed nur wenige Einträge liefert, zeige alle (Server-Begrenzung ist bereits Filterung)
-                if total_entries_from_feed <= 15:
-                    # Zeige alle verfügbaren Einträge, da Feed selbst schon begrenzt ist
-                    logging.info(
-                        f"Feed liefert nur {total_entries_from_feed} Einträge (Server-Begrenzung). "
-                        f"Zeige alle verfügbaren Einträge."
-                    )
-                    feed_entries = feed.entries  # Zeige alle verfügbaren
-                    filtered_count = total_entries_from_feed
-                    removed_count = 0
-                    status_text = f"Feed: {total_entries_from_feed} Einträge (alle verfügbaren - Server-Begrenzung)"
-                else:
-                    # Normale Filterung wenn Feed viele Einträge liefert
-                    feed_entries = feed_entries_filtered
-                    status_text = f"Feed: {total_entries_from_feed} total → {filtered_count} in den letzten {days} Tagen"
-                    if removed_count > 0:
-                        status_text += f" ({removed_count} älter herausgefiltert)"
-                    
-                    # Warnung wenn alle Einträge herausgefiltert wurden (nur wenn Feed viele liefert)
-                    if filtered_count == 0 and total_entries_from_feed > 0:
-                        status_text += f" ⚠️ Alle Einträge älter als {days} Tage!"
-                        QMessageBox.information(
-                            self,
-                            "Keine Einträge in Zeitraum",
-                            f"Alle {total_entries_from_feed} Einträge vom Feed sind älter als {days} Tage.\n\n"
-                            f"Nutzen Sie 'Ältere Einträge nachladen...' und geben Sie mehr Tage ein "
-                            f"(oder lassen Sie das Feld leer für alle Einträge)."
-                        )
-                
-                self.status_label.setText(status_text)
-                logging.info(f"Nach {days}-Tage-Filter: {filtered_count} Einträge (von {total_entries_from_feed} total, {removed_count} entfernt)")
-                
-                # Hinweis-Dialog nur wenn Feed begrenzt ist UND beim ersten Laden (nicht append)
-                if total_entries_from_feed <= 15 and not append:
-                    QMessageBox.information(
-                        self,
-                        "Hinweis: RSS-Feed Begrenzung",
-                        f"Der RSS-Feed liefert nur {total_entries_from_feed} Einträge.\n\n"
-                        f"Dies ist eine Begrenzung auf Server-Seite (WordPress-RSS-Feeds sind "
-                        f"standardmäßig auf 10-20 Einträge begrenzt).\n\n"
-                        f"Es werden alle verfügbaren Einträge angezeigt.\n\n"
-                        f"Um mehr Einträge zu sehen, müsste der Feed-Administrator das Limit "
-                        f"erhöhen (bis max. 50 möglich).",
-                        QMessageBox.StandardButton.Ok
-                    )
-            else:
-                feed_entries = feed.entries
-                self.status_label.setText(f"Feed: {total_entries_from_feed} Einträge total (keine Datums-Filterung)")
-                logging.info(f"Keine Datums-Filterung: {total_entries_from_feed} Einträge")
-                
-                # Hinweis wenn der Feed nur wenige Einträge zurückgibt
-                if total_entries_from_feed <= 15:
-                    logging.info(
-                        f"RSS-Feed liefert nur {total_entries_from_feed} Einträge. "
-                        f"Dies ist wahrscheinlich eine Begrenzung des Feed-Servers."
-                    )
-            
-            # Lade State-Datei um verarbeitete Einträge zu erkennen (nur wenn no_state nicht aktiviert)
-            no_state = self.config_manager.get('no_state', False)
-            if no_state:
-                state_file = None
-                processed_entries = set()
-                state_data = {'entries': {}}
-            else:
-                state_file = self.config_manager.get('state_file', '.perlentaucher_state.json')
-                processed_entries = core.load_processed_entries(state_file) if state_file else set()
-                state_data = core.load_state_file(state_file) if state_file else {'entries': {}}
-            
-            # Wenn append=True, starte mit bestehenden Einträgen und verhindere Duplikate
-            if append:
-                existing_entry_ids = {e['entry_id'] for e in self.entries}
-            else:
-                existing_entry_ids = set()
-                self.entries = []
-            
-            # Parse Einträge
-            new_count = 0
-            for entry in feed_entries:
-                # Verwende Wrapper-Funktion für robusten Zugriff auf Entry-Attribute
-                entry_id = get_entry_attr(entry, 'id') or get_entry_attr(entry, 'link') or get_entry_attr(entry, 'title', '')
-                is_processed = entry_id in processed_entries
-                
-                # WICHTIG: Prüfe ob es sich um eine Film-Empfehlung handelt
-                # Überspringe Nicht-Film-Empfehlungen (z.B. "In eigener Sache" Beiträge)
-                # Erstelle kompatibles Entry-Objekt für is_movie_recommendation()
-                entry_dict = make_entry_compatible(entry)
-                if not core.is_movie_recommendation(entry_dict):
-                    # Nicht-Film-Empfehlung, überspringe
-                    logging.debug(f"Nicht-Film-Empfehlung erkannt, überspringe: '{entry_dict.get('title', '')}'")
-                    # Markiere als übersprungen in State-Datei (verhindert erneute Prüfung)
-                    # Verwende die bereits geladene state_file Variable (definiert weiter oben)
-                    if state_file:
-                        try:
-                            core.save_processed_entry(
-                                state_file,
-                                entry_id,
-                                status='skipped',
-                                movie_title=entry_dict.get('title', '')
-                            )
-                        except Exception as e:
-                            logging.debug(f"Fehler beim Markieren als übersprungen: {e}")
-                    continue
-                
-                # Extrahiere Filmtitel
-                title = get_entry_attr(entry, 'title', '')
-                movie_title = None
-                year = None
-                
-                # Suche nach Filmtitel in Anführungszeichen
-                match = re.search(r'\u201E(.+?)(?:[\u201C\u201D\u0022])', title)
-                if not match:
-                    match = re.search(r'"([^"]+?)"', title)
-                
-                if match:
-                    movie_title = match.group(1)
-                    year = core.extract_year_from_title(title)
-                
-                # Hole Status aus State-Datei
-                status = "Neu"
-                if is_processed:
-                    entry_state = state_data.get('entries', {}).get(entry_id, {})
-                    status_map = {
-                        'download_success': '✓ Erfolgreich',
-                        'download_failed': '✗ Fehlgeschlagen',
-                        'not_found': '✗ Nicht gefunden',
-                        'title_extraction_failed': '✗ Titel-Fehler',
-                        'skipped': '⏭ Übersprungen'
-                    }
-                    status = status_map.get(entry_state.get('status', 'unknown'), 'Verarbeitet')
-                
-                # Prüfe ob es eine Serie ist
-                # Verwende bereits erstelltes entry_dict
-                # WICHTIG: Initialisiere metadata mit Jahr aus RSS-Feed, damit es auch ohne API-Keys im Dateinamen verwendet wird
-                metadata = {
-                    'year': year,  # Jahr aus RSS-Feed extrahiert, wird auch ohne API-Keys verwendet
-                    'provider_id': None,
-                    'content_type': 'unknown'
-                }
-                is_series = core.is_series(entry_dict, metadata)
-                
-                entry_link = get_entry_attr(entry, 'link', '')
-                
-                # Überspringe Duplikate wenn append=True
-                if entry_id in existing_entry_ids:
-                    continue
-                
-                entry_data = {
-                    'entry_id': entry_id,
-                    'entry': entry,  # Speichere original entry für später
-                    'entry_link': entry_link,
-                    'rss_title': title,
-                    'movie_title': movie_title,
-                    'year': year,
-                    'is_processed': is_processed,
-                    'status': status,
-                    'is_series': is_series,
-                    'metadata': metadata
-                }
-                
-                self.entries.append(entry_data)
-                existing_entry_ids.add(entry_id)
-                new_count += 1
-            
-            self._populate_table()
-            if append and new_count > 0:
-                self.status_label.setText(f"{new_count} neue Einträge geladen. Gesamt: {len(self.entries)} Einträge.")
-            else:
-                self.status_label.setText(f"{len(self.entries)} Einträge geladen.")
-            self.entries_loaded.emit(self.entries)
-            
+            self._process_feed_entries(feed, days, append)
         except Exception as e:
             QMessageBox.critical(self, "Fehler", f"Fehler beim Laden des RSS-Feeds:\n{str(e)}")
             self.status_label.setText("Fehler beim Laden des RSS-Feeds.")
@@ -543,6 +391,203 @@ class BlogListPanel(QWidget):
             self.load_rss_btn.setEnabled(True)
             self.refresh_btn.setEnabled(True)
             self.load_older_btn.setEnabled(True)
+
+    def _process_feed_entries(self, feed, days: Optional[int], append: bool):
+        """Verarbeitet und rendert die Feed-Einträge."""
+        # WICHTIG: feed.entries enthält ALLE Einträge, die der RSS-Feed zurückgibt
+        # Viele RSS-Feeds limitieren die Anzahl selbst (z.B. nur die neuesten 10-20 Einträge)
+        # Das ist eine Feed-Begrenzung auf Server-Seite, nicht unsere Filterung
+        total_entries_from_feed = len(feed.entries)
+        
+        # Debug: Zeige Datum des ersten und letzten Eintrags
+        if feed.entries:
+            first_entry = feed.entries[0]
+            last_entry = feed.entries[-1]
+            first_pub = get_entry_attr(first_entry, 'published', 'unbekannt')
+            last_pub = get_entry_attr(last_entry, 'published', 'unbekannt')
+            logging.debug(f"Erster Eintrag: {first_pub}, Letzter Eintrag: {last_pub}")
+        
+        logging.info(f"RSS-Feed liefert {total_entries_from_feed} Einträge vom Feed-Server")
+        
+        # Filtere nach Datum wenn days angegeben
+        # WICHTIG: Wenn der Feed selbst nur wenige Einträge liefert (<=15),
+        # zeige ALLE verfügbaren Einträge, da Server-Begrenzung bereits Filterung ist
+        status_text = None  # Initialisiere Variable
+        
+        if days and days > 0:
+            feed_entries_filtered = self._filter_entries_by_date(feed.entries, days)
+            filtered_count = len(feed_entries_filtered)
+            removed_count = total_entries_from_feed - filtered_count
+            
+            # Wenn Feed nur wenige Einträge liefert, zeige alle (Server-Begrenzung ist bereits Filterung)
+            if total_entries_from_feed <= 15:
+                # Zeige alle verfügbaren Einträge, da Feed selbst schon begrenzt ist
+                logging.info(
+                    f"Feed liefert nur {total_entries_from_feed} Einträge (Server-Begrenzung). "
+                    f"Zeige alle verfügbaren Einträge."
+                )
+                feed_entries = feed.entries  # Zeige alle verfügbaren
+                filtered_count = total_entries_from_feed
+                removed_count = 0
+                status_text = f"Feed: {total_entries_from_feed} Einträge (alle verfügbaren - Server-Begrenzung)"
+            else:
+                # Normale Filterung wenn Feed viele Einträge liefert
+                feed_entries = feed_entries_filtered
+                status_text = f"Feed: {total_entries_from_feed} total → {filtered_count} in den letzten {days} Tagen"
+                if removed_count > 0:
+                    status_text += f" ({removed_count} älter herausgefiltert)"
+                
+                # Warnung wenn alle Einträge herausgefiltert wurden (nur wenn Feed viele liefert)
+                if filtered_count == 0 and total_entries_from_feed > 0:
+                    status_text += f" ⚠️ Alle Einträge älter als {days} Tage!"
+                    QMessageBox.information(
+                        self,
+                        "Keine Einträge in Zeitraum",
+                        f"Alle {total_entries_from_feed} Einträge vom Feed sind älter als {days} Tage.\n\n"
+                        f"Nutzen Sie 'Ältere Einträge nachladen...' und geben Sie mehr Tage ein "
+                        f"(oder lassen Sie das Feld leer für alle Einträge)."
+                    )
+            
+            self.status_label.setText(status_text)
+            logging.info(f"Nach {days}-Tage-Filter: {filtered_count} Einträge (von {total_entries_from_feed} total, {removed_count} entfernt)")
+            
+            # Hinweis-Dialog nur wenn Feed begrenzt ist UND beim ersten Laden (nicht append)
+            if total_entries_from_feed <= 15 and not append:
+                QMessageBox.information(
+                    self,
+                    "Hinweis: RSS-Feed Begrenzung",
+                    f"Der RSS-Feed liefert nur {total_entries_from_feed} Einträge.\n\n"
+                    f"Dies ist eine Begrenzung auf Server-Seite (WordPress-RSS-Feeds sind "
+                    f"standardmäßig auf 10-20 Einträge begrenzt).\n\n"
+                    f"Es werden alle verfügbaren Einträge angezeigt.\n\n"
+                    f"Um mehr Einträge zu sehen, müsste der Feed-Administrator das Limit "
+                    f"erhöhen (bis max. 50 möglich).",
+                    QMessageBox.StandardButton.Ok
+                )
+        else:
+            feed_entries = feed.entries
+            self.status_label.setText(f"Feed: {total_entries_from_feed} Einträge total (keine Datums-Filterung)")
+            logging.info(f"Keine Datums-Filterung: {total_entries_from_feed} Einträge")
+            
+            # Hinweis wenn der Feed nur wenige Einträge zurückgibt
+            if total_entries_from_feed <= 15:
+                logging.info(
+                    f"RSS-Feed liefert nur {total_entries_from_feed} Einträge. "
+                    f"Dies ist wahrscheinlich eine Begrenzung des Feed-Servers."
+                )
+        
+        # Lade State-Datei um verarbeitete Einträge zu erkennen (nur wenn no_state nicht aktiviert)
+        no_state = self.config_manager.get('no_state', False)
+        if no_state:
+            state_file = None
+            processed_entries = set()
+            state_data = {'entries': {}}
+        else:
+            state_file = self.config_manager.get('state_file', '.perlentaucher_state.json')
+            processed_entries = core.load_processed_entries(state_file) if state_file else set()
+            state_data = core.load_state_file(state_file) if state_file else {'entries': {}}
+        
+        # Wenn append=True, starte mit bestehenden Einträgen und verhindere Duplikate
+        if append:
+            existing_entry_ids = {e['entry_id'] for e in self.entries}
+        else:
+            existing_entry_ids = set()
+            self.entries = []
+        
+        # Parse Einträge
+        new_count = 0
+        for entry in feed_entries:
+            # Verwende Wrapper-Funktion für robusten Zugriff auf Entry-Attribute
+            entry_id = get_entry_attr(entry, 'id') or get_entry_attr(entry, 'link') or get_entry_attr(entry, 'title', '')
+            is_processed = entry_id in processed_entries
+            
+            # WICHTIG: Prüfe ob es sich um eine Film-Empfehlung handelt
+            # Überspringe Nicht-Film-Empfehlungen (z.B. "In eigener Sache" Beiträge)
+            # Erstelle kompatibles Entry-Objekt für is_movie_recommendation()
+            entry_dict = make_entry_compatible(entry)
+            if not core.is_movie_recommendation(entry_dict):
+                # Nicht-Film-Empfehlung, überspringe
+                logging.debug(f"Nicht-Film-Empfehlung erkannt, überspringe: '{entry_dict.get('title', '')}'")
+                # Markiere als übersprungen in State-Datei (verhindert erneute Prüfung)
+                # Verwende die bereits geladene state_file Variable (definiert weiter oben)
+                if state_file:
+                    try:
+                        core.save_processed_entry(
+                            state_file,
+                            entry_id,
+                            status='skipped',
+                            movie_title=entry_dict.get('title', '')
+                        )
+                    except Exception as e:
+                        logging.debug(f"Fehler beim Markieren als übersprungen: {e}")
+                continue
+            
+            # Extrahiere Filmtitel
+            title = get_entry_attr(entry, 'title', '')
+            movie_title = None
+            year = None
+            
+            # Suche nach Filmtitel in Anführungszeichen
+            match = re.search(r'\u201E(.+?)(?:[\u201C\u201D\u0022])', title)
+            if not match:
+                match = re.search(r'"([^"]+?)"', title)
+            
+            if match:
+                movie_title = match.group(1)
+                year = core.extract_year_from_title(title)
+            
+            # Hole Status aus State-Datei
+            status = "Neu"
+            if is_processed:
+                entry_state = state_data.get('entries', {}).get(entry_id, {})
+                status_map = {
+                    'download_success': '✓ Erfolgreich',
+                    'download_failed': '✗ Fehlgeschlagen',
+                    'not_found': '✗ Nicht gefunden',
+                    'title_extraction_failed': '✗ Titel-Fehler',
+                    'skipped': '⏭ Übersprungen'
+                }
+                status = status_map.get(entry_state.get('status', 'unknown'), 'Verarbeitet')
+            
+            # Prüfe ob es eine Serie ist
+            # Verwende bereits erstelltes entry_dict
+            # WICHTIG: Initialisiere metadata mit Jahr aus RSS-Feed, damit es auch ohne API-Keys im Dateinamen verwendet wird
+            metadata = {
+                'year': year,  # Jahr aus RSS-Feed extrahiert, wird auch ohne API-Keys verwendet
+                'provider_id': None,
+                'content_type': 'unknown'
+            }
+            is_series = core.is_series(entry_dict, metadata)
+            
+            entry_link = get_entry_attr(entry, 'link', '')
+            
+            # Überspringe Duplikate wenn append=True
+            if entry_id in existing_entry_ids:
+                continue
+            
+            entry_data = {
+                'entry_id': entry_id,
+                'entry': entry,  # Speichere original entry für später
+                'entry_link': entry_link,
+                'rss_title': title,
+                'movie_title': movie_title,
+                'year': year,
+                'is_processed': is_processed,
+                'status': status,
+                'is_series': is_series,
+                'metadata': metadata
+            }
+            
+            self.entries.append(entry_data)
+            existing_entry_ids.add(entry_id)
+            new_count += 1
+        
+        self._populate_table()
+        if append and new_count > 0:
+            self.status_label.setText(f"{new_count} neue Einträge geladen. Gesamt: {len(self.entries)} Einträge.")
+        else:
+            self.status_label.setText(f"{len(self.entries)} Einträge geladen.")
+        self.entries_loaded.emit(self.entries)
     
     def _load_older_entries(self):
         """Lädt ältere Einträge nach (älter als 30 Tage)."""

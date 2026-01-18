@@ -20,6 +20,20 @@ from .config_manager import ConfigManager
 from .utils.update_checker import check_for_updates
 
 
+class UpdateCheckWorker(QThread):
+    """Führt den Update-Check im Hintergrund aus."""
+    
+    completed = pyqtSignal(bool, object, object)  # is_update, latest_version, download_url
+    
+    def run(self):
+        try:
+            is_update, latest_version, download_url = check_for_updates()
+            self.completed.emit(is_update, latest_version, download_url)
+        except Exception:
+            # Fehler still ignorieren, aber Signal senden, damit aufgeräumt wird
+            self.completed.emit(False, None, None)
+
+
 class MainWindow(QMainWindow):
     """Hauptfenster der GUI-Anwendung."""
     
@@ -33,6 +47,7 @@ class MainWindow(QMainWindow):
         """
         super().__init__(parent)
         self.config_manager = config_manager
+        self._update_thread = None
         self._init_ui()
         self._connect_signals()
         
@@ -312,15 +327,24 @@ class MainWindow(QMainWindow):
         """Prüft auf Updates beim Start der App (im Hintergrund, ohne Dialog)."""
         # Prüfe ob Update-Prüfung beim Start aktiviert ist (kann später als Einstellung hinzugefügt werden)
         # Für jetzt: Prüfe immer, aber zeige nur Dialog wenn Update verfügbar ist
+        if self._update_thread and self._update_thread.isRunning():
+            return
         
-        try:
-            is_update, latest_version, download_url = check_for_updates()
-            if is_update and latest_version and download_url:
-                # Zeige Dialog nur wenn Update verfügbar ist
-                self._show_update_available_dialog(latest_version, download_url)
-        except Exception:
-            # Fehler beim Update-Check werden stillschweigend ignoriert
-            pass
+        self._update_thread = UpdateCheckWorker()
+        self._update_thread.completed.connect(self._on_update_check_completed)
+        self._update_thread.finished.connect(self._cleanup_update_thread)
+        self._update_thread.start()
+
+    def _cleanup_update_thread(self):
+        """Räumt den Update-Thread auf."""
+        if self._update_thread:
+            self._update_thread.deleteLater()
+            self._update_thread = None
+    
+    def _on_update_check_completed(self, is_update: bool, latest_version: Optional[str], download_url: Optional[str]):
+        """Behandelt das Ergebnis des Update-Checks (UI-Thread)."""
+        if is_update and latest_version and download_url:
+            self._show_update_available_dialog(latest_version, download_url)
     
     def _check_for_updates_manual(self):
         """Prüft manuell auf Updates (vom About-Dialog aufgerufen)."""
