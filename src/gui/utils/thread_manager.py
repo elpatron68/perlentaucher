@@ -40,6 +40,7 @@ class DownloadThread(QThread):
         self.config = config
         self.series_download_mode = series_download_mode  # Überschreibt Config für diesen Eintrag
         self.is_cancelled = False
+        self.debug_no_download = self.config.get('debug_no_download', False)
     
     def cancel(self):
         """Bricht den Download ab."""
@@ -86,24 +87,40 @@ class DownloadThread(QThread):
                         notify_url=None,  # Keine Benachrichtigungen im Thread
                         entry_link=entry_link,
                         year=year,
-                        metadata=metadata
+                        metadata=metadata,
+                        debug=self.debug_no_download
                     )
                     
                     if result and not self.is_cancelled:
                         season, episode = core.extract_episode_info(result, movie_title)
                         series_base_dir = self.config.get('serien_dir') or self.config.get('download_dir')
-                        
-                        success, title, filepath = self._download_with_progress(
-                            result, 
-                            movie_title, 
-                            metadata,
-                            is_series=True,
-                            series_base_dir=series_base_dir,
-                            season=season,
-                            episode=episode
-                        )
-                        
-                        self.download_finished.emit(success, title, filepath, "" if success else "Download fehlgeschlagen")
+
+                        if self.debug_no_download:
+                            filepath = core.build_download_filepath(
+                                result,
+                                self.config.get('download_dir'),
+                                movie_title,
+                                metadata,
+                                is_series=True,
+                                series_base_dir=series_base_dir,
+                                season=season,
+                                episode=episode,
+                                create_dirs=False
+                            )
+                            logging.info(f"DEBUG-MODUS: Download übersprungen: '{result.get('title')}' -> {filepath}")
+                            self.download_finished.emit(True, result.get("title", movie_title), filepath, "DEBUG_NO_DOWNLOAD")
+                        else:
+                            success, title, filepath = self._download_with_progress(
+                                result, 
+                                movie_title, 
+                                metadata,
+                                is_series=True,
+                                series_base_dir=series_base_dir,
+                                season=season,
+                                episode=episode
+                            )
+                            
+                            self.download_finished.emit(success, title, filepath, "" if success else "Download fehlgeschlagen")
                     else:
                         self.download_finished.emit(False, movie_title, "", "Film/Serie nicht in Mediathek gefunden")
                 elif serien_mode == 'staffel':
@@ -118,17 +135,30 @@ class DownloadThread(QThread):
                     notify_url=None,
                     entry_link=entry_link,
                     year=year,
-                    metadata=metadata
+                    metadata=metadata,
+                    debug=self.debug_no_download
                 )
                 
                 if result and not self.is_cancelled:
-                    success, title, filepath = self._download_with_progress(
-                        result,
-                        movie_title,
-                        metadata,
-                        is_series=False
-                    )
-                    self.download_finished.emit(success, title, filepath, "" if success else "Download fehlgeschlagen")
+                    if self.debug_no_download:
+                        filepath = core.build_download_filepath(
+                            result,
+                            self.config.get('download_dir'),
+                            movie_title,
+                            metadata,
+                            is_series=False,
+                            create_dirs=False
+                        )
+                        logging.info(f"DEBUG-MODUS: Download übersprungen: '{result.get('title')}' -> {filepath}")
+                        self.download_finished.emit(True, result.get("title", movie_title), filepath, "DEBUG_NO_DOWNLOAD")
+                    else:
+                        success, title, filepath = self._download_with_progress(
+                            result,
+                            movie_title,
+                            metadata,
+                            is_series=False
+                        )
+                        self.download_finished.emit(success, title, filepath, "" if success else "Download fehlgeschlagen")
                 else:
                     self.download_finished.emit(False, movie_title, "", "Film nicht in Mediathek gefunden")
                     
@@ -254,7 +284,8 @@ class DownloadThread(QThread):
                 notify_url=None,  # Keine Benachrichtigungen im Thread
                 entry_link=entry_link,
                 year=year,
-                metadata=metadata
+                metadata=metadata,
+                debug=self.debug_no_download
             )
             
             if not episodes:
@@ -307,6 +338,28 @@ class DownloadThread(QThread):
             
             # Bestimme series_base_dir
             series_base_dir = self.config.get('serien_dir') or self.config.get('download_dir')
+            if self.debug_no_download:
+                logging.info(f"DEBUG-MODUS: Staffel-Download übersprungen ({total_episodes} Episoden)")
+                for season, episode_num, episode_data in episodes_with_info:
+                    if season is None or episode_num is None:
+                        continue
+                    filepath = core.build_download_filepath(
+                        episode_data,
+                        self.config.get('download_dir'),
+                        series_title,
+                        metadata,
+                        is_series=True,
+                        series_base_dir=series_base_dir,
+                        season=season,
+                        episode=episode_num,
+                        create_dirs=False
+                    )
+                    logging.info(
+                        f"  - S{season:02d}E{episode_num:02d}: "
+                        f"{episode_data.get('title', 'Unbekannt')} -> {filepath}"
+                    )
+                self.download_finished.emit(True, f"{series_title} ({total_episodes} Episoden)", "", "DEBUG_NO_DOWNLOAD")
+                return
             
             downloaded_count = 0
             failed_count = 0

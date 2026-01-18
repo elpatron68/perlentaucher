@@ -962,7 +962,31 @@ def score_movie(movie_data, prefer_language, prefer_audio_desc, search_title: st
     
     return score
 
-def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="egal", notify_url=None, entry_link=None, year: Optional[int] = None, metadata: Dict = None):
+def _log_scored_matches(scored_results, search_title: str, limit: int = 10, label: str = "Matches"):
+    """
+    Loggt die Top-Matches mit Score für Debug-Ausgaben.
+    """
+    if not scored_results:
+        logging.info(f"DEBUG-MODUS: Keine {label} für '{search_title}'")
+        return
+    
+    top_n = min(limit, len(scored_results))
+    logging.info(f"DEBUG-MODUS: Top-{top_n} {label} für '{search_title}':")
+    for idx, (score, result) in enumerate(scored_results[:top_n], 1):
+        title = result.get("title", "")
+        size = result.get("size") or 0
+        size_mb = size / (1024 * 1024) if size else 0
+        language = detect_language(result)
+        has_ad = has_audio_description(result)
+        similarity = calculate_title_similarity(search_title, title)
+        logging.info(
+            f"  {idx}. {title} ({size_mb:.1f} MB, "
+            f"Sprache: {language}, AD: {'ja' if has_ad else 'nein'}, "
+            f"Score: {score:.1f}, Ähnlichkeit: {similarity:.2f})"
+        )
+
+
+def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="egal", notify_url=None, entry_link=None, year: Optional[int] = None, metadata: Dict = None, debug: bool = False):
     """
     Sucht nach einem Film in MediathekViewWeb und wählt die beste Fassung
     basierend auf den Präferenzen und Titelübereinstimmung aus.
@@ -1089,6 +1113,9 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
     
     # Sortiere nach Punktzahl (höchste zuerst)
     scored_results.sort(key=lambda x: x[0], reverse=True)
+    
+    if debug:
+        _log_scored_matches(scored_results, movie_title, limit=10, label="Matches")
     
     best_match = scored_results[0][1]
     best_score = scored_results[0][0]
@@ -1303,7 +1330,7 @@ def get_series_directory(series_base_dir: str, series_title: str, year: Optional
 
 def search_mediathek_series(series_title: str, prefer_language: str = "deutsch", prefer_audio_desc: str = "egal", 
                             notify_url: Optional[str] = None, entry_link: Optional[str] = None, 
-                            year: Optional[int] = None, metadata: Optional[Dict] = None) -> list:
+                            year: Optional[int] = None, metadata: Optional[Dict] = None, debug: bool = False) -> list:
     """
     Sucht nach allen Episoden einer Serie in MediathekViewWeb.
     
@@ -1394,6 +1421,9 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
         # Sortiere nach Punktzahl (höchste zuerst)
         scored_results.sort(key=lambda x: x[0], reverse=True)
         
+        if debug:
+            _log_scored_matches(scored_results, series_title, limit=10, label="Episoden-Matches")
+        
         # Extrahiere nur die Episoden-Daten (ohne Score)
         episodes = [result for score, result in scored_results]
         
@@ -1409,6 +1439,52 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
     except Exception as e:
         logging.error(f"Unerwarteter Fehler bei der Suche nach Serie '{series_title}': {e}")
         return []
+
+def build_download_filepath(movie_data, download_dir, content_title: str, metadata: Dict, is_series: bool = False, 
+                           series_base_dir: Optional[str] = None, season: Optional[int] = None, 
+                           episode: Optional[int] = None, create_dirs: bool = True) -> str:
+    """
+    Baut den Ziel-Dateipfad für einen Download zusammen.
+    """
+    metadata = metadata or {}
+    url = movie_data.get("url_video") or ""
+    
+    # Bestimme Ziel-Verzeichnis
+    if is_series and series_base_dir:
+        if create_dirs:
+            target_dir = get_series_directory(series_base_dir, content_title, metadata.get("year"))
+        else:
+            safe_title = re.sub(r'[<>:"/\\|?*]', '_', content_title)
+            dir_parts = [safe_title]
+            year = metadata.get("year")
+            if year:
+                dir_parts.append(f"({year})")
+            target_dir = os.path.join(series_base_dir, " ".join(dir_parts))
+        base_filename = format_episode_filename(content_title, season, episode, metadata)
+    else:
+        target_dir = download_dir
+        base_title = content_title
+        safe_title = re.sub(r'[<>:"/\\|?*]', '_', base_title)
+        filename_parts = [safe_title]
+        year = metadata.get("year")
+        if year:
+            filename_parts.append(f"({year})")
+        provider_id = metadata.get("provider_id")
+        if provider_id:
+            filename_parts.append(provider_id)
+        base_filename = " ".join(filename_parts)
+    
+    # Try to guess extension
+    ext = "mp4"
+    if url.endswith(".mkv"):
+        ext = "mkv"
+    if url.endswith(".mp4"):
+        ext = "mp4"
+    
+    filename = f"{base_filename}.{ext}"
+    filepath = os.path.join(target_dir, filename)
+    return filepath
+
 
 def download_content(movie_data, download_dir, content_title: str, metadata: Dict, is_series: bool = False, 
                      series_base_dir: Optional[str] = None, season: Optional[int] = None, 
@@ -1431,45 +1507,17 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
     """
     url = movie_data.get("url_video")
     title = movie_data.get("title")
-    
-    # Bestimme Ziel-Verzeichnis
-    if is_series and series_base_dir:
-        # Für Serien: Verwende series_base_dir und erstelle Unterordner
-        target_dir = get_series_directory(series_base_dir, content_title, metadata.get("year"))
-        # Generiere Episode-Dateinamen
-        base_filename = format_episode_filename(content_title, season, episode, metadata)
-    else:
-        # Für Filme: Verwende download_dir direkt
-        target_dir = download_dir
-        # Verwende den ursprünglichen Filmtitel aus RSS-Feed für Dateinamen
-        base_title = content_title
-        
-        # Clean filename - entferne problematische Zeichen
-        safe_title = re.sub(r'[<>:"/\\|?*]', '_', base_title)
-        
-        # Baue Dateinamen im Jellyfin/Plex-Format: "Movie Name (year) [provider_id].ext"
-        filename_parts = [safe_title]
-        
-        # Füge Jahr hinzu, falls vorhanden
-        year = metadata.get("year")
-        if year:
-            filename_parts.append(f"({year})")
-        
-        # Füge Provider-ID hinzu, falls vorhanden
-        provider_id = metadata.get("provider_id")
-        if provider_id:
-            filename_parts.append(provider_id)
-        
-        # Baue Dateinamen zusammen
-        base_filename = " ".join(filename_parts)
-    
-    # Try to guess extension
-    ext = "mp4"
-    if url.endswith(".mkv"): ext = "mkv"
-    if url.endswith(".mp4"): ext = "mp4"
-    
-    filename = f"{base_filename}.{ext}"
-    filepath = os.path.join(target_dir, filename)
+    filepath = build_download_filepath(
+        movie_data,
+        download_dir,
+        content_title,
+        metadata,
+        is_series=is_series,
+        series_base_dir=series_base_dir,
+        season=season,
+        episode=episode,
+        create_dirs=True
+    )
 
     if os.path.exists(filepath):
         file_size = os.path.getsize(filepath)
@@ -1529,6 +1577,8 @@ def main():
                        help="Download-Verhalten für Serien: 'erste' (nur erste Episode), 'staffel' (gesamte Staffel), 'keine' (überspringen)")
     parser.add_argument("--serien-dir", default=None,
                        help="Basis-Verzeichnis für Serien-Downloads (Standard: --download-dir). Episoden werden in Unterordnern [Titel] (Jahr)/ gespeichert")
+    parser.add_argument("--debug-no-download", action="store_true",
+                      help="Debug-Modus: keine Downloads durchführen, aber Feed/Suche/Matches ausgeben")
     
     args = parser.parse_args()
     
@@ -1553,6 +1603,8 @@ def main():
             sys.exit(1)
 
     logging.info(f"Präferenzen: Sprache={args.sprache}, Audiodeskription={args.audiodeskription}")
+    if args.debug_no_download:
+        logging.info("DEBUG-MODUS aktiv: Downloads werden übersprungen.")
 
     state_file = None if args.no_state else args.state_file
     if state_file:
@@ -1584,12 +1636,27 @@ def main():
             elif args.serien_download == "erste":
                 # Lade nur erste Episode (aktuelles Verhalten)
                 result = search_mediathek(movie_title, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription, 
-                                         notify_url=args.notify, entry_link=entry_link, year=year, metadata=metadata)
+                                         notify_url=args.notify, entry_link=entry_link, year=year, metadata=metadata, 
+                                         debug=args.debug_no_download)
                 if result:
                     # Extrahiere Episode-Info für Dateinamen
                     season, episode = extract_episode_info(result, movie_title)
                     # Bestimme series_base_dir
                     series_base_dir = args.serien_dir if args.serien_dir else args.download_dir
+                    if args.debug_no_download:
+                        filepath = build_download_filepath(
+                            result,
+                            args.download_dir,
+                            movie_title,
+                            metadata,
+                            is_series=True,
+                            series_base_dir=series_base_dir,
+                            season=season,
+                            episode=episode,
+                            create_dirs=False
+                        )
+                        logging.info(f"DEBUG-MODUS: Download übersprungen: '{result.get('title')}' -> {filepath}")
+                        continue
                     success, title, filepath = download_content(result, args.download_dir, movie_title, metadata, 
                                                                is_series=True, series_base_dir=series_base_dir,
                                                                season=season, episode=episode)
@@ -1626,7 +1693,7 @@ def main():
                 episodes = search_mediathek_series(movie_title, prefer_language=args.sprache, 
                                                   prefer_audio_desc=args.audiodeskription,
                                                   notify_url=args.notify, entry_link=entry_link, 
-                                                  year=year, metadata=metadata)
+                                                  year=year, metadata=metadata, debug=args.debug_no_download)
                 if episodes:
                     # Bestimme series_base_dir
                     series_base_dir = args.serien_dir if args.serien_dir else args.download_dir
@@ -1682,6 +1749,28 @@ def main():
                             logging.info(f"Staffel {season}: {len(episodes)} Episoden gefunden (E{min(episodes) if episodes else 0}-E{max(episodes) if episodes else 0})")
                     
                     logging.info(f"Starte Download von {total_episodes} Episoden für '{movie_title}'")
+                    
+                    if args.debug_no_download:
+                        logging.info(f"DEBUG-MODUS: Staffel-Download übersprungen ({total_episodes} Episoden)")
+                        for season, episode_num, episode_data in episodes_with_info:
+                            if season is None or episode_num is None:
+                                continue
+                            filepath = build_download_filepath(
+                                episode_data,
+                                args.download_dir,
+                                movie_title,
+                                metadata,
+                                is_series=True,
+                                series_base_dir=series_base_dir,
+                                season=season,
+                                episode=episode_num,
+                                create_dirs=False
+                            )
+                            logging.info(
+                                f"  - S{season:02d}E{episode_num:02d}: "
+                                f"{episode_data.get('title', 'Unbekannt')} -> {filepath}"
+                            )
+                        continue
                     
                     # Zähle Episoden ohne Staffel/Episode-Info
                     skipped_episodes = []
@@ -1744,8 +1833,20 @@ def main():
         else:
             # Normale Film-Verarbeitung
             result = search_mediathek(movie_title, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription, 
-                                     notify_url=args.notify, entry_link=entry_link, year=year, metadata=metadata)
+                                     notify_url=args.notify, entry_link=entry_link, year=year, metadata=metadata, 
+                                     debug=args.debug_no_download)
             if result:
+                if args.debug_no_download:
+                    filepath = build_download_filepath(
+                        result,
+                        args.download_dir,
+                        movie_title,
+                        metadata,
+                        is_series=False,
+                        create_dirs=False
+                    )
+                    logging.info(f"DEBUG-MODUS: Download übersprungen: '{result.get('title')}' -> {filepath}")
+                    continue
                 success, title, filepath = download_content(result, args.download_dir, movie_title, metadata, is_series=False)
                 # Markiere Eintrag als verarbeitet nach Download-Versuch
                 if state_file:

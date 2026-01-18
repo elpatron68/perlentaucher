@@ -272,47 +272,59 @@ class DownloadPanel(QWidget):
             # Normalisiere filepath (kann None oder leerer String sein)
             filepath = filepath if filepath else ""
             
+            # Debug-Modus: Downloads werden übersprungen, State-Datei nicht anfassen
+            config = getattr(self, '_config', {})
+            debug_no_download = config.get('debug_no_download', False)
+            skip_state_update = debug_no_download and error == "DEBUG_NO_DOWNLOAD"
+            
             # Update Status
             status_item = self.table.item(row, 2)
             if status_item:
                 if success:
-                    # Prüfe ob es ein Staffel-Download war (mehrere Episoden)
-                    # Staffel-Downloads haben typischerweise "Episoden" im Titel und keinen einzelnen filepath
-                    is_series_download = (
-                        entry_data and 
-                        entry_data.get('is_series', False) and 
-                        (not filepath or not filepath.strip()) and 
-                        "Episoden" in (title or "")
-                    )
-                    
-                    if is_series_download:
-                        # Staffel-Download - State-Datei wurde bereits im Thread aktualisiert
-                        status_text = "✓ Erfolgreich"
-                        if error and error.strip():
-                            status_text += f" ({error})"
-                        elif title and "Episoden" in title:
-                            # Extrahiere nur den relevanten Teil (z.B. "3/5 Episoden")
-                            import re
-                            match = re.search(r'(\d+/\d+\s+Episoden)', title)
-                            if match:
-                                status_text += f" ({match.group(1)})"
-                        status_item.setText(status_text)
+                    if skip_state_update:
+                        status_item.setText("Debug: übersprungen")
+                        status_item.setForeground(Qt.GlobalColor.gray)
+                        logging.info(f"DEBUG-MODUS: Download übersprungen: {title}")
+                        # Keine State-Datei-Updates im Debug-Modus
+                        # Trotzdem Progress auf 100 setzen und aufräumen
                     else:
-                        # Einzelner Download
-                        status_item.setText("✓ Erfolgreich")
-                        # Aktualisiere State-Datei für erfolgreichen Download
-                        if entry_data:
-                            try:
-                                self._update_state_file(entry_id, entry_data, 'download_success', filepath if filepath else None)
-                            except Exception as e:
-                                logging.warning(f"Fehler beim Aktualisieren der State-Datei: {e}")
-                    
-                    status_item.setForeground(Qt.GlobalColor.green)
-                    # Sichere Logging-Ausgabe (filepath kann leer sein)
-                    log_msg = f"Download erfolgreich: {title}"
-                    if filepath and filepath.strip():
-                        log_msg += f" -> {filepath}"
-                    logging.info(log_msg)
+                        # Prüfe ob es ein Staffel-Download war (mehrere Episoden)
+                        # Staffel-Downloads haben typischerweise "Episoden" im Titel und keinen einzelnen filepath
+                        is_series_download = (
+                            entry_data and 
+                            entry_data.get('is_series', False) and 
+                            (not filepath or not filepath.strip()) and 
+                            "Episoden" in (title or "")
+                        )
+                        
+                        if is_series_download:
+                            # Staffel-Download - State-Datei wurde bereits im Thread aktualisiert
+                            status_text = "✓ Erfolgreich"
+                            if error and error.strip():
+                                status_text += f" ({error})"
+                            elif title and "Episoden" in title:
+                                # Extrahiere nur den relevanten Teil (z.B. "3/5 Episoden")
+                                import re
+                                match = re.search(r'(\d+/\d+\s+Episoden)', title)
+                                if match:
+                                    status_text += f" ({match.group(1)})"
+                            status_item.setText(status_text)
+                        else:
+                            # Einzelner Download
+                            status_item.setText("✓ Erfolgreich")
+                            # Aktualisiere State-Datei für erfolgreichen Download
+                            if entry_data:
+                                try:
+                                    self._update_state_file(entry_id, entry_data, 'download_success', filepath if filepath else None)
+                                except Exception as e:
+                                    logging.warning(f"Fehler beim Aktualisieren der State-Datei: {e}")
+                        
+                        status_item.setForeground(Qt.GlobalColor.green)
+                        # Sichere Logging-Ausgabe (filepath kann leer sein)
+                        log_msg = f"Download erfolgreich: {title}"
+                        if filepath and filepath.strip():
+                            log_msg += f" -> {filepath}"
+                        logging.info(log_msg)
                 else:
                     status_text = f"✗ Fehlgeschlagen"
                     if error and error.strip():

@@ -124,6 +124,7 @@ python src/perlentaucher.py [Optionen]
 - `--omdb-api-key`: OMDb API-Key für Metadata-Abfrage (optional). Kann auch über Umgebungsvariable `OMDB_API_KEY` gesetzt werden.
 - `--serien-download`: Download-Verhalten für Serien (Standard: `erste`). Optionen: `erste` (nur erste Episode), `staffel` (gesamte Staffel), `keine` (Serien überspringen).
 - `--serien-dir`: Basis-Verzeichnis für Serien-Downloads (Standard: `--download-dir`). Episoden werden in Unterordnern `[Titel] (Jahr)/` gespeichert.
+- `--debug-no-download`: Debug-Modus: lädt nichts herunter, aber Feed, Suche und Match-Ausgabe laufen normal (inkl. Top‑Matches mit Scores im Log).
 
 ### Beispiele
 
@@ -180,6 +181,11 @@ python src/perlentaucher.py --serien-download staffel --serien-dir ./Serien
 Serien überspringen:
 ```bash
 python src/perlentaucher.py --serien-download keine
+```
+
+Debug-Modus (kein Download, nur Feed/Suche/Matches):
+```bash
+python src/perlentaucher.py --debug-no-download
 ```
 
 ### Dateinamen-Schema für Jellyfin/Plex

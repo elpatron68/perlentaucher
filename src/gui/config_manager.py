@@ -26,6 +26,7 @@ class ConfigManager:
         "serien_download": "erste",
         "serien_dir": "",
         "rss_feed_url": "https://nexxtpress.de/author/mediathekperlen/feed/",  # GUI-spezifisch
+        "debug_no_download": False,
         # GUI-spezifische Fenster-Einstellungen (werden von CLI-Scripts ignoriert)
         "gui_window_x": None,
         "gui_window_y": None,
