@@ -26,6 +26,7 @@ except ImportError:
 # Configuration
 RSS_FEED_URL = "https://nexxtpress.de/author/mediathekperlen/feed/"
 MVW_API_URL = "https://mediathekviewweb.de/api/query"
+MVW_FEED_URL = "https://mediathekviewweb.de/feed"
 
 # Logging setup
 def setup_logging(level_name):
@@ -1328,6 +1329,51 @@ def get_series_directory(series_base_dir: str, series_title: str, year: Optional
     
     return series_dir
 
+
+def _fetch_mvw_feed_results(query: str) -> list:
+    """
+    Ruft den MediathekViewWeb-Feed mit Suchbegriff ab und liefert Einträge im API-Ergebnis-Format.
+    Fallback, wenn die API-Suche keine passenden Treffer liefert (Website nutzt gleichen Feed).
+    """
+    try:
+        url = MVW_FEED_URL
+        params = {"query": query, "everywhere": "true"}
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        feed = feedparser.parse(resp.content)
+        entries = getattr(feed, "entries", [])
+        results = []
+        for entry in entries:
+            title = (entry.get("title") or "").strip()
+            # Topic: Tags (Atom) oder Kategorie
+            tags = entry.get("tags", [])
+            topic = (tags[0].get("term", "") if tags and isinstance(tags[0], dict) else "") or (entry.get("topic", "") or "").strip()
+            summary = (entry.get("summary") or entry.get("description") or "").strip()
+            # Video-URL: Enclosure (RSS/Atom) oder media:content
+            url_video = ""
+            enclosures = entry.get("enclosures", [])
+            if enclosures:
+                enc = enclosures[0] if isinstance(enclosures[0], dict) else getattr(enclosures[0], "href", "")
+                url_video = enc.get("href", "") if isinstance(enc, dict) else (enc or "")
+            if not url_video and hasattr(entry, "links"):
+                for link in entry.links:
+                    if getattr(link, "rel", None) == "enclosure" or (getattr(link, "type", "") or "").startswith("video/"):
+                        url_video = getattr(link, "href", "") or ""
+                        break
+            if not url_video:
+                url_video = entry.get("link", "")
+            results.append({
+                "title": title,
+                "topic": topic,
+                "description": summary,
+                "url_video": url_video,
+            })
+        return results
+    except Exception as e:
+        logging.debug(f"MediathekViewWeb-Feed fehlgeschlagen: {e}")
+        return []
+
+
 def search_mediathek_series(series_title: str, prefer_language: str = "deutsch", prefer_audio_desc: str = "egal", 
                             notify_url: Optional[str] = None, entry_link: Optional[str] = None, 
                             year: Optional[int] = None, metadata: Optional[Dict] = None, debug: bool = False) -> list:
@@ -1352,27 +1398,62 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
         logging.debug(f"Suchbegriff normalisiert: '{series_title}' → '{normalized_search_title}'")
     
     logging.info(f"Suche in MediathekViewWeb nach Serie: '{series_title}' (normalisiert: '{normalized_search_title}')")
-    # Für Serien funktioniert das 'queries' Array Format mit 'fields' besser als das einfache 'query' Format
-    payload = {
-        "queries": [
-            {
-                "fields": ["title", "topic"],
-                "query": normalized_search_title
-            }
-        ],
-        "sortBy": "size",
-        "sortOrder": "desc",
-        "future": False,
-        "offset": 0,
-        "size": 500  # Mehr Ergebnisse für Serien (können viele Episoden haben)
-    }
+    # Reihenfolge wichtig: Website (#query=...) nutzt vermutlich minimales "query".
+    # Mit sortBy/size liefert die API teils ungefilterte Treffer.
+    payloads = [
+        # Minimal wie Website – nur "query", API-Standard (Relevanz?)
+        {"query": normalized_search_title},
+        # Explizit Felder durchsuchen
+        {
+            "queries": [
+                {"fields": ["title", "topic", "description"], "query": normalized_search_title}
+            ],
+            "future": False,
+            "offset": 0,
+            "size": 500
+        },
+        {
+            "queries": [
+                {"fields": ["title", "topic"], "query": normalized_search_title}
+            ],
+            "future": False,
+            "offset": 0,
+            "size": 500
+        },
+    ]
     
+    results = []
     try:
-        response = requests.post(MVW_API_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        for payload in payloads:
+            try:
+                response = requests.post(MVW_API_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+                results = data.get("result", {}).get("results", [])
+                if results:
+                    logging.debug(f"Serien-Suche: {len(results)} Roh-Ergebnisse mit verwendetem API-Format")
+                    break
+            except (requests.RequestException, KeyError, ValueError, TypeError) as e:
+                logging.debug(f"Serien-Suche mit anderem API-Format fehlgeschlagen: {e}")
+                continue
         
-        results = data.get("result", {}).get("results", [])
+        # Fallback: GET mit query-Parameter (wie Website #query=...)
+        if not results:
+            try:
+                resp = requests.get(
+                    "https://mediathekviewweb.de/api/query",
+                    params={"query": normalized_search_title},
+                    headers={"Accept": "application/json"},
+                    timeout=10,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                results = data.get("result", {}).get("results", [])
+                if results:
+                    logging.debug(f"Serien-Suche (GET): {len(results)} Roh-Ergebnisse")
+            except (requests.RequestException, KeyError, ValueError, TypeError) as e:
+                logging.debug(f"Serien-Suche GET fehlgeschlagen: {e}")
+        
         if not results:
             logging.warning(f"Keine Ergebnisse gefunden für Serie '{series_title}'")
             if notify_url and APPRISE_AVAILABLE:
@@ -1384,24 +1465,84 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
             return []
         
         # Filtere Ergebnisse: Nur die, die den Serientitel enthalten
-        series_title_lower = series_title.lower()
+        # API kann "title"/"topic"/"description", "Title"/"Topic" oder _source.* liefern
+        def _get_result_title(r):
+            t = r.get("title") or r.get("Title")
+            if t is None and isinstance(r.get("_source"), dict):
+                t = r["_source"].get("title") or r["_source"].get("Title")
+            return (t or "").strip()
+        def _get_result_topic(r):
+            t = r.get("topic") or r.get("Topic")
+            if t is None and isinstance(r.get("_source"), dict):
+                t = r["_source"].get("topic") or r["_source"].get("Topic")
+            return (t or "").strip()
+        def _get_result_description(r):
+            t = r.get("description") or r.get("Description")
+            if t is None and isinstance(r.get("_source"), dict):
+                t = r["_source"].get("description") or r["_source"].get("Description")
+            return (t or "").strip()
+        
+        series_title_lower = series_title.lower().strip()
+        normalized_lower = normalized_search_title.lower().strip()
         filtered_results = []
         for result in results:
-            title = result.get("title", "").lower()
-            topic = result.get("topic", "").lower()
-            # Prüfe ob Serientitel im Titel oder Topic enthalten ist
-            if series_title_lower in title or series_title_lower in topic:
-                filtered_results.append(result)
+            raw_title = _get_result_title(result)
+            raw_topic = _get_result_topic(result)
+            raw_desc = _get_result_description(result)
+            title = raw_title.lower()
+            topic = raw_topic.lower()
+            desc = raw_desc.lower()
+            # Normalisierte Form für Vergleich (Akzente etc. ignorieren)
+            title_norm = normalize_search_title(raw_title).lower()
+            topic_norm = normalize_search_title(raw_topic).lower()
+            desc_norm = normalize_search_title(raw_desc).lower()
+            # Serientitel muss im Titel, Topic oder Description vorkommen (exakter Substring)
+            if (series_title_lower in title or series_title_lower in topic or series_title_lower in desc or
+                    normalized_lower in title or normalized_lower in topic or normalized_lower in desc or
+                    normalized_lower in title_norm or normalized_lower in topic_norm or normalized_lower in desc_norm):
+                # API liefert teils _source: Felder nach oben mergen für score_movie/Download
+                to_append = result
+                if isinstance(result.get("_source"), dict):
+                    to_append = {**result["_source"], **result}
+                    to_append.pop("_source", None)
+                filtered_results.append(to_append)
         
         if not filtered_results:
-            logging.warning(f"Keine Episoden für Serie '{series_title}' gefunden")
-            if notify_url and APPRISE_AVAILABLE:
-                body = f"Keine Episoden für Serie gefunden:\n\n"
-                body += f"📺 {series_title}\n"
-                if entry_link:
-                    body += f"\n🔗 Blog-Post: {entry_link}"
-                send_notification(notify_url, "Keine Episoden gefunden", body, "warning")
-            return []
+            # Fallback: MediathekViewWeb-Feed (Website nutzt gleichen Feed für #query=...)
+            feed_results = _fetch_mvw_feed_results(normalized_search_title)
+            if feed_results:
+                logging.info(f"Serien-API-Filter 0 Treffer, nutze MediathekViewWeb-Feed: {len(feed_results)} Einträge")
+                for r in feed_results:
+                    raw_title = (r.get("title") or "").strip()
+                    raw_topic = (r.get("topic") or "").strip()
+                    raw_desc = (r.get("description") or "").strip()
+                    title = raw_title.lower()
+                    topic = raw_topic.lower()
+                    desc = raw_desc.lower()
+                    title_norm = normalize_search_title(raw_title).lower()
+                    topic_norm = normalize_search_title(raw_topic).lower()
+                    desc_norm = normalize_search_title(raw_desc).lower()
+                    if (series_title_lower in title or series_title_lower in topic or series_title_lower in desc or
+                            normalized_lower in title or normalized_lower in topic or normalized_lower in desc or
+                            normalized_lower in title_norm or normalized_lower in topic_norm or normalized_lower in desc_norm):
+                        filtered_results.append(r)
+                if not filtered_results:
+                    # Feed liefert Treffer für Suchbegriff, alle behalten
+                    filtered_results = feed_results
+            if not filtered_results:
+                # Bei 0 Treffern: erste API-Ergebnisse ausgeben (INFO), damit Filter angepasst werden kann
+                if results:
+                    logging.info(f"Serien-Filter lieferte 0 Treffer bei {len(results)} API-Ergebnissen. Erste Titel:")
+                    for i, r in enumerate(results[:5]):
+                        logging.info(f"  [{i+1}] title={_get_result_title(r)!r} topic={_get_result_topic(r)!r}")
+                logging.warning(f"Keine Episoden für Serie '{series_title}' gefunden")
+                if notify_url and APPRISE_AVAILABLE:
+                    body = f"Keine Episoden für Serie gefunden:\n\n"
+                    body += f"📺 {series_title}\n"
+                    if entry_link:
+                        body += f"\n🔗 Blog-Post: {entry_link}"
+                    send_notification(notify_url, "Keine Episoden gefunden", body, "warning")
+                return []
         
         # Bewerte alle Episoden
         scored_results = []
