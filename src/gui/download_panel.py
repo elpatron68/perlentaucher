@@ -507,38 +507,36 @@ class DownloadPanel(QWidget):
 
 
 class LogEmitter(QObject):
-    """Qt signal emitter for thread-safe log output."""
-
+    """Qt-Signal-Emitter für thread-sichere Log-Ausgaben."""
+    
     log_message = pyqtSignal(str)
 
 
 class TextEditLogHandler(logging.Handler):
-    """Custom log handler that writes to QTextEdit in a thread-safe way."""
-
+    """Custom Log Handler der thread-sicher in ein QTextEdit schreibt."""
+    
     def __init__(self, text_widget):
         super().__init__()
         self.text_widget = text_widget
         self.emitter = LogEmitter()
-        # Force queued connection for thread-safety
-        self.emitter.log_message.connect(self._append_message, Qt.ConnectionType.QueuedConnection)
-        self.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s',
+        self.emitter.log_message.connect(self._append_message)
+        self.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', 
                                            datefmt='%H:%M:%S'))
-
+    
     def _append_message(self, msg: str):
         try:
             self.text_widget.append(msg)
-            # Auto-scroll to end
+            # Auto-Scroll zum Ende
             self.text_widget.verticalScrollBar().setValue(
                 self.text_widget.verticalScrollBar().maximum()
             )
         except Exception:
             pass
-
+    
     def emit(self, record):
-        """Write log entry to QTextEdit (thread-safe)."""
+        """Schreibt Log-Eintrag in das Text-Widget (thread-sicher)."""
         try:
             msg = self.format(record)
             self.emitter.log_message.emit(msg)
         except Exception:
             pass
-
