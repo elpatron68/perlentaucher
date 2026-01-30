@@ -1173,6 +1173,16 @@ def extract_episode_info(movie_data, series_title: str) -> Tuple[Optional[int], 
     
     text = f"{title} {topic} {description}"
     
+    # Früh prüfen: (X/Y) im Titel – typisch für Feeds (z. B. "Bad Banks (1/6) - ...")
+    # So wird nicht versehentlich SxxExx aus der Beschreibung genommen
+    title_xy = re.search(r'\((\d+)/\d+\)', title)
+    if title_xy:
+        episode = int(title_xy.group(1))
+        season_in_title = re.search(r'(?:[Ss]taffel|[Ss]aison)\s+(\d+)', title, re.IGNORECASE)
+        season = int(season_in_title.group(1)) if season_in_title else 1
+        logging.debug(f"Episoden-Info gefunden (Titel X/Y): S{season:02d}E{episode:02d}")
+        return (season, episode)
+    
     # Pattern 1: S01E01, S1E1, S 01 E 01
     pattern1 = re.search(r'[Ss](\d+)[\s]*[Ee](\d+)', text)
     if pattern1:
@@ -1842,21 +1852,32 @@ def main():
                     # Sortiere Episoden nach Staffel/Episode und dedupliziere
                     # Verwende Dictionary um nur die beste Version jeder Episode zu behalten
                     episodes_dict = {}  # Key: (season, episode), Value: (score, episode_data)
+                    episodes_without_info = []  # Episoden ohne erkennbare S/E – Fallback-Nummer vergeben
                     
-                    # Bewerte alle Episoden und behalte nur die beste Version jeder Episode
                     for episode_data in episodes:
                         season, episode_num = extract_episode_info(episode_data, movie_title)
                         if season is None or episode_num is None:
+                            episodes_without_info.append(episode_data)
                             continue
                         
-                        # Berechne Score für diese Episode
                         score = score_movie(episode_data, args.sprache, args.audiodeskription,
                                           search_title=movie_title, search_year=year, metadata=metadata)
-                        
                         episode_key = (season, episode_num)
-                        # Behalte nur die Episode mit dem höchsten Score
                         if episode_key not in episodes_dict or score > episodes_dict[episode_key][0]:
                             episodes_dict[episode_key] = (score, episode_data)
+                    
+                    # Fallback: Episoden ohne S/E nicht verwerfen – als Staffel 1 fortlaufend nummerieren
+                    if episodes_without_info:
+                        max_ep_s1 = max((e for (s, e) in episodes_dict if s == 1), default=0)
+                        for i, episode_data in enumerate(episodes_without_info):
+                            fallback_ep = max_ep_s1 + 1 + i
+                            score = score_movie(episode_data, args.sprache, args.audiodeskription,
+                                              search_title=movie_title, search_year=year, metadata=metadata)
+                            key = (1, fallback_ep)
+                            if key not in episodes_dict or score > episodes_dict[key][0]:
+                                episodes_dict[key] = (score, episode_data)
+                        if episodes_without_info:
+                            logging.info(f"{len(episodes_without_info)} Episoden ohne Staffel/Episode-Info als S01E{max_ep_s1 + 1}+ nummeriert")
                     
                     # Konvertiere Dictionary zu Liste und sortiere
                     episodes_with_info = [(s, e, data) for (s, e), (score, data) in episodes_dict.items()]
