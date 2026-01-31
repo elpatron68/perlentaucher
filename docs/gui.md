@@ -18,14 +18,14 @@ Die einfachste Installation erfolgt über die vorgebauten Executables von der [R
 
 #### Windows
 
-1. Lade `PerlentaucherGUI-VERSION-windows.exe.zip` oder `PerlentaucherGUI-VERSION-windows.exe` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetze `VERSION` durch die aktuelle Versionsnummer)
-2. Entpacke die ZIP-Datei (falls vorhanden)
-3. Doppelklicke auf `PerlentaucherGUI.exe` um die Anwendung zu starten
+1. Lade `PerlentaucherGUI-VERSION-windows.exe.zip` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetze `VERSION` durch die aktuelle Versionsnummer, z. B. `0.1.39`)
+2. Entpacke die ZIP-Datei (Rechtsklick → „Alle extrahieren“ oder Doppelklick)
+3. Doppelklicke auf `PerlentaucherGUI-VERSION-windows.exe` um die Anwendung zu starten
 
 #### Linux
 
-1. Lade `PerlentaucherGUI-VERSION-linux.tar.gz` oder `PerlentaucherGUI-VERSION-linux` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetze `VERSION` durch die aktuelle Versionsnummer)
-2. Entpacke die TAR.GZ-Datei (falls vorhanden):
+1. Lade `PerlentaucherGUI-VERSION-linux.tar.gz` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetze `VERSION` durch die aktuelle Versionsnummer, z. B. `0.1.39`)
+2. Entpacke die TAR.GZ-Datei:
    ```bash
    tar -xzf PerlentaucherGUI-VERSION-linux.tar.gz
    ```
@@ -33,23 +33,36 @@ Die einfachste Installation erfolgt über die vorgebauten Executables von der [R
    ```bash
    chmod +x PerlentaucherGUI-VERSION-linux
    ```
-4. Führe das Executable aus:
+4. Starte die Anwendung:
    ```bash
    ./PerlentaucherGUI-VERSION-linux
    ```
 
 #### macOS
 
-1. Lade `PerlentaucherGUI-VERSION-macos.app.zip` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetze `VERSION` durch die aktuelle Versionsnummer, z. B. `0.1.38`).
+1. Lade `PerlentaucherGUI-VERSION-macos.app.zip` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetze `VERSION` durch die aktuelle Versionsnummer, z. B. `0.1.39`).
 2. Entpacke die ZIP-Datei (Doppelklick). Es entsteht das App-Bundle `PerlentaucherGUI-VERSION-macos.app`.
 3. **Starten:** Doppelklick auf `PerlentaucherGUI-VERSION-macos.app` im Finder, oder im Terminal:
    ```bash
    open ~/Downloads/PerlentaucherGUI-VERSION-macos.app
    ```
-4. **Hinweis Gatekeeper:** Da die App nicht von Apple signiert/notarisiert ist, kann macOS melden: *"Apple could not verify … is free of malware"*. So startest du sie trotzdem:
-   - **Rechtsklick** auf `PerlentaucherGUI-VERSION-macos.app` → **„Öffnen“** wählen, im Dialog erneut **„Öffnen“** bestätigen, oder
-   - **Systemeinstellungen** → **Datenschutz & Sicherheit** → unten **„Trotzdem öffnen“** bei der blockierten App wählen.
-   Danach startet die Anwendung normal; die Warnung erscheint in der Regel nicht wieder.
+4. **Gatekeeper-Warnung:** Da die App nicht von Apple signiert/notarisiert ist, kann macOS eine dieser Meldungen anzeigen:
+   - *„Apple konnte nicht überprüfen, dass … frei von Schadsoftware ist“* (unbekannter Entwickler)
+   - *„… ist beschädigt und kann nicht geöffnet werden. Du solltest sie in den Papierkorb verschieben.“* (typisch nach Download)
+
+   **Schnelle Lösung (empfohlen):** Im Terminal einmalig ausführen (Pfad und VERSION ggf. anpassen):
+   ```bash
+   xattr -cr ~/Downloads/PerlentaucherGUI-VERSION-macos.app
+   ```
+   Danach lässt sich die App per Doppelklick starten.
+
+   **Alternative (nur bei „unbekannter Entwickler“):** Rechtsklick → **„Öffnen“** → im Dialog **„Öffnen“** bestätigen. Bei der Meldung „beschädigt“ zeigt macOS nur **„Abbrechen“** bzw. **„In den Papierkorb verschieben“** – dann ist `xattr -cr` die einzige Lösung.
+
+   **Danach (Schritt für Schritt):**
+   1. Schließe ggf. offene Fehlerdialoge.
+   2. Doppelklicke auf `PerlentaucherGUI-VERSION-macos.app` – die App startet nun ohne Warnung.
+   3. Die Warnung erscheint beim nächsten Öffnen in der Regel nicht wieder.
+   4. *(Optional)* App in den Programme-Ordner verschieben: Im Finder die App per Drag & Drop in **Programme** (Links unter „Favoriten“) ziehen.
 
 ### Alternative: Manuelle Installation für Development
 
@@ -147,14 +160,14 @@ Wechsle zum Tab "⬇️ Downloads":
 
 ## Tastenkürzel
 
-- `Ctrl+S`: Einstellungen speichern
-- `Ctrl+Q`: Beenden
+- `Ctrl+S` (macOS: `Cmd+S`): Einstellungen speichern
+- `Ctrl+Q` (macOS: `Cmd+Q`): Beenden
 - `F5`: Downloads starten
 - `Esc`: Alle Downloads abbrechen
 
 ## Konfiguration
 
-Die GUI nutzt die **gleiche Konfigurationsdatei wie die Quickstart-Scripts**: `.perlentaucher_config.json` im Projekt-Root-Verzeichnis.
+Die GUI nutzt die **gleiche Konfigurationsdatei wie die Quickstart-Scripts**: `.perlentaucher_config.json`. Beim Start aus dem Quellcode liegt sie im Projekt-Root; bei Standalone-Executables im aktuellen Arbeitsverzeichnis (z. B. beim Start aus dem Terminal) bzw. im Programmverzeichnis.
 
 Dies bedeutet:
 - Konfiguration, die mit dem Quickstart-Script erstellt wurde, wird automatisch von der GUI geladen
@@ -263,6 +276,10 @@ Stelle sicher, dass `src/perlentaucher.py` im gleichen Verzeichnis wie `src/perl
 - Stelle sicher, dass alle Abhängigkeiten im `build.spec` enthalten sind
 - Prüfe die PyInstaller-Ausgabe für fehlende Module
 - Führe das Executable mit `--debug` aus um mehr Informationen zu erhalten
+
+### macOS: App meldet „beschädigt“ oder wird blockiert
+
+Siehe **Installation → macOS**, Schritt 4 (Gatekeeper-Warnung). Kurz: Im Terminal `xattr -cr /Pfad/zu/PerlentaucherGUI-VERSION-macos.app` ausführen, oder Rechtsklick auf die App → **„Öffnen“** wählen.
 
 ## Unterschiede zur CLI-Version
 
