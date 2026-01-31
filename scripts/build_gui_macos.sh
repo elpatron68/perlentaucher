@@ -1,17 +1,32 @@
 #!/bin/bash
 # Build-Script für macOS-GUI
 
-echo "Building Perlentaucher GUI for macOS (universal2: Intel + Apple Silicon)..."
+set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+# Venv nutzen falls vorhanden
+if [ -d ".venv" ]; then
+  echo "Aktiviere .venv..."
+  # shellcheck source=/dev/null
+  source .venv/bin/activate
+else
+  echo "Hinweis: Kein .venv gefunden, nutze System-Python."
+fi
+
+echo "Building Perlentaucher GUI for macOS (native Architektur)..."
 
 # Stelle sicher, dass PyInstaller installiert ist
-python3 -m pip install --upgrade pyinstaller
+python -m pip install --upgrade pyinstaller
 
 # Installiere GUI-Abhängigkeiten
-python3 -m pip install -r requirements-gui.txt
+python -m pip install -r requirements-gui.txt
 
-# Baue Universal Binary (Intel + Apple Silicon)
-pyinstaller build.spec --clean --windowed --target-arch universal2
+# Baue für die aktuelle Architektur (arm64 oder x86_64)
+# Hinweis: universal2 würde alle Abhängigkeiten als Fat Binary erfordern (z. B. PyYAML).
+pyinstaller build.spec --clean
 
 echo ""
-echo "Build abgeschlossen! Universal Binary befindet sich in: dist/PerlentaucherGUI.app"
-echo "Die App sollte auf Intel- und Apple-Silicon-Macs funktionieren."
+echo "Build abgeschlossen! Ausführbare Datei: dist/PerlentaucherGUI"
+echo "Starten mit: open dist/PerlentaucherGUI  oder  ./dist/PerlentaucherGUI"

@@ -160,44 +160,6 @@ jobs:
           # PyInstaller 5.0+ wird für --target-arch universal2 benötigt
           pip install --upgrade "pyinstaller>=5.0"
         
-      - name: Install Pillow for macOS icon conversion
-        if: matrix.os == 'macos-latest'
-        run: |
-          # Pillow wird benötigt um .ico Icons auf macOS zu .icns zu konvertieren
-          # Installiere Pillow als Universal Binary für --target-arch universal2
-          echo "=== Installing Pillow as Universal Binary ==="
-          pip uninstall -y Pillow || true
-          # Installiere Pillow als Universal Binary (Intel + Apple Silicon)
-          ARCHFLAGS='-arch arm64 -arch x86_64' pip install --no-binary=:all: Pillow || {
-            echo "⚠ Building Pillow from source failed, trying to install universal2 wheel if available..."
-            # Fallback: Versuche universal2 wheel zu finden
-            pip install Pillow --upgrade || {
-              echo "✗ Failed to install Pillow as Universal Binary"
-              exit 1
-            }
-          }
-          echo "✓ Pillow installed"
-        
-      - name: Reinstall PyYAML as Universal Binary (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          echo "=== Reinstalling PyYAML as Universal Binary ==="
-          # Deinstalliere aktuelles PyYAML
-          pip uninstall -y PyYAML || true
-          # Installiere PyYAML als Universal Binary (Intel + Apple Silicon)
-          # ARCHFLAGS wird verwendet um beide Architekturen zu kompilieren
-          ARCHFLAGS='-arch arm64 -arch x86_64' pip install --no-binary=:all: PyYAML || {
-            echo "⚠ Building from source failed, trying to install universal2 wheel if available..."
-            # Fallback: Versuche universal2 wheel zu finden
-            pip install PyYAML --upgrade || {
-              echo "✗ Failed to install PyYAML as Universal Binary"
-              exit 1
-            }
-          }
-          echo "✓ PyYAML reinstalled"
-          # Verifiziere dass PyYAML Universal Binary ist
-          python3 -c "import yaml; import yaml._yaml; import os; lib_path = yaml._yaml.__file__; print(f'PyYAML library: {lib_path}'); os.system(f'file {lib_path}')" || echo "⚠ Could not verify PyYAML architecture"
-
       - name: Build with PyInstaller (Windows)
         if: matrix.os == 'windows-latest'
         run: |
@@ -215,141 +177,23 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           set -e
-          echo "=== Building macOS Universal Binary (Intel + Apple Silicon) ==="
+          echo "=== Building macOS GUI (native architecture) ==="
           echo "Python version: $(python3 --version)"
           echo "PyInstaller version: $(pyinstaller --version)"
           echo "Current architecture: $(uname -m)"
           echo ""
-          
-          # Prüfe ob Python Universal Binary ist
-          PYTHON_ARCH=$(file $(which python3) | grep -o "x86_64\|arm64" | head -1 || echo "unknown")
-          echo "Python architecture: $PYTHON_ARCH"
-          
-          # Verifiziere dass PyYAML Universal Binary ist (wichtig für --target-arch universal2)
-          echo ""
-          echo "=== Verifying PyYAML is Universal Binary ==="
-          python3 -c "import yaml; import yaml._yaml; import os; lib_path = yaml._yaml.__file__; print(f'PyYAML library: {lib_path}'); result = os.popen(f'file {lib_path}').read(); print(result); assert 'x86_64' in result or 'arm64' in result or 'universal' in result, 'PyYAML is not a Universal Binary'" || {
-            echo "⚠ PyYAML verification failed, but continuing..."
-          }
-          
-          # Auf macOS erstellt PyInstaller mit console=False automatisch ein .app Bundle
-          # WICHTIG: Für Universal Binary MUSS --target-arch universal2 verwendet werden
-          echo ""
-          echo "=== Building universal2 app (Intel + Apple Silicon) ==="
-          
-          # Prüfe ob --target-arch unterstützt wird
-          if ! pyinstaller --help 2>&1 | grep -q "target-arch"; then
-            echo "✗ ERROR: PyInstaller does not support --target-arch"
-            echo "This is required for Universal Binary creation!"
-            echo "Please upgrade PyInstaller to version 5.0 or later"
-            pyinstaller --version
-            exit 1
-          fi
-          
-          echo "✓ PyInstaller supports --target-arch, building universal2 binary..."
-          echo "⚠ Note: --target-arch cannot be used with .spec files, using direct command instead"
-          
-          # WICHTIG: --target-arch funktioniert NICHT mit .spec Dateien
-          # Verwende direkten PyInstaller-Befehl für Universal Binary
-          # Versuche zuerst mit Icon (Pillow sollte .ico zu .icns konvertieren)
-          if pyinstaller --windowed --name PerlentaucherGUI \
-              --target-arch universal2 \
-              --hidden-import=feedparser \
-              --hidden-import=requests \
-              --hidden-import=urllib3 \
-              --hidden-import=urllib3.util.ssl_ \
-              --hidden-import=apprise \
-              --hidden-import=semver \
-              --hidden-import=PyQt6 \
-              --hidden-import=PyQt6.QtCore \
-              --hidden-import=PyQt6.QtWidgets \
-              --hidden-import=PyQt6.QtGui \
-              --hidden-import=src.perlentaucher \
-              --add-data "assets:assets" \
-              --icon=assets/icon.ico \
-              --clean --noconfirm \
-              src/perlentaucher_gui.py 2>&1; then
-            echo "✓ Build with icon successful"
-          else
-            # Fallback: Versuche ohne Icon falls Icon-Konvertierung fehlschlägt
-            echo "⚠ Build with icon failed, trying without icon..."
-            pyinstaller --windowed --name PerlentaucherGUI \
-              --target-arch universal2 \
-              --hidden-import=feedparser \
-              --hidden-import=requests \
-              --hidden-import=urllib3 \
-              --hidden-import=urllib3.util.ssl_ \
-              --hidden-import=apprise \
-              --hidden-import=semver \
-              --hidden-import=PyQt6 \
-              --hidden-import=PyQt6.QtCore \
-              --hidden-import=PyQt6.QtWidgets \
-              --hidden-import=PyQt6.QtGui \
-              --hidden-import=src.perlentaucher \
-              --add-data "assets:assets" \
-              --clean --noconfirm \
-              src/perlentaucher_gui.py 2>&1 || {
-              echo "✗ All build methods failed"
-              echo "Build logs:"
-              cat build/*.log 2>/dev/null || echo "No build logs found"
-              exit 1
-            }
-          fi
-          
+          # Gleiche Methode wie Windows/Linux: build.spec (--windowed/--target-arch sind mit .spec nicht erlaubt)
+          # Native Architektur (arm64 auf GitHub macos-latest) – zuverlässig, alle Abhängigkeiten funktionieren
+          pyinstaller build.spec --clean --noconfirm
           echo ""
           echo "=== Build output in dist/ ==="
           ls -la dist/ 2>/dev/null || { echo "✗ dist/ directory not found"; exit 1; }
-          echo ""
-          
-          # Prüfe ob .app Bundle oder Executable erstellt wurde
-          if [ -d "dist/PerlentaucherGUI.app" ]; then
-            echo "✓ Found PerlentaucherGUI.app bundle"
-            echo "App bundle size:"
-            du -sh "dist/PerlentaucherGUI.app"
-            echo ""
-            echo "=== Verifying Universal Binary architecture ==="
-            if [ -f "dist/PerlentaucherGUI.app/Contents/MacOS/PerlentaucherGUI" ]; then
-              EXECUTABLE="dist/PerlentaucherGUI.app/Contents/MacOS/PerlentaucherGUI"
-              file "$EXECUTABLE"
-              
-              # Prüfe ob es ein Universal Binary ist (sollte beide Architekturen enthalten)
-              ARCHS=$(lipo -archs "$EXECUTABLE" 2>/dev/null || echo "")
-              echo "Architectures in binary: $ARCHS"
-              
-              if echo "$ARCHS" | grep -q "x86_64" && echo "$ARCHS" | grep -q "arm64"; then
-                echo "✓ SUCCESS: Universal Binary created (Intel + Apple Silicon)"
-              elif echo "$ARCHS" | grep -q "x86_64"; then
-                echo "⚠ WARNING: Only Intel (x86_64) architecture found"
-                echo "  This is NOT a Universal Binary!"
-                exit 1
-              elif echo "$ARCHS" | grep -q "arm64"; then
-                echo "⚠ WARNING: Only Apple Silicon (arm64) architecture found"
-                echo "  This is NOT a Universal Binary!"
-                exit 1
-              else
-                echo "⚠ WARNING: Could not determine architecture"
-                echo "  Verifying with lipo -info:"
-                lipo -info "$EXECUTABLE" || echo "  lipo command failed"
-              fi
-            else
-              echo "✗ Executable not found in app bundle"
-              exit 1
-            fi
-          elif [ -f "dist/PerlentaucherGUI" ]; then
-            echo "✓ Found PerlentaucherGUI executable (no .app bundle)"
+          if [ -f "dist/PerlentaucherGUI" ]; then
+            echo "✓ PerlentaucherGUI executable created"
             file "dist/PerlentaucherGUI"
-            ARCHS=$(lipo -archs "dist/PerlentaucherGUI" 2>/dev/null || echo "")
-            echo "Architectures in binary: $ARCHS"
-            if echo "$ARCHS" | grep -q "x86_64" && echo "$ARCHS" | grep -q "arm64"; then
-              echo "✓ SUCCESS: Universal Binary created (Intel + Apple Silicon)"
-            else
-              echo "⚠ WARNING: Not a Universal Binary!"
-              exit 1
-            fi
           else
-            echo "✗ No build output found in dist/"
-            echo "Contents of dist/:"
-            find dist -type f -o -type d | head -20
+            echo "✗ No build output dist/PerlentaucherGUI found"
+            find dist -type f -o -type d 2>/dev/null | head -20
             exit 1
           fi
 

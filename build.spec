@@ -84,11 +84,8 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 # Erstelle EXE für alle Plattformen
 # Für macOS: PyInstaller erstellt automatisch ein .app Bundle wenn console=False
-# target_arch='universal2' wird NICHT in build.spec unterstützt, sondern nur als Kommandozeilen-Argument
-# Für Universal Binary verwende: pyinstaller build.spec --target-arch universal2
+# target_arch in der Spec (nicht als Kommandozeilen-Option bei .spec-Builds)
 if sys.platform == 'darwin':
-    # macOS: Standard-Build (wird auf der Runner-Architektur erstellt)
-    # Für Universal Binary muss --target-arch universal2 als Kommandozeilen-Argument verwendet werden
     exe = EXE(
         pyz,
         a.scripts,
