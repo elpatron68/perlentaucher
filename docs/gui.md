@@ -40,14 +40,16 @@ Die einfachste Installation erfolgt über die vorgebauten Executables von der [R
 
 #### macOS
 
-1. Lade `PerlentaucherGUI-VERSION-macos.app.zip` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetze `VERSION` durch die aktuelle Versionsnummer)
-2. Entpacke die ZIP-Datei (Doppelklick)
-3. Öffne `PerlentaucherGUI-VERSION-macos.app` im Finder
-   - Bei Warnung "App kann nicht geöffnet werden": Rechtsklick > Öffnen > Öffnen bestätigen
-4. Alternativ über Terminal:
+1. Lade `PerlentaucherGUI-VERSION-macos.app.zip` von der [Release-Seite](https://codeberg.org/elpatron/Perlentaucher/releases) herunter (ersetze `VERSION` durch die aktuelle Versionsnummer, z. B. `0.1.38`).
+2. Entpacke die ZIP-Datei (Doppelklick). Es entsteht das App-Bundle `PerlentaucherGUI-VERSION-macos.app`.
+3. **Starten:** Doppelklick auf `PerlentaucherGUI-VERSION-macos.app` im Finder, oder im Terminal:
    ```bash
-   open PerlentaucherGUI-VERSION-macos.app
+   open ~/Downloads/PerlentaucherGUI-VERSION-macos.app
    ```
+4. **Hinweis Gatekeeper:** Da die App nicht von Apple signiert/notarisiert ist, kann macOS melden: *"Apple could not verify … is free of malware"*. So startest du sie trotzdem:
+   - **Rechtsklick** auf `PerlentaucherGUI-VERSION-macos.app` → **„Öffnen“** wählen, im Dialog erneut **„Öffnen“** bestätigen, oder
+   - **Systemeinstellungen** → **Datenschutz & Sicherheit** → unten **„Trotzdem öffnen“** bei der blockierten App wählen.
+   Danach startet die Anwendung normal; die Warnung erscheint in der Regel nicht wieder.
 
 ### Alternative: Manuelle Installation für Development
 

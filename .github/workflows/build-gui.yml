@@ -197,6 +197,32 @@ jobs:
             exit 1
           fi
 
+      - name: Create .app bundle (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          set -e
+          echo "=== Creating PerlentaucherGUI.app bundle ==="
+          mkdir -p dist/PerlentaucherGUI.app/Contents/MacOS
+          mv dist/PerlentaucherGUI dist/PerlentaucherGUI.app/Contents/MacOS/PerlentaucherGUI
+          chmod +x dist/PerlentaucherGUI.app/Contents/MacOS/PerlentaucherGUI
+          python3 -c "
+          import plistlib
+          pl = {
+              'CFBundleExecutable': 'PerlentaucherGUI',
+              'CFBundleIdentifier': 'org.perlentaucher.gui',
+              'CFBundleName': 'Perlentaucher GUI',
+              'CFBundlePackageType': 'APPL',
+              'CFBundleShortVersionString': '1.0',
+              'NSHighResolutionCapable': True,
+              'NSPrincipalClass': 'NSApplication',
+          }
+          with open('dist/PerlentaucherGUI.app/Contents/Info.plist', 'wb') as f:
+              plistlib.dump(pl, f)
+          "
+          echo "✓ PerlentaucherGUI.app created"
+          ls -la dist/PerlentaucherGUI.app/Contents/
+          ls -la dist/PerlentaucherGUI.app/Contents/MacOS/
+
       - name: Determine artifact name (Windows)
         if: matrix.os == 'windows-latest'
         id: artifact-windows
