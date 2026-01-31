@@ -1,2 +1,2 @@
 # Version wird automatisch vom Release-Script aktualisiert
-__version__ = "0.1.38"
+__version__ = "0.1.39"
