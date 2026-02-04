@@ -7,6 +7,7 @@ Eine grafische Benutzeroberfläche für Perlentaucher, die alle Funktionen der K
 - **Einstellungen-Panel**: Alle konfigurierbaren Optionen als UI-Elemente
 - **Blog-Liste**: RSS-Feed-Einträge in scrollbarer Liste mit Checkboxen
 - **Download-Management**: Progress Bars, Status-Anzeige und Log-Ausgabe
+- **Film per Suchbegriff**: Im Download-Tab kannst du einen Filmtitel (z. B. „The Quiet Girl“) eingeben und mit „Film suchen und herunterladen“ direkt in [MediathekViewWeb](https://mediathekviewweb.de) suchen und die beste Fassung herunterladen – ohne vorher den RSS-Feed zu laden
 - **Cross-Platform**: Läuft auf Windows, Linux und macOS
 - **Einzelnes Executable**: Kann als standalone Executable gebaut werden
 
@@ -143,6 +144,9 @@ Die Blog-Beiträge werden in einer Tabelle angezeigt mit:
 - Klicke auf "Ausgewählte Downloads starten" im Blog-Liste-Tab
 - Oder nutze die Schaltfläche im Download-Tab
 - Oder nutze das Menü: Download > Ausgewählte Downloads starten (F5)
+
+**Film per Suchbegriff (ohne RSS-Feed):**  
+Im Tab „⬇️ Downloads“ findest du ein Suchfeld mit der Beschriftung „Filmtitel suchen (z. B. The Quiet Girl)“ und den Button „Film suchen und herunterladen“. Gib einen Filmtitel ein und klicke auf den Button – die Anwendung sucht in MediathekViewWeb nach der besten Übereinstimmung und startet den Download. Der Eintrag erscheint wie ein normaler Download in der Tabelle und im Log. Es ist nicht nötig, vorher den RSS-Feed zu laden.
 
 ### 5. Download-Fortschritt überwachen
 

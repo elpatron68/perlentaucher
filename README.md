@@ -31,8 +31,10 @@ Falls du Fehler findest, irgendetwas nicht funktioniert oder falls du eine Idee 
   - Alle Einstellungen als UI-Elemente konfigurierbar
   - RSS-Feed-Einträge in scrollbarer Liste mit Checkboxen
   - Selektiver Download von Filmen/Serien
+  - **Film per Suchbegriff**: Filmtitel eingeben und direkt in MediathekViewWeb suchen und herunterladen (ohne RSS-Feed)
   - Progress Bars für aktive Downloads
   - Siehe [GUI-Dokumentation](docs/gui.md) für Details
+- **Film per Suchbegriff (CLI)**: Mit `--search "Titel"` einen Film direkt nach Namen suchen und herunterladen – entspricht der Suche auf [MediathekViewWeb](https://mediathekviewweb.de/#query=…). Kein RSS-Feed nötig; `--limit` wird ignoriert.
 - Parst den RSS Feed der Mediathekperlen nach neuen Filmeinträgen.
 - Sucht automatisch nach dem Filmtitel oder Serientitel.
 - Lädt die beste Fassung basierend auf deinen Präferenzen herunter.
@@ -113,7 +115,8 @@ python src/perlentaucher.py [Optionen]
 ### Argumente
 
 - `--download-dir`: Zielordner für Downloads (Standard: aktuelles Verzeichnis).
-- `--limit`: Anzahl der zu prüfenden RSS-Einträge (Standard: 10).
+- `--limit`: Anzahl der zu prüfenden RSS-Einträge (Standard: 10). Wird bei `--search` ignoriert.
+- `--search`: Film per Suchbegriff (Titel) herunterladen, z. B. `--search "The Quiet Girl"`. Es wird nur dieser eine Film gesucht und heruntergeladen; der RSS-Feed wird nicht verwendet.
 - `--loglevel`: Detailgrad des Logs (Standard: INFO). Optionen: DEBUG, INFO, WARNING, ERROR.
 - `--sprache`: Bevorzugte Sprache (Standard: deutsch). Optionen: `deutsch`, `englisch`, `egal`.
 - `--audiodeskription`: Bevorzugte Audiodeskription (Standard: egal). Optionen: `mit`, `ohne`, `egal`.
@@ -127,6 +130,16 @@ python src/perlentaucher.py [Optionen]
 - `--debug-no-download`: Debug-Modus: lädt nichts herunter, aber Feed, Suche und Match-Ausgabe laufen normal (inkl. Top‑Matches mit Scores im Log).
 
 ### Beispiele
+
+Film per Suchbegriff herunterladen (ohne RSS-Feed):
+```bash
+python src/perlentaucher.py --search "The Quiet Girl" --download-dir ./Filme
+```
+
+Nur suchen, nicht herunterladen (Debug mit Suchbegriff):
+```bash
+python src/perlentaucher.py --search "The Quiet Girl" --debug-no-download
+```
 
 Die letzten 3 Filme suchen und in den Ordner `Filme` herunterladen:
 ```bash

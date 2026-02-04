@@ -5,12 +5,15 @@ Zeigt aktive Downloads mit Progress Bars und Log-Ausgabe.
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QTextEdit, QLabel, QProgressBar,
-    QAbstractItemView, QMessageBox, QSizePolicy, QLineEdit
+    QAbstractItemView, QMessageBox, QSizePolicy, QLineEdit, QMenu
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QFont
 from typing import Dict, List, Optional
 import logging
+import os
+import subprocess
+import sys
 from datetime import datetime
 
 
@@ -102,6 +105,8 @@ class DownloadPanel(QWidget):
         
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._on_table_context_menu)
         
         layout.addWidget(self.table, stretch=1)  # Stretch-Faktor für vertikale Skalierung
         
@@ -119,6 +124,46 @@ class DownloadPanel(QWidget):
         
         self.setLayout(layout)
     
+    def _on_table_context_menu(self, pos):
+        """Zeigt Kontextmenü für die Tabelle; bei erfolgreichem Download: 'Ordner öffnen'."""
+        index = self.table.indexAt(pos)
+        if not index.isValid():
+            return
+        row = index.row()
+        title_item = self.table.item(row, 0)
+        filepath = getattr(title_item, "_filepath", None) if title_item else None
+        menu = QMenu(self)
+        open_folder_action = menu.addAction("Ordner öffnen")
+        open_folder_action.setEnabled(bool(filepath))
+        if filepath:
+            open_folder_action.triggered.connect(lambda: self._open_folder_for_file(filepath))
+        menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _open_folder_for_file(self, filepath: str):
+        """Öffnet den Ordner der Datei im systemeigenen Dateimanager (plattformunabhängig)."""
+        folder = os.path.abspath(os.path.dirname(filepath))
+        if not folder or not os.path.isdir(folder):
+            QMessageBox.warning(
+                self,
+                "Ordner nicht gefunden",
+                f"Der Ordner existiert nicht oder ist nicht erreichbar:\n{folder}",
+            )
+            return
+        try:
+            if sys.platform == "win32":
+                os.startfile(folder)
+            elif sys.platform == "darwin":
+                subprocess.run(["open", folder], check=True)
+            else:
+                subprocess.run(["xdg-open", folder], check=True)
+        except (OSError, subprocess.CalledProcessError) as e:
+            logging.warning(f"Ordner konnte nicht geöffnet werden: {e}")
+            QMessageBox.warning(
+                self,
+                "Ordner öffnen",
+                f"Der Ordner konnte nicht geöffnet werden:\n{e}",
+            )
+
     def _on_search_download_clicked(self):
         """Reagiert auf Klick 'Film suchen und herunterladen': prüft Suchtext und sendet Signal."""
         search_term = (self.search_line.text() or "").strip()
@@ -346,6 +391,9 @@ class DownloadPanel(QWidget):
                                     logging.warning(f"Fehler beim Aktualisieren der State-Datei: {e}")
                         
                         status_item.setForeground(Qt.GlobalColor.green)
+                        # Dateipfad für Kontextmenü "Ordner öffnen" speichern
+                        if filepath and filepath.strip() and title_item:
+                            title_item._filepath = filepath.strip()
                         # Sichere Logging-Ausgabe (filepath kann leer sein)
                         log_msg = f"Download erfolgreich: {title}"
                         if filepath and filepath.strip():
