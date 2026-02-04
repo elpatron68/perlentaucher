@@ -10,6 +10,7 @@ import semver
 import unicodedata
 from datetime import datetime
 from typing import Optional, Dict, Tuple
+from urllib.parse import quote
 
 try:
     import apprise
@@ -1705,6 +1706,75 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
             os.remove(filepath)
         return (False, title, filepath)
 
+
+def download_by_search(
+    search_term: str,
+    download_dir: str,
+    prefer_language: str = "deutsch",
+    prefer_audio_desc: str = "egal",
+    notify_url: Optional[str] = None,
+    debug: bool = False,
+) -> Tuple[bool, Optional[str], Optional[str]]:
+    """
+    Sucht einen Film in MediathekViewWeb per Suchbegriff (Titel) und lädt die beste
+    Übereinstimmung herunter. Entspricht der Suche auf https://mediathekviewweb.de/#query=...
+
+    Args:
+        search_term: Filmtitel oder Suchbegriff (z.B. "The Quiet Girl")
+        download_dir: Verzeichnis für den Download
+        prefer_language: "deutsch", "englisch" oder "egal"
+        prefer_audio_desc: "mit", "ohne" oder "egal"
+        notify_url: Optional - Apprise-URL für Benachrichtigungen
+        debug: Wenn True, wird nur gesucht, nicht heruntergeladen
+
+    Returns:
+        Tuple (success, title, filepath). Bei "nicht gefunden" oder Fehler: (False, None, None).
+    """
+    if not (search_term and search_term.strip()):
+        logging.warning("Download per Suchbegriff: leerer Suchbegriff.")
+        return (False, None, None)
+
+    search_term = search_term.strip()
+    normalized = normalize_search_title(search_term)
+    mvw_url = f"https://mediathekviewweb.de/#query={quote(search_term)}"
+    logging.info(f"Download per Suchbegriff: '{search_term}' (entspricht Suche: {mvw_url})")
+
+    result = search_mediathek(
+        normalized,
+        prefer_language=prefer_language,
+        prefer_audio_desc=prefer_audio_desc,
+        notify_url=notify_url,
+        entry_link=mvw_url,
+        year=None,
+        metadata=None,
+        debug=debug,
+    )
+
+    if not result:
+        return (False, None, None)
+
+    if debug:
+        filepath = build_download_filepath(
+            result,
+            download_dir,
+            search_term,
+            {},
+            is_series=False,
+            create_dirs=False,
+        )
+        logging.info(f"DEBUG-MODUS: Download übersprungen: '{result.get('title')}' -> {filepath}")
+        return (True, result.get("title"), filepath)
+
+    success, title, filepath = download_content(
+        result,
+        download_dir,
+        content_title=search_term,
+        metadata={},
+        is_series=False,
+    )
+    return (success, title, filepath)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Perlentaucher - RSS Feed Downloader for MediathekViewWeb")
     parser.add_argument("--download-dir", default=os.getcwd(), help="Directory to save downloads")
@@ -1730,6 +1800,8 @@ def main():
                        help="Basis-Verzeichnis für Serien-Downloads (Standard: --download-dir). Episoden werden in Unterordnern [Titel] (Jahr)/ gespeichert")
     parser.add_argument("--debug-no-download", action="store_true",
                       help="Debug-Modus: keine Downloads durchführen, aber Feed/Suche/Matches ausgeben")
+    parser.add_argument("--search", default=None,
+                       help="Film per Suchbegriff herunterladen (z.B. 'The Quiet Girl'). Kein RSS-Feed.")
     
     args = parser.parse_args()
     
@@ -1760,6 +1832,22 @@ def main():
     state_file = None if args.no_state else args.state_file
     if state_file:
         logging.info(f"Status-Datei: {state_file}")
+
+    # Download per Suchbegriff (ohne RSS-Feed)
+    if args.search:
+        success, title, filepath = download_by_search(
+            args.search,
+            args.download_dir,
+            prefer_language=args.sprache,
+            prefer_audio_desc=args.audiodeskription,
+            notify_url=args.notify,
+            debug=args.debug_no_download,
+        )
+        if success:
+            logging.info(f"Download per Suchbegriff abgeschlossen: {title} -> {filepath}")
+        else:
+            logging.warning("Download per Suchbegriff: Film nicht gefunden oder Fehler.")
+        sys.exit(0 if success else 1)
 
     movies, new_entries = parse_rss_feed(args.limit, state_file=state_file)
     

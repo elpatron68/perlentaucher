@@ -5,7 +5,7 @@ Zeigt aktive Downloads mit Progress Bars und Log-Ausgabe.
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QTextEdit, QLabel, QProgressBar,
-    QAbstractItemView, QMessageBox, QSizePolicy
+    QAbstractItemView, QMessageBox, QSizePolicy, QLineEdit
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QFont
@@ -16,7 +16,9 @@ from datetime import datetime
 
 class DownloadPanel(QWidget):
     """Panel für Download-Status."""
-    
+
+    search_download_requested = pyqtSignal(str)
+
     def __init__(self, parent=None):
         """
         Initialisiert das Download Panel.
@@ -65,6 +67,18 @@ class DownloadPanel(QWidget):
         toolbar.addWidget(self.status_label)
         
         layout.addLayout(toolbar)
+
+        # Suchbegriff: Film suchen und herunterladen
+        search_layout = QHBoxLayout()
+        self.search_line = QLineEdit()
+        self.search_line.setPlaceholderText("Filmtitel suchen (z.B. The Quiet Girl)")
+        self.search_line.setClearButtonEnabled(True)
+        search_layout.addWidget(self.search_line)
+        self.search_download_btn = QPushButton("Film suchen und herunterladen")
+        self.search_download_btn.setStyleSheet("QPushButton { padding: 6px 12px; }")
+        self.search_download_btn.clicked.connect(self._on_search_download_clicked)
+        search_layout.addWidget(self.search_download_btn)
+        layout.addLayout(search_layout)
         
         # Download-Tabelle
         self.table = QTableWidget()
@@ -105,6 +119,18 @@ class DownloadPanel(QWidget):
         
         self.setLayout(layout)
     
+    def _on_search_download_clicked(self):
+        """Reagiert auf Klick 'Film suchen und herunterladen': prüft Suchtext und sendet Signal."""
+        search_term = (self.search_line.text() or "").strip()
+        if not search_term:
+            QMessageBox.warning(
+                self,
+                "Kein Suchbegriff",
+                "Bitte geben Sie einen Filmtitel oder Suchbegriff ein.",
+            )
+            return
+        self.search_download_requested.emit(search_term)
+
     def start_downloads(self, entries: List[Dict], config: Dict, series_download_mode: Optional[Dict] = None):
         """
         Startet Downloads für die ausgewählten Einträge.

@@ -152,6 +152,8 @@ class MainWindow(QMainWindow):
         
         # Verbinde Download-Button mit Start-Funktion
         self.download_panel.start_downloads_btn.clicked.connect(self._start_selected_downloads)
+        # Film per Suchbegriff: Suchtext vom Download-Panel
+        self.download_panel.search_download_requested.connect(self._on_search_download_requested)
     
     def _set_initial_tab(self):
         """Setzt den initialen Tab beim Start."""
@@ -211,7 +213,24 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex(1)
         
         self.status_bar.showMessage(f"{len(selected_entries)} Download(s) gestartet.", 3000)
-    
+
+    def _on_search_download_requested(self, search_term: str):
+        """Startet einen Download per Suchbegriff (synthetischer Eintrag, gleiche Tabelle/Log)."""
+        config = self.settings_panel.get_config()
+        entry_id = f"search:{search_term}"
+        synthetic_entry = {
+            "entry_id": entry_id,
+            "entry": {"title": search_term, "tags": []},
+            "movie_title": search_term,
+            "year": None,
+            "metadata": {},
+            "entry_link": "",
+            "rss_title": search_term,
+        }
+        self.download_panel.start_downloads([synthetic_entry], config)
+        self.tabs.setCurrentIndex(1)
+        self.status_bar.showMessage(f"Suche & Download gestartet: {search_term}", 3000)
+
     def _ask_series_download_mode(self, entry_data: Dict) -> Optional[str]:
         """
         Zeigt einen Dialog zur Auswahl des Serien-Download-Modus.
