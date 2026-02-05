@@ -245,15 +245,30 @@ def normalize_search_title(title: str) -> str:
     for old_char, new_char in char_mapping.items():
         normalized = normalized.replace(old_char, new_char)
     
-    # Schritt 4: Normalisiere zu NFKD (Normalization Form Compatibility Decomposition)
+    # Schritt 4: Spezielle Behandlung für deutsche Umlaute und ß
+    # Damit Suchbegriffe wie "Verführung" zu "Verfuehrung" werden (statt "Verfuhrung"),
+    # was typischer für manuelle Eingaben und viele Suchindizes ist.
+    umlaut_mapping = {
+        'ä': 'ae',
+        'ö': 'oe',
+        'ü': 'ue',
+        'Ä': 'Ae',
+        'Ö': 'Oe',
+        'Ü': 'Ue',
+        'ß': 'ss',
+    }
+    for old_char, new_char in umlaut_mapping.items():
+        normalized = normalized.replace(old_char, new_char)
+    
+    # Schritt 5: Normalisiere zu NFKD (Normalization Form Compatibility Decomposition)
     # Das trennt Zeichen wie í in i + Akut
     nfkd_form = unicodedata.normalize('NFKD', normalized)
     
-    # Schritt 5: Entferne alle Combining Characters (Akzente, Diakritika)
+    # Schritt 6: Entferne alle Combining Characters (Akzente, Diakritika)
     # und konvertiere zu ASCII (ignoriere Fehler für nicht-ASCII Zeichen)
     normalized = ''.join(c for c in nfkd_form if not unicodedata.combining(c))
     
-    # Schritt 6: Finale ASCII-Konvertierung
+    # Schritt 7: Finale ASCII-Konvertierung
     try:
         result = normalized.encode('ascii', 'ignore').decode('ascii')
         # Entferne überflüssige Leerzeichen (mehrfache Leerzeichen zu einem)
@@ -1002,15 +1017,43 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         year: Optional - Das Jahr des Films (für bessere Matching)
         metadata: Optional - Dictionary mit 'provider_id' (tmdbid-XXX oder imdbid-XXX) für exaktes Matching
     """
-    # Normalisiere Suchbegriff (entfernt Sonderzeichen/Akzente für bessere Suche)
+    # Normalisiere Suchbegriff (entfernt Sonderzeichen/Akzente für bessere Suche),
+    # verwende aber sowohl Originaltitel (inkl. Umlaute) als auch normalisierte Form.
     normalized_search_title = normalize_search_title(movie_title)
     if normalized_search_title != movie_title:
         logging.debug(f"Suchbegriff normalisiert: '{movie_title}' → '{normalized_search_title}'")
+        log_search_display = f"{movie_title}' (normalisiert: '{normalized_search_title}"
+    else:
+        log_search_display = movie_title
     
-    logging.info(f"Suche in MediathekViewWeb nach: '{movie_title}' (normalisiert: '{normalized_search_title}')")
-    # Verwendung minimaler Payloads: diese liefern in der Praxis die passenden Treffer.
-    payloads = [
-        {
+    logging.info(f"Suche in MediathekViewWeb nach: '{log_search_display}'")
+    # Verwende zuerst den Originaltitel (wie die Web-Oberfläche #query=...),
+    # danach die normalisierte Form als Fallback.
+    payloads = []
+    
+    # 1. Originaltitel – Feld-basierte Suche
+    payloads.append({
+        "headers": {"Content-Type": "application/json"},
+        "payload": {
+            "queries": [
+                {
+                    "fields": ["title"],
+                    "query": movie_title
+                }
+            ]
+        }
+    })
+    # 2. Originaltitel – einfache Query
+    payloads.append({
+        "headers": {"Content-Type": "application/json"},
+        "payload": {
+            "query": movie_title
+        }
+    })
+    
+    # 3./4. Normalisierte Form nur hinzufügen, wenn sie sich unterscheidet
+    if normalized_search_title != movie_title:
+        payloads.append({
             "headers": {"Content-Type": "application/json"},
             "payload": {
                 "queries": [
@@ -1020,14 +1063,13 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
                     }
                 ]
             }
-        },
-        {
+        })
+        payloads.append({
             "headers": {"Content-Type": "application/json"},
             "payload": {
                 "query": normalized_search_title
             }
-        }
-    ]
+        })
     
     results = []
     for payload_entry in payloads:
@@ -1735,12 +1777,11 @@ def download_by_search(
         return (False, None, None)
 
     search_term = search_term.strip()
-    normalized = normalize_search_title(search_term)
     mvw_url = f"https://mediathekviewweb.de/#query={quote(search_term)}"
     logging.info(f"Download per Suchbegriff: '{search_term}' (entspricht Suche: {mvw_url})")
 
     result = search_mediathek(
-        normalized,
+        search_term,
         prefer_language=prefer_language,
         prefer_audio_desc=prefer_audio_desc,
         notify_url=notify_url,
