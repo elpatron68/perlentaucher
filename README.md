@@ -1,13 +1,13 @@
 # Perlentaucher
 
-![Logo](assets/perlerntaucher_512.png)
+Logo
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![Codeberg](https://img.shields.io/badge/Codeberg-Codeberg-blue?logo=codeberg)](https://codeberg.org/elpatron/Perlentaucher)
-[![CI/CD](https://img.shields.io/badge/CI/CD-GitHub%20Actions-blue?logo=github)](https://github.com/elpatron68/perlentaucher/actions)
-[![Code Coverage](https://img.shields.io/badge/coverage-Codecov-blue?logo=codecov)](https://codecov.io/gh/elpatron68/perlentaucher)
-[![Version](https://img.shields.io/badge/version-0.1.27-blue)](https://codeberg.org/elpatron/Perlentaucher/releases)
+[License: MIT](https://opensource.org/licenses/MIT)
+[Python 3.9+](https://www.python.org/downloads/)
+[Codeberg](https://codeberg.org/elpatron/Perlentaucher)
+[CI/CD](https://github.com/elpatron68/perlentaucher/actions)
+[Code Coverage](https://codecov.io/gh/elpatron68/perlentaucher)
+[Version](https://codeberg.org/elpatron/Perlentaucher/releases)
 
 Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/) parst, bei [MediathekViewWeb](https://mediathekviewweb.de) sucht und die beste Qualität herunterlädt.
 
@@ -73,15 +73,15 @@ Eine ausführliche Anleitung findest du in der [Quickstart-Dokumentation](docs/q
 1. Installiere Python 3.x.
 2. Klone oder lade das Repository herunter. Du kannst auch ein [Release von Codeberg herunterladen](https://codeberg.org/elpatron/Perlentaucher/releases).
 3. Erstelle eine virtuelle Umgebung (optional aber empfohlen):
-   ```bash
+  ```bash
    python -m venv .venv
    source .venv/bin/activate  # Linux/Mac
    .\.venv\Scripts\activate   # Windows
-   ```
+  ```
 4. Installiere die Abhängigkeiten:
-   ```bash
+  ```bash
    pip install -r requirements.txt
-   ```
+  ```
 
 ## Nutzung
 
@@ -100,6 +100,7 @@ python src/perlentaucher_gui.py
 Eine ausführliche Anleitung zur GUI findest du in der [GUI-Dokumentation](docs/gui.md).
 
 **Als Executable:**
+
 - Windows: `scripts\build_gui_windows.bat`
 - Linux: `./scripts/build_gui_linux.sh`
 - macOS: `./scripts/build_gui_macos.sh`
@@ -132,71 +133,85 @@ python src/perlentaucher.py [Optionen]
 ### Beispiele
 
 Film per Suchbegriff herunterladen (ohne RSS-Feed):
+
 ```bash
 python src/perlentaucher.py --search "The Quiet Girl" --download-dir ./Filme
 ```
 
 Nur suchen, nicht herunterladen (Debug mit Suchbegriff):
+
 ```bash
 python src/perlentaucher.py --search "The Quiet Girl" --debug-no-download
 ```
 
 Die letzten 3 Filme suchen und in den Ordner `Filme` herunterladen:
+
 ```bash
 python src/perlentaucher.py --download-dir ./Filme --limit 3
 ```
 
 Nur deutsche Fassungen ohne Audiodeskription bevorzugen:
+
 ```bash
 python src/perlentaucher.py --sprache deutsch --audiodeskription ohne
 ```
 
 Englische Originalfassungen bevorzugen:
+
 ```bash
 python src/perlentaucher.py --sprache englisch
 ```
 
 Mit Benachrichtigungen (z.B. Discord Webhook):
+
 ```bash
 python src/perlentaucher.py --notify "discord://webhook_id/webhook_token"
 ```
 
 Mit Email-Benachrichtigungen:
+
 ```bash
 python src/perlentaucher.py --notify "mailto://user:password@smtp.example.com"
 ```
 
 Mit Metadata Provider-Integration (TMDB):
+
 ```bash
 python src/perlentaucher.py --tmdb-api-key "dein_tmdb_api_key"
 ```
 
 Mit Metadata Provider-Integration (OMDB):
+
 ```bash
 python src/perlentaucher.py --omdb-api-key "dein_omdb_api_key"
 ```
 
 Mit beiden Metadata Providern:
+
 ```bash
 python src/perlentaucher.py --tmdb-api-key "dein_tmdb_api_key" --omdb-api-key "dein_omdb_api_key"
 ```
 
 Serien-Downloads (nur erste Episode):
+
 ```bash
 python src/perlentaucher.py --serien-download erste --serien-dir ./Serien
 ```
 
 Serien-Downloads (gesamte Staffel):
+
 ```bash
 python src/perlentaucher.py --serien-download staffel --serien-dir ./Serien
 ```
 
 Serien überspringen:
+
 ```bash
 python src/perlentaucher.py --serien-download keine
 ```
 
 Debug-Modus (kein Download, nur Feed/Suche/Matches):
+
 ```bash
 python src/perlentaucher.py --debug-no-download
 ```
@@ -206,23 +221,27 @@ python src/perlentaucher.py --debug-no-download
 Das Script generiert Dateinamen im Format, das von Jellyfin und Plex automatisch erkannt wird:
 
 **Filme:**
+
 - **Mit Jahr und Provider-ID**: `Movie Name (2022) [tmdbid-123456].mp4`
 - **Nur mit Jahr**: `Movie Name (2022).mp4`
 - **Nur mit Provider-ID**: `Movie Name [imdbid-tt1234567].mp4`
 - **Ohne Metadata**: `Movie Name.mp4` (Fallback)
 
 **Serien:**
+
 - **Mit Episode-Info**: `[serien-dir]/[Titel] (Jahr)/[Titel] (Jahr) - S01E01 [tmdbid-123456].mp4`
 - **Beispiel**: `./Serien/Twin Peaks (1992)/Twin Peaks (1992) - S01E01 [tmdbid-1923].mp4`
 
 Das Jahr wird automatisch aus dem RSS-Feed-Titel extrahiert. Wenn API-Keys für TMDB oder OMDB angegeben werden, werden zusätzlich Metadata Provider IDs hinzugefügt, um die Film- und Serien-Erkennung zu verbessern.
 
 **Serien-Erkennung:**
+
 - Automatische Erkennung über RSS-Feed-Kategorie "TV-Serien"
 - Zusätzliche Prüfung über TMDB/OMDB Provider-IDs (wenn API-Keys vorhanden)
 - Titel-Muster-Erkennung als Fallback
 
 **API-Keys beschaffen:**
+
 - **TMDB**: Registriere dich auf [themoviedb.org](https://www.themoviedb.org/) und erstelle einen API-Key unter [Settings > API](https://www.themoviedb.org/settings/api)
 - **OMDb**: Registriere dich auf [omdbapi.com](http://www.omdbapi.com/) und erstelle einen API-Key unter [API Key](http://www.omdbapi.com/apikey.aspx)
 
@@ -235,9 +254,10 @@ Das Script unterstützt Benachrichtigungen via [Apprise](https://github.com/caro
 - **Nicht gefundene Filme/Serien**: Benachrichtigung wenn ein Film oder eine Serie nicht in der Mediathek gefunden wurde
 - **Staffel-Downloads**: Benachrichtigung mit Anzahl der heruntergeladenen Episoden und Fortschritt
 
-<img src="assets/perlentaucher-ntfy.png" alt="Screenshot ntfy-Benachrichtigungen" width="25%">
+
 
 Unterstützte Dienste (Beispiele):
+
 - Email: `mailto://user:pass@smtp.example.com`
 - Discord: `discord://webhook_id/webhook_token`
 - Telegram: `tgram://bot_token/chat_id`
@@ -254,4 +274,5 @@ Eine detaillierte Anleitung zur Docker-Nutzung findest du in der [Docker-Dokumen
 Informationen zur CI/CD-Pipeline und deren Einrichtung findest du in der [CI/CD-Dokumentation](docs/cicd.md).
 
 ## Lizenz
+
 [MIT](LICENSE)

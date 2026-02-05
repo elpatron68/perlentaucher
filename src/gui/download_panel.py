@@ -107,6 +107,8 @@ class DownloadPanel(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._on_table_context_menu)
+        # Doppelklick auf eine Zeile öffnet bei erfolgreichem Download ebenfalls den Ordner
+        self.table.itemDoubleClicked.connect(self._on_table_item_double_clicked)
         
         layout.addWidget(self.table, stretch=1)  # Stretch-Faktor für vertikale Skalierung
         
@@ -136,8 +138,51 @@ class DownloadPanel(QWidget):
         open_folder_action = menu.addAction("Ordner öffnen")
         open_folder_action.setEnabled(bool(filepath))
         if filepath:
-            open_folder_action.triggered.connect(lambda: self._open_folder_for_file(filepath))
+            # Pfad lokal binden, damit das Lambda beim Ausführen den richtigen Wert hat
+            path_for_action = filepath
+            open_folder_action.triggered.connect(lambda _, p=path_for_action: self._open_folder_for_file(p))
         menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _on_table_item_double_clicked(self, item: QTableWidgetItem):
+        """
+        Öffnet bei Doppelklick auf eine Zeile (falls vorhanden) den Ordner des
+        erfolgreich heruntergeladenen Inhalts.
+        """
+        try:
+            row = item.row()
+            title_item = self.table.item(row, 0)
+            filepath = getattr(title_item, "_filepath", None) if title_item else None
+            if filepath:
+                self._open_folder_for_file(filepath)
+        except Exception as e:
+            logging.warning(f"Fehler bei Doppelklick-Aktion 'Ordner öffnen': {e}")
+
+    def open_selected_download_folder(self):
+        """
+        Öffnet den Ordner des aktuell ausgewählten Downloads (für Menü-Aktion im Hauptfenster).
+        Zeigt eine verständliche Meldung, wenn kein geeigneter Eintrag ausgewählt ist.
+        """
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.warning(
+                self,
+                "Kein Download ausgewählt",
+                "Bitte wählen Sie zuerst einen Download in der Tabelle aus.",
+            )
+            return
+
+        title_item = self.table.item(row, 0)
+        filepath = getattr(title_item, "_filepath", None) if title_item else None
+
+        if not filepath:
+            QMessageBox.information(
+                self,
+                "Kein Ordner verfügbar",
+                "Für diesen Eintrag ist kein heruntergeladener Dateipfad verfügbar.",
+            )
+            return
+
+        self._open_folder_for_file(filepath)
 
     def _open_folder_for_file(self, filepath: str):
         """Öffnet den Ordner der Datei im systemeigenen Dateimanager (plattformunabhängig)."""

@@ -138,6 +138,12 @@ class MainWindow(QMainWindow):
         cancel_action.triggered.connect(self._cancel_all_downloads)
         download_menu.addAction(cancel_action)
         
+        # Ordner des ausgewählten Downloads öffnen
+        open_folder_action = QAction("Ordner des ausgewählten Downloads öffnen", self)
+        open_folder_action.triggered.connect(self._open_selected_download_folder)
+        download_menu.addAction(open_folder_action)
+        self._open_download_folder_action = open_folder_action
+        
         # Hilfe-Menü
         help_menu = menubar.addMenu("Hilfe")
         
@@ -213,6 +219,16 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex(1)
         
         self.status_bar.showMessage(f"{len(selected_entries)} Download(s) gestartet.", 3000)
+
+    def _open_selected_download_folder(self):
+        """
+        Öffnet den Ordner des ausgewählten Downloads im Download-Tab.
+        Delegiert an das DownloadPanel, das die Validierung übernimmt.
+        """
+        # Auf den Download-Tab wechseln, damit der Nutzer den Kontext sieht
+        self.tabs.setCurrentIndex(1)
+        # DownloadPanel kümmert sich um Auswahlprüfung und Fehlermeldungen
+        self.download_panel.open_selected_download_folder()
 
     def _on_search_download_requested(self, search_term: str):
         """Startet einen Download per Suchbegriff (synthetischer Eintrag, gleiche Tabelle/Log)."""
