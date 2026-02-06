@@ -178,16 +178,18 @@ def normalize_search_title(title: str) -> str:
     Konvertiert z.B. 'Dalíland' zu 'Daliland' für bessere Suche in MediathekViewWeb.
     
     Behandelt:
-    - Akzente/Diakritika (í → i, é → e, etc.)
+    - Akzente/Diakritika (í → i, é → e, etc.), aber NICHT deutsche Umlaute (ä, ö, ü, ß)
     - Typografische Anführungszeichen („ " → ", ' → ')
     - Em/En-Dashes (— → -, – → -)
     - Andere häufige typografische Sonderzeichen
+    
+    Deutsche Umlaute bleiben erhalten, da MediathekViewWeb mit Original-Umlauten indexiert.
     
     Args:
         title: Der Filmtitel mit möglichen Sonderzeichen
     
     Returns:
-        Normalisierter Titel mit ASCII-kompatiblen Zeichen
+        Normalisierter Titel (deutsche Umlaute unverändert)
     """
     if not title:
         return title
@@ -245,20 +247,14 @@ def normalize_search_title(title: str) -> str:
     for old_char, new_char in char_mapping.items():
         normalized = normalized.replace(old_char, new_char)
     
-    # Schritt 4: Spezielle Behandlung für deutsche Umlaute und ß
-    # Damit Suchbegriffe wie "Verführung" zu "Verfuehrung" werden (statt "Verfuhrung"),
-    # was typischer für manuelle Eingaben und viele Suchindizes ist.
-    umlaut_mapping = {
-        'ä': 'ae',
-        'ö': 'oe',
-        'ü': 'ue',
-        'Ä': 'Ae',
-        'Ö': 'Oe',
-        'Ü': 'Ue',
-        'ß': 'ss',
-    }
-    for old_char, new_char in umlaut_mapping.items():
-        normalized = normalized.replace(old_char, new_char)
+    # Schritt 4: Deutsche Umlaute (ä, ö, ü, ß) vor NFKD schützen – bleiben unverändert
+    # MediathekViewWeb indexiert mit Original-Umlauten, daher keine ae/oe/ue-Normalisierung
+    umlaut_chars = ('ä', 'ö', 'ü', 'Ä', 'Ö', 'Ü', 'ß')
+    placeholders = {}
+    for i, c in enumerate(umlaut_chars):
+        ph = chr(0x01 + i)  # ASCII-kompatible Platzhalter (überleben encode('ascii'))
+        placeholders[ph] = c
+        normalized = normalized.replace(c, ph)
     
     # Schritt 5: Normalisiere zu NFKD (Normalization Form Compatibility Decomposition)
     # Das trennt Zeichen wie í in i + Akut
@@ -271,12 +267,18 @@ def normalize_search_title(title: str) -> str:
     # Schritt 7: Finale ASCII-Konvertierung
     try:
         result = normalized.encode('ascii', 'ignore').decode('ascii')
+        # Deutsche Umlaute wiederherstellen (Placeholder → Original)
+        for ph, c in placeholders.items():
+            result = result.replace(ph, c)
         # Entferne überflüssige Leerzeichen (mehrfache Leerzeichen zu einem)
         result = ' '.join(result.split())
         return result
     except (UnicodeEncodeError, UnicodeDecodeError):
         # Falls das fehlschlägt, gib den normalisierten String zurück (bereinigt)
-        return ' '.join(normalized.split())
+        out = ' '.join(normalized.split())
+        for ph, c in placeholders.items():
+            out = out.replace(ph, c)
+        return out
 
 def extract_year_from_title(title: str) -> Optional[int]:
     """

@@ -48,11 +48,11 @@ class TestNormalizeSearchTitle:
     """Tests für Titel-Normalisierung für Suchanfragen."""
     
     def test_normalize_accents(self):
-        """Test: Normalisierung von Akzenten/Diakritika."""
+        """Test: Normalisierung von Akzenten/Diakritika (deutsche Umlaute bleiben erhalten)."""
         test_cases = [
             ('Dalíland', 'Daliland'),
             ('Café', 'Cafe'),
-            ('Müller', 'Muller'),
+            ('Müller', 'Müller'),  # deutsche Umlaute werden nicht normalisiert
             ('Zoë', 'Zoe'),
             ('José', 'Jose'),
         ]
@@ -101,7 +101,7 @@ class TestNormalizeSearchTitle:
         test_cases = [
             ('Film  mit    mehreren    Spaces', 'Film mit mehreren Spaces'),
             ('Film\tmit\tTabs', 'Film mit Tabs'),  # Tabs werden zu Leerzeichen
-            (' Film mit führendem Leerzeichen', 'Film mit fuhrendem Leerzeichen'),  # führende/trailing Spaces werden entfernt
+            (' Film mit führendem Leerzeichen', 'Film mit führendem Leerzeichen'),  # Umlaute bleiben, Spaces bereinigt
         ]
         
         for input_title, expected in test_cases:
@@ -114,6 +114,12 @@ class TestNormalizeSearchTitle:
         assert core.normalize_search_title('') == ''
         assert core.normalize_search_title('Simple Title') == 'Simple Title'
         assert core.normalize_search_title('Film 2023') == 'Film 2023'
+    
+    def test_normalize_preserves_german_umlauts(self):
+        """Test: Deutsche Umlaute bleiben erhalten (MediathekViewWeb-Suche)."""
+        assert core.normalize_search_title('Requiem für Selina') == 'Requiem für Selina'
+        assert core.normalize_search_title('Größe') == 'Größe'
+        assert core.normalize_search_title('Schläge') == 'Schläge'
     
     def test_normalize_preserves_ascii(self):
         """Test: ASCII-Zeichen bleiben unverändert."""

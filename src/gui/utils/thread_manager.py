@@ -294,11 +294,13 @@ class DownloadThread(QThread):
             
             # Sortiere Episoden nach Staffel/Episode und dedupliziere (wie in CLI)
             # Verwende Dictionary um nur die beste Version jeder Episode zu behalten
-            episodes_dict = {}  # Key: (season, episode), Value: episode_data
+            episodes_dict = {}  # Key: (season, episode), Value: (score, episode_data)
+            episodes_without_info = []  # Episoden ohne erkennbare S/E – Fallback-Nummer vergeben
             
             for episode_data in episodes:
                 season, episode_num = core.extract_episode_info(episode_data, series_title)
                 if season is None or episode_num is None:
+                    episodes_without_info.append(episode_data)
                     continue
                 
                 # Bewerte Episode (score_movie gibt einen Score zurück)
@@ -317,12 +319,30 @@ class DownloadThread(QThread):
                 
                 episode_key = (season, episode_num)
                 # Behalte nur die Episode mit dem höchsten Score
-                if episode_key not in episodes_dict:
+                if episode_key not in episodes_dict or score > episodes_dict[episode_key][0]:
                     episodes_dict[episode_key] = (score, episode_data)
-                else:
-                    existing_score, _ = episodes_dict[episode_key]
-                    if score > existing_score:
-                        episodes_dict[episode_key] = (score, episode_data)
+            
+            # Fallback: Episoden ohne S/E nicht verwerfen – als Staffel 1 fortlaufend nummerieren (wie CLI)
+            if episodes_without_info:
+                max_ep_s1 = max((e for (s, e) in episodes_dict if s == 1), default=0)
+                for i, episode_data in enumerate(episodes_without_info):
+                    fallback_ep = max_ep_s1 + 1 + i
+                    try:
+                        score = core.score_movie(
+                            episode_data,
+                            self.config.get('sprache', 'deutsch'),
+                            self.config.get('audiodeskription', 'egal'),
+                            search_title=series_title,
+                            search_year=year,
+                            metadata=metadata
+                        )
+                    except Exception as e:
+                        logging.debug(f"Fehler beim Bewerten einer Episode: {e}")
+                        score = 0
+                    key = (1, fallback_ep)
+                    if key not in episodes_dict or score > episodes_dict[key][0]:
+                        episodes_dict[key] = (score, episode_data)
+                logging.info(f"{len(episodes_without_info)} Episoden ohne Staffel/Episode-Info als S01E{max_ep_s1 + 1}+ nummeriert")
             
             # Konvertiere Dictionary zu Liste und sortiere
             episodes_with_info = [(s, e, data) for (s, e), (score, data) in episodes_dict.items()]
