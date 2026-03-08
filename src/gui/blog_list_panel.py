@@ -161,9 +161,9 @@ class BlogListPanel(QWidget):
         
         # Tabelle
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels([
-            "Auswählen", "Titel", "Filmtitel/Serie", "Jahr", "Typ", "Status", "Link"
+            "Auswählen", "Titel", "Erscheinungsdatum", "Filmtitel/Serie", "Jahr", "Typ", "Status", "Link"
         ])
         
         # Stelle sicher, dass die Tabelle vertikal skalierbar ist
@@ -173,11 +173,12 @@ class BlogListPanel(QWidget):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)  # Checkbox
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Titel
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)  # Filmtitel
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Jahr
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Typ
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # Status
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # Link
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Erscheinungsdatum
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # Filmtitel
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Jahr
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # Typ
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # Status
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)  # Link
         
         self.table.setColumnWidth(0, 80)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -561,6 +562,17 @@ class BlogListPanel(QWidget):
             
             entry_link = get_entry_attr(entry, 'link', '')
             
+            # Erscheinungsdatum des Blogposts formatieren
+            published = get_entry_attr(entry, 'published_parsed') or get_entry_attr(entry, 'updated_parsed')
+            published_date_str = ''
+            if published:
+                try:
+                    from time import mktime
+                    published_dt = datetime.fromtimestamp(mktime(published))
+                    published_date_str = published_dt.strftime('%d.%m.%Y')
+                except (ValueError, TypeError, OSError):
+                    pass
+            
             # Überspringe Duplikate wenn append=True
             if entry_id in existing_entry_ids:
                 continue
@@ -570,6 +582,7 @@ class BlogListPanel(QWidget):
                 'entry': entry,  # Speichere original entry für später
                 'entry_link': entry_link,
                 'rss_title': title,
+                'published_date_str': published_date_str,
                 'movie_title': movie_title,
                 'year': year,
                 'is_processed': is_processed,
@@ -635,24 +648,29 @@ class BlogListPanel(QWidget):
             title_item.setToolTip("Doppelklick zum Öffnen des Blog-Posts im Browser")
             self.table.setItem(row, 1, title_item)
             
+            # Erscheinungsdatum
+            date_item = QTableWidgetItem(entry_data.get('published_date_str', ''))
+            date_item.setToolTip("Doppelklick zum Öffnen des Blog-Posts im Browser")
+            self.table.setItem(row, 2, date_item)
+            
             # Filmtitel
             movie_title = entry_data.get('movie_title', 'Nicht extrahiert')
             movie_item = QTableWidgetItem(movie_title if movie_title else 'Nicht extrahiert')
             movie_item.setToolTip("Doppelklick zum Öffnen des Blog-Posts im Browser")
             if not movie_title:
                 movie_item.setForeground(Qt.GlobalColor.red)
-            self.table.setItem(row, 2, movie_item)
+            self.table.setItem(row, 3, movie_item)
             
             # Jahr
             year = entry_data.get('year')
             year_item = QTableWidgetItem(str(year) if year else '')
             year_item.setToolTip("Doppelklick zum Öffnen des Blog-Posts im Browser")
-            self.table.setItem(row, 3, year_item)
+            self.table.setItem(row, 4, year_item)
             
             # Typ
             type_item = QTableWidgetItem("Serie" if entry_data.get('is_series') else "Film")
             type_item.setToolTip("Doppelklick zum Öffnen des Blog-Posts im Browser")
-            self.table.setItem(row, 4, type_item)
+            self.table.setItem(row, 5, type_item)
             
             # Status
             status_item = QTableWidgetItem(entry_data['status'])
@@ -661,13 +679,13 @@ class BlogListPanel(QWidget):
                 status_item.setForeground(Qt.GlobalColor.green)
             elif '✗' in entry_data['status']:
                 status_item.setForeground(Qt.GlobalColor.red)
-            self.table.setItem(row, 5, status_item)
+            self.table.setItem(row, 6, status_item)
             
             # Link
             link = entry_data.get('entry_link', '')
             link_item = QTableWidgetItem(link[:50] + '...' if len(link) > 50 else link)
             link_item.setToolTip("Doppelklick zum Öffnen des Blog-Posts im Browser")
-            self.table.setItem(row, 6, link_item)
+            self.table.setItem(row, 7, link_item)
             
             # Speichere Entry-Daten in der Zeile
             self.table.item(row, 1).setData(Qt.ItemDataRole.UserRole, entry_data)
@@ -737,7 +755,7 @@ class BlogListPanel(QWidget):
             if title_item:
                 entry_data = title_item.data(Qt.ItemDataRole.UserRole)
                 if entry_data and entry_data['entry_id'] == entry_id:
-                    status_item = self.table.item(row, 5)
+                    status_item = self.table.item(row, 6)
                     if status_item:
                         status_item.setText(status)
                         if '✓' in status:
