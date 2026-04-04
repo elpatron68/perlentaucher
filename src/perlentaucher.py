@@ -9,7 +9,7 @@ import json
 import semver
 import unicodedata
 from datetime import datetime
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, List
 from urllib.parse import quote
 
 try:
@@ -279,6 +279,126 @@ def normalize_search_title(title: str) -> str:
         for ph, c in placeholders.items():
             out = out.replace(ph, c)
         return out
+
+# Führende Artikel (nominativ/akkusativ/dativ/genitiv, unbestimmt) für Mediathek-Suche ohne Artikel
+_GERMAN_LEADING_ARTICLES = frozenset({
+    "der", "die", "das", "den", "dem", "des",
+    "ein", "eine", "einer", "einem", "einen", "eines",
+})
+# Nach Artikel-Stripping: Rest darf nicht mit Präposition o. Ä. beginnen (z. B. „Der mit dem Wolf tanzt“)
+_NO_ARTICLE_STRIP_IF_REMAINDER_STARTS_WITH = frozenset({
+    "mit", "in", "auf", "von", "zu", "bei", "nach", "vor", "über", "unter",
+    "und", "oder", "für", "aus", "an", "am", "im", "zum", "zur", "vom", "beim",
+    "ins", "ans", "durch", "gegen", "ohne", "um", "bis", "wie", "als",
+})
+
+
+def strip_leading_german_article(title: str) -> Optional[str]:
+    """
+    Entfernt einen führenden deutscher Artikel, wenn der verbleibende Titel plausibel ist.
+
+    Die Mediathek indexiert Filme oft ohne Artikel („Schachnovelle“), Blogs nennen sie mit
+    („Die Schachnovelle“). Titel wie „Der mit dem Wolf tanzt“ werden nicht gekürzt, weil der
+    Rest mit einer Präposition beginnt.
+    """
+    if not title:
+        return None
+    parts = title.strip().split()
+    if len(parts) < 2:
+        return None
+    if parts[0].lower() not in _GERMAN_LEADING_ARTICLES:
+        return None
+    remainder = " ".join(parts[1:]).strip()
+    if not remainder:
+        return None
+    first = remainder.split()[0].lower()
+    if first in _NO_ARTICLE_STRIP_IF_REMAINDER_STARTS_WITH:
+        return None
+    return remainder
+
+
+def mediathek_movie_search_terms(movie_title: str) -> List[str]:
+    """
+    Reihenfolge der Suchbegriffe für MediathekViewWeb: Original, Normalisierung, ohne Artikel.
+    Duplikate werden ausgelassen.
+    """
+    seen = set()
+    out: List[str] = []
+    base = (movie_title or "").strip()
+    if not base:
+        return out
+
+    def add(s: str) -> None:
+        s = s.strip()
+        if s and s not in seen:
+            seen.add(s)
+            out.append(s)
+
+    add(base)
+    norm = normalize_search_title(base)
+    add(norm)
+    stripped = strip_leading_german_article(base)
+    if stripped:
+        add(stripped)
+        add(normalize_search_title(stripped))
+    return out
+
+
+def _fetch_mvw_api_movie_results(search_term: str) -> list:
+    """
+    Fragt die MediathekViewWeb-API mit einem Suchbegriff ab (Feldsuche + einfache query,
+    optional normalisierte Variante). Gibt die erste nicht-leere Ergebnisliste zurück.
+    """
+    normalized_search_title = normalize_search_title(search_term)
+    payloads = []
+    payloads.append({
+        "headers": {"Content-Type": "application/json"},
+        "payload": {
+            "queries": [
+                {"fields": ["title"], "query": search_term}
+            ]
+        }
+    })
+    payloads.append({
+        "headers": {"Content-Type": "application/json"},
+        "payload": {"query": search_term}
+    })
+    if normalized_search_title != search_term:
+        payloads.append({
+            "headers": {"Content-Type": "application/json"},
+            "payload": {
+                "queries": [
+                    {"fields": ["title"], "query": normalized_search_title}
+                ]
+            }
+        })
+        payloads.append({
+            "headers": {"Content-Type": "application/json"},
+            "payload": {"query": normalized_search_title}
+        })
+
+    results = []
+    for payload_entry in payloads:
+        try:
+            payload = payload_entry.get("payload", {})
+            headers = payload_entry.get("headers", {"Content-Type": "application/json"})
+            response = requests.post(MVW_API_URL, json=payload, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            results = data.get("result", {}).get("results", [])
+            if results:
+                logging.debug(
+                    f"MediathekViewWeb-API: {len(results)} Treffer für Suchbegriff '{search_term}'"
+                )
+                break
+        except requests.RequestException as e:
+            logging.debug(f"Fehler mit Payload-Format, versuche nächstes: {e}")
+            continue
+        except (KeyError, ValueError, TypeError) as e:
+            logging.debug(f"Ungültige Antwort, versuche nächstes Format: {e}")
+            continue
+    return results
+
 
 def extract_year_from_title(title: str) -> Optional[int]:
     """
@@ -1019,187 +1139,152 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         year: Optional - Das Jahr des Films (für bessere Matching)
         metadata: Optional - Dictionary mit 'provider_id' (tmdbid-XXX oder imdbid-XXX) für exaktes Matching
     """
-    # Normalisiere Suchbegriff (entfernt Sonderzeichen/Akzente für bessere Suche),
-    # verwende aber sowohl Originaltitel (inkl. Umlaute) als auch normalisierte Form.
-    normalized_search_title = normalize_search_title(movie_title)
-    if normalized_search_title != movie_title:
-        logging.debug(f"Suchbegriff normalisiert: '{movie_title}' → '{normalized_search_title}'")
-        log_search_display = f"{movie_title}' (normalisiert: '{normalized_search_title}"
-    else:
-        log_search_display = movie_title
-    
-    logging.info(f"Suche in MediathekViewWeb nach: '{log_search_display}'")
-    # Verwende zuerst den Originaltitel (wie die Web-Oberfläche #query=...),
-    # danach die normalisierte Form als Fallback.
-    payloads = []
-    
-    # 1. Originaltitel – Feld-basierte Suche
-    payloads.append({
-        "headers": {"Content-Type": "application/json"},
-        "payload": {
-            "queries": [
-                {
-                    "fields": ["title"],
-                    "query": movie_title
-                }
-            ]
-        }
-    })
-    # 2. Originaltitel – einfache Query
-    payloads.append({
-        "headers": {"Content-Type": "application/json"},
-        "payload": {
-            "query": movie_title
-        }
-    })
-    
-    # 3./4. Normalisierte Form nur hinzufügen, wenn sie sich unterscheidet
-    if normalized_search_title != movie_title:
-        payloads.append({
-            "headers": {"Content-Type": "application/json"},
-            "payload": {
-                "queries": [
-                    {
-                        "fields": ["title"],
-                        "query": normalized_search_title
-                    }
-                ]
-            }
-        })
-        payloads.append({
-            "headers": {"Content-Type": "application/json"},
-            "payload": {
-                "query": normalized_search_title
-            }
-        })
-    
-    results = []
-    for payload_entry in payloads:
-        try:
-            payload = payload_entry.get("payload", {})
-            headers = payload_entry.get("headers", {"Content-Type": "application/json"})
-            response = requests.post(MVW_API_URL, json=payload, headers=headers, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            
-            results = data.get("result", {}).get("results", [])
-            
-            if results:
-                # Entferne Relevanz-Filterung komplett: Lasse Scoring-Funktion alle Bewertungen übernehmen
-                # Die Scoring-Funktion ist bereits sehr gut und kann irrelevante Ergebnisse herausfiltern
-                # Die Relevanz-Filterung hat den Nachteil, dass sie exakte Matches herausfiltern kann
-                # wenn die Wort-Erkennung oder Normalisierung nicht perfekt funktioniert
-                logging.info(f"Gefunden: {len(results)} Ergebnisse für '{movie_title}', lasse Scoring-Funktion bewerten")
-                # Verwende alle Ergebnisse, Scoring-Funktion filtert dann
-                break
-        except requests.RequestException as e:
-            # Bei Fehler, versuche nächstes Format
-            logging.debug(f"Fehler mit Payload-Format, versuche nächstes: {e}")
+    search_terms = mediathek_movie_search_terms(movie_title)
+    if not search_terms:
+        logging.warning("Mediathek-Suche: leerer Titel")
+        return None
+
+    logging.info(
+        f"Suche in MediathekViewWeb nach Film '{movie_title}' "
+        f"(Suchvarianten: {', '.join(repr(t) for t in search_terms)})"
+    )
+
+    MIN_TITLE_SIMILARITY_FOR_SCORING = 0.1
+    MIN_TITLE_SIMILARITY = 0.2
+    any_api_hits = False
+    last_low_sim_match = None  # (titel, ähnlichkeit) für Abschluss-Log
+
+    for api_term in search_terms:
+        results = _fetch_mvw_api_movie_results(api_term)
+        if not results:
             continue
-        except (KeyError, ValueError, TypeError) as e:
-            # Bei JSON-Fehler, versuche nächstes Format
-            logging.debug(f"Ungültige Antwort, versuche nächstes Format: {e}")
+        any_api_hits = True
+        logging.info(
+            f"Gefunden: {len(results)} API-Ergebnisse für Suchbegriff '{api_term}' "
+            f"(Anfrage-Titel: '{movie_title}'), Scoring …"
+        )
+
+        scored_results = []
+        filtered_count = 0
+        for result in results:
+            try:
+                result_title = result.get("title", "")
+                title_similarity = calculate_title_similarity(movie_title, result_title)
+
+                normalized_search = movie_title.lower().strip()
+                normalized_result = result_title.lower().strip()
+                title_contained = normalized_search in normalized_result or normalized_result in normalized_search
+
+                if title_similarity < MIN_TITLE_SIMILARITY_FOR_SCORING and not title_contained:
+                    logging.debug(
+                        f"Überspringe Ergebnis mit zu niedriger Titel-Ähnlichkeit ({title_similarity:.2f}): "
+                        f"'{result_title}'"
+                    )
+                    filtered_count += 1
+                    continue
+
+                score = score_movie(
+                    result, prefer_language, prefer_audio_desc,
+                    search_title=movie_title, search_year=year, metadata=metadata
+                )
+                scored_results.append((score, result))
+                logging.debug(
+                    f"Bewertet: '{result_title}' - Ähnlichkeit: {title_similarity:.2f}, Score: {score:.1f}"
+                )
+            except Exception as e:
+                logging.debug(f"Fehler beim Bewerten eines Ergebnisses für '{movie_title}': {e}")
+                continue
+
+        if filtered_count > 0:
+            logging.debug(
+                f"{filtered_count} Ergebnisse wegen zu niedriger Titel-Ähnlichkeit herausgefiltert "
+                f"(Suchbegriff '{api_term}')"
+            )
+
+        if not scored_results:
+            logging.debug(f"Keine verwertbaren Treffer nach Scoring für Suchbegriff '{api_term}', nächste Variante …")
             continue
-    
-    if not results:
-        logging.warning(f"Keine Ergebnisse gefunden für '{movie_title}'")
-        # Benachrichtigung für keine Ergebnisse
+
+        scored_results.sort(key=lambda x: x[0], reverse=True)
+
+        if debug:
+            _log_scored_matches(scored_results, movie_title, limit=10, label="Matches")
+
+        best_match = scored_results[0][1]
+        best_score = scored_results[0][0]
+        best_title = best_match.get("title", "")
+        title_similarity = calculate_title_similarity(movie_title, best_title)
+
+        if title_similarity < MIN_TITLE_SIMILARITY:
+            last_low_sim_match = (best_title, title_similarity)
+            logging.debug(
+                f"Beste Übereinstimmung für '{api_term}' zu schwach "
+                f"(Ähnlichkeit {title_similarity:.2f} < {MIN_TITLE_SIMILARITY}): '{best_title}' — nächste Variante …"
+            )
+            continue
+
+        if api_term.strip() != (movie_title or "").strip():
+            logging.info(
+                f"Treffer mit alternativem Suchbegriff '{api_term}' für angefragten Titel '{movie_title}'"
+            )
+
+        language = detect_language(best_match)
+        has_ad = has_audio_description(best_match)
+        size = best_match.get("size") or 0
+        size_mb = size / (1024 * 1024) if size else 0
+
+        logging.info(
+            f"Beste Übereinstimmung gefunden: '{best_match.get('title')}' "
+            f"({size_mb:.1f} MB, "
+            f"Sprache: {language}, "
+            f"AD: {'ja' if has_ad else 'nein'}, "
+            f"Score: {best_score:.1f}, "
+            f"Titel-Ähnlichkeit: {title_similarity:.2f})"
+        )
+        return best_match
+
+    # Alle Varianten ohne brauchbaren Treffer
+    variants_hint = ", ".join(repr(t) for t in search_terms)
+    if not any_api_hits:
+        logging.warning(f"Keine API-Ergebnisse für '{movie_title}' (Suchvarianten: {variants_hint})")
         if notify_url and APPRISE_AVAILABLE:
-            body = f"Keine Ergebnisse in der Mediathek gefunden:\n\n"
+            body = "Keine Ergebnisse in der Mediathek gefunden:\n\n"
             body += f"📽️ {movie_title}\n"
+            body += f"ℹ️ Versuchte Suchbegriffe: {variants_hint}\n"
             if entry_link:
                 body += f"\n🔗 Blog-Eintrag: {entry_link}"
             send_notification(notify_url, "Film nicht gefunden", body, "warning")
         return None
-    
-    # Bewerte alle Ergebnisse, aber filtere zuerst Ergebnisse mit sehr niedriger Titel-Ähnlichkeit heraus
-    # Dies verhindert, dass irrelevante Ergebnisse durch andere Faktoren (z.B. Dateigröße) bevorzugt werden
-    MIN_TITLE_SIMILARITY_FOR_SCORING = 0.1  # Mindest-Titel-Ähnlichkeit für Bewertung
-    scored_results = []
-    filtered_count = 0
-    for result in results:
-        try:
-            result_title = result.get("title", "")
-            title_similarity = calculate_title_similarity(movie_title, result_title)
-            
-            # Überspringe Ergebnisse mit sehr niedriger Titel-Ähnlichkeit
-            # ABER: Wenn der Suchtitel im Ergebnis-Titel enthalten ist, akzeptiere es trotzdem
-            # (für Fälle wie "Swiss Army Man" in "Swiss Army Man (2016)")
-            normalized_search = movie_title.lower().strip()
-            normalized_result = result_title.lower().strip()
-            title_contained = normalized_search in normalized_result or normalized_result in normalized_search
-            
-            if title_similarity < MIN_TITLE_SIMILARITY_FOR_SCORING and not title_contained:
-                logging.debug(f"Überspringe Ergebnis mit zu niedriger Titel-Ähnlichkeit ({title_similarity:.2f}): '{result_title}'")
-                filtered_count += 1
-                continue
-            
-            score = score_movie(result, prefer_language, prefer_audio_desc, 
-                              search_title=movie_title, search_year=year, metadata=metadata)
-            scored_results.append((score, result))
-            logging.debug(f"Bewertet: '{result_title}' - Ähnlichkeit: {title_similarity:.2f}, Score: {score:.1f}")
-        except Exception as e:
-            logging.debug(f"Fehler beim Bewerten eines Ergebnisses für '{movie_title}': {e}")
-            continue
-    
-    if filtered_count > 0:
-        logging.debug(f"{filtered_count} Ergebnisse wurden wegen zu niedriger Titel-Ähnlichkeit herausgefiltert")
-    
-    if not scored_results:
-        logging.warning(f"Keine gültigen Ergebnisse für '{movie_title}' gefunden")
-        # Benachrichtigung für erfolglose Suche
+
+    if last_low_sim_match:
+        bt, tsim = last_low_sim_match
+        logging.warning(
+            f"Keine relevante Übereinstimmung für '{movie_title}': bester Kandidat '{bt}' "
+            f"(Ähnlichkeit {tsim:.2f}). Suchvarianten: {variants_hint}"
+        )
         if notify_url and APPRISE_AVAILABLE:
-            body = f"Keine gültigen Ergebnisse für Film gefunden:\n\n"
-            body += f"📽️ {movie_title}\n"
-            body += f"ℹ️ Es wurden Ergebnisse gefunden, aber keine konnten verarbeitet werden.\n"
-            if entry_link:
-                body += f"\n🔗 Blog-Eintrag: {entry_link}"
-            send_notification(notify_url, "Suche erfolglos", body, "warning")
-        return None
-    
-    # Sortiere nach Punktzahl (höchste zuerst)
-    scored_results.sort(key=lambda x: x[0], reverse=True)
-    
-    if debug:
-        _log_scored_matches(scored_results, movie_title, limit=10, label="Matches")
-    
-    best_match = scored_results[0][1]
-    best_score = scored_results[0][0]
-    
-    # Berechne die Titel-Ähnlichkeit separat für die Mindest-Schwelle
-    best_title = best_match.get("title", "")
-    title_similarity = calculate_title_similarity(movie_title, best_title)
-    
-    # Mindest-Schwelle: Wenn die Titel-Ähnlichkeit zu niedrig ist (< 0.2), 
-    # ist das Ergebnis wahrscheinlich nicht relevant
-    MIN_TITLE_SIMILARITY = 0.2
-    if title_similarity < MIN_TITLE_SIMILARITY:
-        logging.warning(f"Beste Übereinstimmung hat zu niedrige Titel-Ähnlichkeit "
-                       f"({title_similarity:.2f} < {MIN_TITLE_SIMILARITY}): "
-                       f"'{best_match.get('title')}' für Suche nach '{movie_title}'")
-        if notify_url and APPRISE_AVAILABLE:
-            body = f"Keine relevante Übereinstimmung gefunden:\n\n"
+            body = "Keine relevante Übereinstimmung gefunden:\n\n"
             body += f"📽️ Gesucht: {movie_title}\n"
-            body += f"❌ Gefunden: {best_match.get('title')}\n"
-            body += f"ℹ️ Titel-Ähnlichkeit zu niedrig ({title_similarity:.2f})\n"
+            body += f"❌ Bester Kandidat: {bt}\n"
+            body += f"ℹ️ Titel-Ähnlichkeit zu niedrig ({tsim:.2f})\n"
+            body += f"Versuchte Suchbegriffe: {variants_hint}\n"
             if entry_link:
                 body += f"\n🔗 Blog-Eintrag: {entry_link}"
             send_notification(notify_url, "Keine relevante Übereinstimmung", body, "warning")
         return None
-    
-    language = detect_language(best_match)
-    has_ad = has_audio_description(best_match)
-    size = best_match.get("size") or 0
-    size_mb = size / (1024 * 1024) if size else 0
-    
-    logging.info(f"Beste Übereinstimmung gefunden: '{best_match.get('title')}' "
-                f"({size_mb:.1f} MB, "
-                f"Sprache: {language}, "
-                f"AD: {'ja' if has_ad else 'nein'}, "
-                f"Score: {best_score:.1f}, "
-                f"Titel-Ähnlichkeit: {title_similarity:.2f})")
-    
-    return best_match
+
+    logging.warning(
+        f"Keine gültigen Ergebnisse für '{movie_title}' nach Scoring (Suchvarianten: {variants_hint})"
+    )
+    if notify_url and APPRISE_AVAILABLE:
+        body = "Keine gültigen Ergebnisse für Film gefunden:\n\n"
+        body += f"📽️ {movie_title}\n"
+        body += "ℹ️ Die API lieferte Treffer, aber keine erreichten die Titel-Schwelle.\n"
+        body += f"Versuchte Suchbegriffe: {variants_hint}\n"
+        if entry_link:
+            body += f"\n🔗 Blog-Eintrag: {entry_link}"
+        send_notification(notify_url, "Suche erfolglos", body, "warning")
+    return None
 
 def extract_episode_info(movie_data, series_title: str) -> Tuple[Optional[int], Optional[int]]:
     """

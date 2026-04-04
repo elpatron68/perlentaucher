@@ -114,6 +114,24 @@ class TestNormalizeSearchTitle:
         assert core.normalize_search_title('') == ''
         assert core.normalize_search_title('Simple Title') == 'Simple Title'
         assert core.normalize_search_title('Film 2023') == 'Film 2023'
+
+    def test_strip_leading_german_article_mediathek_style(self):
+        """Mediathek oft ohne Artikel, Blog mit Artikel (z. B. Die Schachnovelle)."""
+        assert core.strip_leading_german_article("Die Schachnovelle") == "Schachnovelle"
+        assert core.strip_leading_german_article("Das Leben der Anderen") == "Leben der Anderen"
+
+    def test_strip_leading_german_article_no_false_positive(self):
+        """Titel, bei denen der erste „Artikel“ Teil des Namens ist, nicht kürzen."""
+        assert core.strip_leading_german_article("Der mit dem Wolf tanzt") is None
+        assert core.strip_leading_german_article("Schachnovelle") is None
+        assert core.strip_leading_german_article("Die") is None
+        assert core.strip_leading_german_article("") is None
+
+    def test_mediathek_movie_search_terms_order_and_dedup(self):
+        terms = core.mediathek_movie_search_terms("Die Schachnovelle")
+        assert terms[0] == "Die Schachnovelle"
+        assert "Schachnovelle" in terms
+        assert len(terms) == len(set(terms))
     
     def test_normalize_preserves_german_umlauts(self):
         """Test: Deutsche Umlaute bleiben erhalten (MediathekViewWeb-Suche)."""
@@ -530,7 +548,7 @@ class TestScoreMovie:
             "size": 1000000000
         }
         # Mock detect_language to return "deutsch"
-        with patch('perlentaucher.detect_language', return_value="deutsch"):
+        with patch('src.perlentaucher.detect_language', return_value="deutsch"):
             score_de = core.score_movie(movie_data, "deutsch", "egal", search_title="Film")
             score_en = core.score_movie(movie_data, "englisch", "egal", search_title="Film")
             assert score_de > score_en
