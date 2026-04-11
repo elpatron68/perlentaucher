@@ -880,37 +880,68 @@ def has_audio_description(movie_data):
     text = f"{title} {description} {topic}"
     return any(keyword in text for keyword in audio_desc_keywords)
 
+# Synchron / deutsche Fassung (Substring „deutsch“ in „deutschen Untertiteln“ zählt nicht)
+_GERMAN_SYNC_RE = re.compile(
+    r"\b("
+    r"deutsche?\s+fassung|deutschsprachig|"
+    r"synchron(isiert|fassung)?|sync\.?\s*fassung|"
+    r"dt\.\s*f\b|\bdt\.\s*\(?f\)?|"
+    r"\bgdf\b|\bdf\b"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Originalton / OmU / OmDT / OV … (bei Präferenz „deutsch“ soll die Synchronfassung gewinnen)
+_ORIGINAL_VERSION_RE = re.compile(
+    r"\b("
+    r"omu|omdt|om\.?\s*u\.?|"
+    r"original\s+mit\s+deutschen\s+untertiteln|"
+    r"original\s+mit\s+untertiteln|"
+    r"originalfassung|original\s+version|"
+    r"o\.?\s*v\.?|\bov\b|"
+    r"englisch|english|"
+    r"o[\s-]?ton|originalton"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Wort „Deutsch“ / „dt.“ (nicht Teil von „deutschen“)
+_GERMAN_IMPLICIT_RE = re.compile(r"\b(deutsch|dt\.)\b", re.IGNORECASE)
+
+
 def detect_language(movie_data):
     """Erkennt die Sprache eines Films (deutsch/englisch/unbekannt)."""
     title = movie_data.get("title", "").lower()
     description = movie_data.get("description", "").lower()
     topic = movie_data.get("topic", "").lower()
-    
+
     text = f"{title} {description} {topic}"
-    
-    # Englische Indikatoren
-    english_keywords = [
-        "omdt", "omdt.", "om u", "original mit deutschen untertiteln",
-        "originalfassung", "englisch", "english", "ov ", " o.v.",
-        "original version", "originalfassung"
-    ]
-    
-    # Deutsche Indikatoren (oft implizit, aber manchmal explizit)
-    german_keywords = [
-        "dt.", "deutsch", "df", "deutsche fassung", 
-        "synchronfassung", "synchronisiert"
-    ]
-    
-    has_english = any(keyword in text for keyword in english_keywords)
-    has_german = any(keyword in text for keyword in german_keywords)
-    
-    if has_english and not has_german:
-        return "englisch"
-    elif has_german or (not has_english and not has_german):
-        # Wenn keine explizite Sprache angegeben, annehmen dass es Deutsch ist
+    title_topic = f"{title} {topic}"
+
+    sync = bool(_GERMAN_SYNC_RE.search(text))
+    original = bool(_ORIGINAL_VERSION_RE.search(text))
+
+    if sync and not original:
         return "deutsch"
-    else:
+    if original and not sync:
+        return "englisch"
+    if sync and original:
+        sync_head = bool(_GERMAN_SYNC_RE.search(title_topic))
+        orig_head = bool(_ORIGINAL_VERSION_RE.search(title_topic))
+        if sync_head and not orig_head:
+            return "deutsch"
+        if orig_head and not sync_head:
+            return "englisch"
         return "unbekannt"
+
+    # Ohne klare Sync-/Original-Marker: konservative Substrings (Wortgrenzen beachten)
+    if _GERMAN_IMPLICIT_RE.search(text) and not original:
+        return "deutsch"
+    if original:
+        return "englisch"
+
+    # Keine explizite Sprache: typisch deutschsprachige Mediathek → deutsch
+    return "deutsch"
 
 def get_significant_words(text: str) -> set:
     """
@@ -1164,6 +1195,11 @@ def score_movie(movie_data, prefer_language, prefer_audio_desc, search_title: st
         score += 1000
     elif prefer_language == "egal":
         score += 500  # Neutrale Punktzahl
+    # Sicherheitsnetz: OmU/OV darf bei klarer Gegenpräferenz nicht nur durch Dateigröße gewinnen
+    elif prefer_language == "deutsch" and language == "englisch":
+        score -= 2500
+    elif prefer_language == "englisch" and language == "deutsch":
+        score -= 2500
     
     # Audiodeskription-Präferenz
     has_ad = has_audio_description(movie_data)

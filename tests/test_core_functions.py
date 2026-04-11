@@ -582,6 +582,57 @@ class TestScoreMovie:
         assert isinstance(score, (int, float))
         assert score >= 0
 
+    def test_score_movie_deutsch_prefers_sync_over_omu_same_title(self):
+        """Bei Sprache deutsch muss OmU nicht durch größere Datei gegen Synchron gewinnen."""
+        title = "The Frankenstein Chronicles (1/6)"
+        sync_ep = {
+            "title": title,
+            "topic": "The Frankenstein Chronicles",
+            "description": "Deutsche Fassung.",
+            "size": 1_000_000_000,
+        }
+        omu_ep = {
+            "title": f"{title} (OmU)",
+            "topic": "The Frankenstein Chronicles",
+            "description": "",
+            "size": 5_000_000_000,
+        }
+        score_sync = core.score_movie(sync_ep, "deutsch", "egal", search_title="The Frankenstein Chronicles")
+        score_omu = core.score_movie(omu_ep, "deutsch", "egal", search_title="The Frankenstein Chronicles")
+        assert score_sync > score_omu
+
+
+class TestDetectLanguage:
+    """Erkennung Synchron vs. Original (OmU, OV, …)."""
+
+    def test_omu_in_title_is_english(self):
+        assert core.detect_language({
+            "title": "The Frankenstein Chronicles (1/6) (OmU)",
+            "topic": "",
+            "description": "",
+        }) == "englisch"
+
+    def test_omdt_in_title_is_english(self):
+        assert core.detect_language({
+            "title": "Film (OmDT)",
+            "topic": "",
+            "description": "",
+        }) == "englisch"
+
+    def test_deutsche_fassung_is_german(self):
+        assert core.detect_language({
+            "title": "Serie (1/6)",
+            "topic": "",
+            "description": "Deutsche Fassung.",
+        }) == "deutsch"
+
+    def test_original_mit_deutschen_untertiteln_is_english_track(self):
+        assert core.detect_language({
+            "title": "Episode",
+            "topic": "",
+            "description": "Original mit deutschen Untertiteln.",
+        }) == "englisch"
+
 
 class TestPromotionalAndSeriesMatch:
     """Trailer/Promo-Erkennung und strengeres Serien-Matching."""
