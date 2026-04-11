@@ -402,6 +402,50 @@ class DownloadPanel(QWidget):
         self.start_downloads_btn.setEnabled(False)
         self.cancel_all_btn.setEnabled(True)
     
+    def _log_gui_download_activity(
+        self,
+        entry_id: str,
+        entry_data: Optional[Dict],
+        success: bool,
+        title: str,
+        filepath: str,
+        error: str,
+        skip_state_update: bool,
+    ) -> None:
+        """Schreibt Abschlüsse in die gemeinsame Aktivitätsdatei (Web-UI / CLI)."""
+        config = getattr(self, "_config", {})
+        dd = config.get("download_dir")
+        if not dd:
+            return
+        try:
+            root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            if root_dir not in sys.path:
+                sys.path.insert(0, root_dir)
+            from src.wishlist_activity import log_activity_event
+
+            label = ""
+            if entry_data:
+                label = entry_data.get("movie_title") or entry_data.get("rss_title") or ""
+            if not label:
+                label = title or entry_id
+            if entry_id.startswith("search:"):
+                action = "such_download"
+            elif entry_id.startswith("wishlist_gui:"):
+                action = "wishlist_download"
+            else:
+                action = "feed_download"
+            if skip_state_update:
+                log_activity_event(dd, action, str(label), "Debug: kein echter Download", "info", "gui")
+                return
+            if success:
+                det = (filepath or "").strip() or (title or "")
+                log_activity_event(dd, action, str(label), det, "success", "gui")
+            else:
+                det = (error or "")[:500]
+                log_activity_event(dd, action, str(label), det, "error", "gui")
+        except Exception as e:
+            logging.debug(f"Aktivitätslog (GUI): {e}")
+
     def _on_download_started(self, entry_id: str, title: str):
         """Wird aufgerufen wenn ein Download gestartet wird."""
         if entry_id in self.download_rows:
@@ -539,6 +583,16 @@ class DownloadPanel(QWidget):
                                     self._update_state_file(entry_id, entry_data, 'download_failed', None)
                             except Exception as e:
                                 logging.warning(f"Fehler beim Aktualisieren der State-Datei: {e}")
+            
+            self._log_gui_download_activity(
+                entry_id,
+                entry_data,
+                success,
+                title,
+                filepath,
+                error or "",
+                skip_state_update,
+            )
             
             # Update Progress Bar
             progress_bar = self.table.cellWidget(row, 1)

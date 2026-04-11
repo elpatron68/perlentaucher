@@ -62,6 +62,7 @@ def test_build_process_args_from_env(monkeypatch, tmp_path):
     assert a.serien_dir == dd
     assert a.no_state is True
     assert a.state_file == str(tmp_path / "st.json")
+    assert a.activity_source == "web"
 
 
 def test_api_get_items_empty(tmp_path):
@@ -173,3 +174,48 @@ def test_index_returns_html(tmp_path):
     assert r.status_code == 200
     assert "text/html" in r.headers.get("content-type", "")
     assert "Wunschliste" in r.text
+    assert "Verlauf" in r.text
+
+
+def test_api_history_empty(tmp_path):
+    wl = str(tmp_path / "wl.json")
+    save_wishlist(wl, {"version": 1, "items": []})
+    hist = str(tmp_path / "act.json")
+    app = create_app(wl, _factory(tmp_path), token=None, activity_path=hist)
+    client = TestClient(app)
+    r = client.get("/api/history")
+    assert r.status_code == 200
+    assert r.json() == {"entries": []}
+
+
+def test_api_history_clear(tmp_path):
+    wl = str(tmp_path / "wl.json")
+    save_wishlist(wl, {"version": 1, "items": []})
+    hist = str(tmp_path / "act.json")
+    app = create_app(wl, _factory(tmp_path), token=None, activity_path=hist)
+    client = TestClient(app)
+    from src.wishlist_activity import append_activity
+
+    append_activity(hist, "pruefen", "x", "y", "info")
+    assert len(client.get("/api/history").json()["entries"]) == 1
+    assert client.delete("/api/history").status_code == 200
+    assert client.get("/api/history").json()["entries"] == []
+
+
+def test_post_item_writes_activity_log(tmp_path, monkeypatch):
+    from src import wishlist_web as ww
+
+    wl = str(tmp_path / "wl.json")
+    save_wishlist(wl, {"version": 1, "items": []})
+    hist = str(tmp_path / "act.json")
+    monkeypatch.setattr(ww, "probe_wishlist_item", lambda *a, **k: {"status": "not_found"})
+    app = create_app(wl, _factory(tmp_path), token=None, activity_path=hist)
+    client = TestClient(app)
+    r = client.post("/api/items", json={"title": "LogTest", "year": None, "kind": "movie", "note": ""})
+    assert r.status_code == 200
+    entries = client.get("/api/history").json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["action"] == "hinzufuegen"
+    assert entries[0]["label"] == "LogTest"
+    assert entries[0]["level"] == "warning"
+    assert entries[0]["source"] == "web"

@@ -21,6 +21,13 @@ try:
 except ImportError:
     FastAPI = None  # type: ignore
 
+from src.wishlist_activity import (
+    append_activity,
+    clear_activity,
+    list_activity,
+    resolve_activity_path,
+    summarize_probe_for_log,
+)
 from src.wishlist_core import (
     WishlistItem,
     WishlistKind,
@@ -64,6 +71,7 @@ def build_process_args_from_env(download_dir: Optional[str] = None) -> Any:
     a.serien_dir = os.environ.get("SERIEN_DIR")
     a.no_state = os.environ.get("NO_STATE", "").lower() in ("1", "true", "yes")
     a.state_file = os.environ.get("STATE_FILE", ".perlentaucher_state.json")
+    a.activity_source = "web"
     return a
 
 
@@ -92,6 +100,14 @@ INDEX_HTML = """<!DOCTYPE html>
     }
     .msg { margin-top: 1rem; padding: 0.75rem; border-radius: 6px; background: #24283b; white-space: pre-wrap; }
     a { color: #7dcfff; }
+    .badge { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .lvl-info { background: #414868; color: #c0caf5; }
+    .lvl-success { background: #1f3d2f; color: #9ece6a; }
+    .lvl-warning { background: #4a3f2a; color: #e0af68; }
+    .lvl-error { background: #4a2a2a; color: #f7768e; }
+    #history-wrap { margin-top: 2.5rem; }
+    #history-wrap table { font-size: 0.85rem; }
+    #history-wrap td.detail { color: #a9b1d6; max-width: 22rem; word-break: break-word; }
   </style>
 </head>
 <body>
@@ -117,6 +133,14 @@ INDEX_HTML = """<!DOCTYPE html>
   <button type="button" id="process">Verarbeiten (Download)</button>
   <table><thead><tr><th>Titel</th><th>Jahr</th><th>Typ</th><th class="col-actions" aria-label="Aktionen"></th></tr></thead><tbody id="rows"></tbody></table>
 
+  <div id="history-wrap">
+    <h2>Verlauf</h2>
+    <p style="font-size:0.9rem;color:#a9b1d6;">Gemeinsame Aktivitätsdatei mit CLI und GUI (RSS-Feed, Suche, Wishlist, Downloads). Web-Aktionen sind als Quelle „Web“ erkennbar.</p>
+    <button type="button" class="secondary" id="reloadHist">Verlauf aktualisieren</button>
+    <button type="button" class="secondary" id="clearHist">Verlauf leeren</button>
+    <table><thead><tr><th>Zeit (UTC)</th><th>Quelle</th><th>Art</th><th>Betreff</th><th>Details</th><th>Stufe</th></tr></thead><tbody id="histRows"></tbody></table>
+  </div>
+
   <script>
     const api = (path, opt) => fetch(path, opt).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); });
     function show(m, err) {
@@ -140,10 +164,32 @@ INDEX_HTML = """<!DOCTYPE html>
         await api('/api/items/'+b.dataset.id, { method: 'DELETE' });
         show('Eintrag entfernt.');
         loadRows();
+        loadHistory();
       });
     }
     function escapeHtml(s) {
       const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+    }
+    const actionLabel = { hinzufuegen: 'Eintrag & Probe', download: 'Download', pruefen: 'Prüfen', verarbeiten: 'Verarbeiten', entfernen: 'Entfernt',
+      wishlist_download: 'Wishlist-Download', wishlist_stapel: 'Wishlist Stapel', wishlist_add: 'Wishlist +', wishlist_remove: 'Wishlist −',
+      feed_download: 'RSS-Feed', such_download: 'Suche' };
+    const sourceLabel = { cli: 'CLI', web: 'Web', gui: 'GUI', feed: 'RSS', search: 'Suche' };
+    function badgeClass(lvl) {
+      const m = { info: 'lvl-info', success: 'lvl-success', warning: 'lvl-warning', error: 'lvl-error' };
+      return m[lvl] || 'lvl-info';
+    }
+    async function loadHistory() {
+      const data = await api('/api/history?limit=50');
+      const tb = document.getElementById('histRows');
+      tb.innerHTML = '';
+      for (const e of data.entries || []) {
+        const tr = document.createElement('tr');
+        const ts = (e.ts || '').replace('T', ' ').replace('+00:00', ' UTC');
+        const al = actionLabel[e.action] || e.action;
+        const src = sourceLabel[e.source] || (e.source || '—');
+        tr.innerHTML = '<td>'+escapeHtml(ts)+'</td><td>'+escapeHtml(src)+'</td><td>'+escapeHtml(al)+'</td><td>'+escapeHtml(e.label||'')+'</td><td class="detail">'+escapeHtml(e.detail||'')+'</td><td><span class="badge '+badgeClass(e.level)+'">'+(e.level||'info')+'</span></td>';
+        tb.appendChild(tr);
+      }
     }
     async function offerDownloadAfterProbe(item, probe) {
       const msg = document.getElementById('msg');
@@ -170,6 +216,7 @@ INDEX_HTML = """<!DOCTYPE html>
             body: JSON.stringify({ candidate_index: 0 })
           });
           show('Download: ' + (r.ok ? 'OK (' + r.code + ')' : 'Fehler (' + r.code + ')'), r.ok ? false : true);
+          loadHistory();
         } catch (e) { show(String(e), true); }
         return;
       }
@@ -204,6 +251,7 @@ INDEX_HTML = """<!DOCTYPE html>
           });
           show('Ergebnis: ' + r.code + (r.ok ? ' — bei Erfolg wurde der Eintrag entfernt.' : ''), r.ok ? false : true);
           loadRows();
+          loadHistory();
         } catch (e) { show(String(e), true); }
       };
       const btnSkip = document.createElement('button');
@@ -230,6 +278,7 @@ INDEX_HTML = """<!DOCTYPE html>
         show(String(err), true);
       }
       loadRows();
+      loadHistory();
     };
     document.getElementById('reload').onclick = () => loadRows();
     document.getElementById('check').onclick = async () => {
@@ -260,6 +309,7 @@ INDEX_HTML = """<!DOCTYPE html>
         show('Prüfung fehlgeschlagen: ' + e, true);
       } finally {
         btn.disabled = false;
+        loadHistory();
       }
     };
     document.getElementById('process').onclick = async () => {
@@ -267,9 +317,17 @@ INDEX_HTML = """<!DOCTYPE html>
         const r = await api('/api/process', { method: 'POST' });
         show('Verarbeitet: ' + r.processed + ', erfolgreich: ' + r.successes);
         loadRows();
+        loadHistory();
       } catch (e) { show(String(e), true); }
     };
+    document.getElementById('reloadHist').onclick = () => loadHistory();
+    document.getElementById('clearHist').onclick = async () => {
+      if (!confirm('Gesamten Verlauf unwiderruflich leeren?')) return;
+      await api('/api/history', { method: 'DELETE' });
+      loadHistory();
+    };
     loadRows();
+    loadHistory();
   </script>
 </body>
 </html>
@@ -280,11 +338,22 @@ def create_app(
     wishlist_path: str,
     process_args_factory,
     token: Optional[str] = None,
+    activity_path: Optional[str] = None,
 ) -> "FastAPI":
     if FastAPI is None:
         raise RuntimeError("FastAPI und Uvicorn müssen installiert sein: pip install fastapi uvicorn[standard]")
 
     app = FastAPI(title="Perlentaucher Wishlist", version="1.0")
+
+    if activity_path:
+        _hist = activity_path
+    else:
+        try:
+            _a = process_args_factory()
+            _dd = getattr(_a, "download_dir", None) or os.getcwd()
+        except Exception:
+            _dd = os.getcwd()
+        _hist = resolve_activity_path(_dd)
 
     def _auth(request: Request) -> None:
         if not token:
@@ -324,6 +393,8 @@ def create_app(
             tmdb_api_key=getattr(args, "tmdb_api_key", None),
             omdb_api_key=getattr(args, "omdb_api_key", None),
         )
+        summ, lvl = summarize_probe_for_log(probe)
+        append_activity(_hist, "hinzufuegen", item.title, summ, lvl, "web")
         return {"item": item.to_dict(), "probe": probe}
 
     @app.post("/api/items/{item_id}/download")
@@ -335,6 +406,8 @@ def create_app(
             data = {}
         ci = int(data.get("candidate_index", 0))
         args = process_args_factory()
+        wl_items = list_items(wishlist_path)
+        title_dl = next((i.title for i in wl_items if i.id == item_id), item_id)
         ok, code = process_one_wishlist_item(
             wishlist_path,
             item_id,
@@ -347,8 +420,13 @@ def create_app(
     @app.delete("/api/items/{item_id}")
     async def del_item(request: Request, item_id: str):
         _auth(request)
+        wl_items = list_items(wishlist_path)
+        title_rm = next((i.title for i in wl_items if i.id == item_id), None)
+        if title_rm is None:
+            raise HTTPException(404, "not found")
         if not remove_item(wishlist_path, item_id):
             raise HTTPException(404, "not found")
+        append_activity(_hist, "entfernen", title_rm, "Manuell aus der Liste entfernt", "info", "web")
         return {"ok": True}
 
     @app.post("/api/check")
@@ -363,9 +441,16 @@ def create_app(
             tmdb_api_key=getattr(args, "tmdb_api_key", None),
             omdb_api_key=getattr(args, "omdb_api_key", None),
         )
+        n = len(avail)
+        detail = f"{n} von {total} Titel(n) auffindbar"
+        if n and n <= 5:
+            detail += ": " + ", ".join(x.title for x in avail)
+        elif n > 5:
+            detail += ": " + ", ".join(x.title for x in avail[:3]) + ", …"
+        append_activity(_hist, "pruefen", f"Wishlist ({total} Einträge)", detail, "info", "web")
         return {
             "total": total,
-            "available_count": len(avail),
+            "available_count": n,
             "available": [a.to_dict() for a in avail],
         }
 
@@ -374,7 +459,20 @@ def create_app(
         _auth(request)
         args = process_args_factory()
         processed, successes = process_wishlist_items(wishlist_path, args, remove_on_success=True)
+        if processed == 0:
+            append_activity(_hist, "verarbeiten", "Wishlist leer oder keine Aktion", "", "info", "web")
         return {"processed": processed, "successes": successes}
+
+    @app.get("/api/history")
+    async def get_history(request: Request, limit: int = 50):
+        _auth(request)
+        return {"entries": list_activity(_hist, limit=limit)}
+
+    @app.delete("/api/history")
+    async def delete_history(request: Request):
+        _auth(request)
+        clear_activity(_hist)
+        return {"ok": True}
 
     return app
 
@@ -386,6 +484,7 @@ def run_server(
     download_dir: Optional[str] = None,
     token: Optional[str] = None,
     cli_args: Optional[Any] = None,
+    activity_path: Optional[str] = None,
 ) -> None:
     if FastAPI is None:
         print("Bitte installieren: pip install fastapi uvicorn[standard]", file=sys.stderr)
@@ -399,7 +498,7 @@ def run_server(
             return cli_args
         return build_process_args_from_env(dd)
 
-    app = create_app(wl, factory, token=token)
+    app = create_app(wl, factory, token=token, activity_path=activity_path)
     logging.info(f"Wishlist-Web-UI: http://{host}:{port}/  (Wishlist: {wl})")
     uvicorn.run(app, host=host, port=port, log_level="info")
 

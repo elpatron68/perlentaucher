@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 # Kernlogik aus perlentaucher (lazy würde Zyklen erzeugen — direkter Import)
 from src import perlentaucher as core
+from src.wishlist_activity import Level, log_activity_event, log_wishlist_item_result
 
 WishlistKind = Literal["movie", "series"]
 
@@ -381,6 +382,13 @@ def process_one_wishlist_item(
     data = load_wishlist(path)
     raw_item = next((x for x in data.get("items", []) if x.get("id") == item_id), None)
     if not raw_item:
+        log_wishlist_item_result(
+            getattr(args, "download_dir", None),
+            item_id,
+            False,
+            "not_found_item",
+            getattr(args, "activity_source", "cli"),
+        )
         return False, "not_found_item"
     item = WishlistItem.from_dict(raw_item)
     metadata = _metadata_for_item(
@@ -392,6 +400,13 @@ def process_one_wishlist_item(
     serien_mode = getattr(args, "serien_download", "erste")
 
     if item.kind == "series" and serien_mode == "keine":
+        log_wishlist_item_result(
+            getattr(args, "download_dir", None),
+            item.title,
+            False,
+            "serien_skipped",
+            getattr(args, "activity_source", "cli"),
+        )
         return False, "serien_skipped"
 
     if item.kind == "series" and serien_mode == "staffel":
@@ -408,6 +423,13 @@ def process_one_wishlist_item(
             limit=8,
         )
         if not cands:
+            log_wishlist_item_result(
+                getattr(args, "download_dir", None),
+                item.title,
+                False,
+                "not_found",
+                getattr(args, "activity_source", "cli"),
+            )
             return False, "not_found"
         ci = max(0, min(int(candidate_index), len(cands) - 1))
         ok, code = _process_series_erste_with_result(
@@ -423,6 +445,13 @@ def process_one_wishlist_item(
             limit=8,
         )
         if not cands:
+            log_wishlist_item_result(
+                getattr(args, "download_dir", None),
+                item.title,
+                False,
+                "not_found",
+                getattr(args, "activity_source", "cli"),
+            )
             return False, "not_found"
         ci = max(0, min(int(candidate_index), len(cands) - 1))
         ok, code = _process_movie_with_result(
@@ -431,6 +460,13 @@ def process_one_wishlist_item(
 
     if ok and code == "success" and remove_on_success:
         remove_item(path, item_id)
+    log_wishlist_item_result(
+        getattr(args, "download_dir", None),
+        item.title,
+        ok,
+        code,
+        getattr(args, "activity_source", "cli"),
+    )
     return ok, code
 
 
@@ -704,4 +740,10 @@ def process_wishlist_items(
 
     data["items"] = remaining
     save_wishlist(path, data)
+    if processed > 0:
+        src = getattr(args, "activity_source", "cli")
+        dd = getattr(args, "download_dir", None)
+        det = f"{successes} von {processed} mit erfolgreichem Download abgeschlossen"
+        lvl: Level = "success" if processed == successes else "warning"
+        log_activity_event(dd, "wishlist_stapel", "Stapel-Verarbeitung", det, lvl, src)
     return processed, successes

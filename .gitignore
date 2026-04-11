@@ -5,6 +5,8 @@ downloads/
 *.pyc
 .perlentaucher_state.json
 .perlentaucher_wishlist.json
+.perlentaucher_wishlist_activity.json
+.perlentaucher_activity.json
 .notizen.txt
 run_perlentaucher.sh
 run_perlentaucher.bat

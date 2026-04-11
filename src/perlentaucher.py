@@ -29,6 +29,8 @@ try:
 except ImportError:
     __version__ = "unknown"
 
+from src.wishlist_activity import log_activity_event
+
 # Configuration
 RSS_FEED_URL = "https://nexxtpress.de/author/mediathekperlen/feed/"
 MVW_API_URL = "https://mediathekviewweb.de/api/query"
@@ -2278,7 +2280,8 @@ def main():
                        help="Port für Wishlist-Web-UI (Default: 8765 oder WISHLIST_WEB_PORT)")
     
     args = parser.parse_args()
-    
+    args.activity_source = "cli"
+
     # Unterstützung für Umgebungsvariablen
     args.tmdb_api_key = args.tmdb_api_key or os.environ.get('TMDB_API_KEY')
     args.omdb_api_key = args.omdb_api_key or os.environ.get('OMDB_API_KEY')
@@ -2326,6 +2329,7 @@ def main():
             else int(os.environ.get("WISHLIST_WEB_PORT", "8765"))
         )
         token = os.environ.get("WISHLIST_WEB_TOKEN")
+        args.activity_source = "web"
         from src.wishlist_web import run_server
         run_server(
             host=host,
@@ -2354,6 +2358,14 @@ def main():
             args.wishlist_kind,
         )
         logging.info(f"Wishlist: hinzugefügt {item.id} — {item.title} ({item.kind})")
+        log_activity_event(
+            args.download_dir,
+            "wishlist_add",
+            item.title,
+            f"Kind: {item.kind}, ID {item.id}",
+            "info",
+            "cli",
+        )
         sys.exit(0)
 
     if args.wishlist_remove:
@@ -2362,6 +2374,7 @@ def main():
             logging.error("Wishlist: ID nicht gefunden.")
             sys.exit(1)
         logging.info("Wishlist: Eintrag entfernt.")
+        log_activity_event(args.download_dir, "wishlist_remove", args.wishlist_remove.strip(), "", "info", "cli")
         sys.exit(0)
 
     if args.wishlist_process:
@@ -2393,8 +2406,24 @@ def main():
         )
         if success:
             logging.info(f"Download per Suchbegriff abgeschlossen: {title} -> {filepath}")
+            log_activity_event(
+                args.download_dir,
+                "such_download",
+                args.search,
+                f"→ {filepath}" if filepath else "",
+                "success",
+                "search",
+            )
         else:
             logging.warning("Download per Suchbegriff: Film nicht gefunden oder Fehler.")
+            log_activity_event(
+                args.download_dir,
+                "such_download",
+                args.search,
+                "Kein Treffer oder Fehler",
+                "warning",
+                "search",
+            )
         sys.exit(0 if success else 1)
 
     movies, new_entries = parse_rss_feed(args.limit, state_file=state_file)
@@ -2461,10 +2490,26 @@ def main():
                         logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}' (Status: {status})")
                     # RSS-Feed: keine separaten Erfolgs-/Fehler-Pushes (notify_source=feed in download_content:
                     # nur Benachrichtigung bei „Datei bereits vorhanden“).
+                    log_activity_event(
+                        args.download_dir,
+                        "feed_download",
+                        movie_title,
+                        f"Serie (erste Folge): {'OK' if success else 'Fehler'} — {title or ''}",
+                        "success" if success else "error",
+                        "feed",
+                    )
                 else:
                     logging.warning(f"Überspringe Serie '{movie_title}' - nicht in der Mediathek gefunden.")
                     if state_file:
                         save_processed_entry(state_file, entry_id, status='not_found', movie_title=movie_title, is_series=True)
+                    log_activity_event(
+                        args.download_dir,
+                        "feed_download",
+                        movie_title,
+                        "Serie: nicht in Mediathek",
+                        "warning",
+                        "feed",
+                    )
                     continue
             elif args.serien_download == "staffel":
                 # Lade alle Episoden der Staffel
@@ -2606,12 +2651,28 @@ def main():
                         save_processed_entry(state_file, entry_id, status=status, movie_title=movie_title, 
                                             is_series=True, episodes=episodes_list)
                     # RSS-Feed: keine Staffel-Zusammenfassung per Push (nur „bereits vorhanden“ pro Episode in download_content).
-
+                    st_lvl = "success" if downloaded_count > 0 else "error"
+                    log_activity_event(
+                        args.download_dir,
+                        "feed_download",
+                        movie_title,
+                        f"Staffel: {downloaded_count}/{total_episodes} Episoden OK, {failed_count} fehlgeschlagen",
+                        st_lvl,
+                        "feed",
+                    )
                     continue
                 else:
                     # Keine Episoden gefunden
                     if state_file:
                         save_processed_entry(state_file, entry_id, status='not_found', movie_title=movie_title, is_series=True)
+                    log_activity_event(
+                        args.download_dir,
+                        "feed_download",
+                        movie_title,
+                        "Staffel: keine Episoden gefunden",
+                        "warning",
+                        "feed",
+                    )
                     continue
         else:
             # Normale Film-Verarbeitung
@@ -2644,6 +2705,14 @@ def main():
                     logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}' (Status: {status})")
                 # RSS-Feed: keine separaten Erfolgs-/Fehler-Pushes (notify_source=feed in download_content:
                 # nur Benachrichtigung bei „Datei bereits vorhanden“).
+                log_activity_event(
+                    args.download_dir,
+                    "feed_download",
+                    movie_title,
+                    f"Film: {'OK' if success else 'Fehler'} — {title or ''}",
+                    "success" if success else "error",
+                    "feed",
+                )
             else:
                 logging.warning(f"Überspringe '{movie_title}' - nicht in der Mediathek gefunden.")
                 # Auch nicht gefundene Filme als verarbeitet markieren, damit sie nicht immer wieder versucht werden
@@ -2651,6 +2720,14 @@ def main():
                     save_processed_entry(state_file, entry_id, status='not_found', movie_title=movie_title)
                     logging.debug(f"Eintrag als verarbeitet markiert (Film nicht gefunden): '{entry.title}'")
                 # Hinweis: Benachrichtigung wird bereits in search_mediathek() gesendet
+                log_activity_event(
+                    args.download_dir,
+                    "feed_download",
+                    movie_title,
+                    "Film: nicht in Mediathek",
+                    "warning",
+                    "feed",
+                )
 
 if __name__ == "__main__":
     main()
