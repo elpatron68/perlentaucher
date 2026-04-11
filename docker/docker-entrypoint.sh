@@ -180,6 +180,8 @@ while true; do
     EXIT_CODE=$?
 
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Wishlist-Verarbeitung..."
+    # Exit-Code erfassen, ohne set -e zu triggern (Schleife soll weiterlaufen)
+    WISHLIST_EXIT=0
     python src/perlentaucher.py \
         --wishlist-process \
         --wishlist-file "${WISHLIST_FILE}" \
@@ -193,12 +195,16 @@ while true; do
         ${OMDB_API_KEY_ARGS} \
         ${SERIEN_DOWNLOAD_ARGS} \
         ${SERIEN_DIR_ARGS} \
-        || true
-    
-    if [ $EXIT_CODE -eq 0 ]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - Download-Zyklus erfolgreich abgeschlossen."
+        || WISHLIST_EXIT=$?
+
+    if [ $EXIT_CODE -ne 0 ] && [ $WISHLIST_EXIT -ne 0 ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Download-Zyklus mit Fehler beendet (RSS: $EXIT_CODE, Wishlist: $WISHLIST_EXIT)."
+    elif [ $EXIT_CODE -ne 0 ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Download-Zyklus mit Fehler beendet (RSS-Teil, Exit-Code: $EXIT_CODE)."
+    elif [ $WISHLIST_EXIT -ne 0 ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - RSS-Zyklus ok, Wishlist-Verarbeitung fehlgeschlagen (Exit-Code: $WISHLIST_EXIT)."
     else
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - Download-Zyklus mit Fehler beendet (Exit-Code: $EXIT_CODE)."
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Download-Zyklus erfolgreich abgeschlossen."
     fi
     
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Warte ${INTERVAL_HOURS} Stunden bis zum nächsten Zyklus..."
