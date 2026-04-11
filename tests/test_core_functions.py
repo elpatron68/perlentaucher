@@ -498,6 +498,31 @@ class TestEpisodeInfo:
         assert season is None
         assert episode is None
 
+    def test_extract_episode_info_s02_e01_before_feed_counter(self):
+        """(S02/E01) gewinnt vor Reihenfolge (1/6) — sonst fälschlich S01E01."""
+        movie_data = {
+            "title": "Folge 1: Auferstehung (S02/E01) (1/6)",
+            "topic": "The Frankenstein Chronicles",
+            "description": "Langer Text mit (1/6) und Zitaten.",
+        }
+        season, episode = core.extract_episode_info(
+            movie_data, "The Frankenstein Chronicles"
+        )
+        assert season == 2
+        assert episode == 1
+
+    def test_extract_episode_info_s_slash_e_in_topic(self):
+        """Staffel/Episode nur im Topic (z. B. API-Lieferung)."""
+        movie_data = {
+            "title": "The Frankenstein Chronicles (1/6)",
+            "topic": "The Frankenstein Chronicles (S02/E03)",
+        }
+        season, episode = core.extract_episode_info(
+            movie_data, "The Frankenstein Chronicles"
+        )
+        assert season == 2
+        assert episode == 3
+
 
 class TestEpisodeFilename:
     """Tests für Episoden-Dateinamen-Formatierung."""

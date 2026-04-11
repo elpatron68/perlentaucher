@@ -1459,9 +1459,29 @@ def extract_episode_info(movie_data, series_title: str) -> Tuple[Optional[int], 
     title = movie_data.get("title", "")
     topic = movie_data.get("topic", "")
     description = movie_data.get("description", "")
-    
+    title_topic = f"{title} {topic}".strip()
     text = f"{title} {topic} {description}"
-    
+
+    # Explizite Staffel/Episode (z. B. ONE/ARD „(S02/E01)“) vor Reihenfolge-Zähler „(1/6)“
+    # und vor „Folge n“ (sonst oft fälschlich S01). Nur Titel/Topic, nicht Beschreibung.
+    for chunk in (title, title_topic):
+        if not chunk:
+            continue
+        m_paren = re.search(r"\([Ss](\d+)\s*/\s*[Ee](\d+)\)", chunk)
+        if m_paren:
+            season, episode = int(m_paren.group(1)), int(m_paren.group(2))
+            logging.debug(
+                f"Episoden-Info gefunden (Sxx/Eyy in Klammern): S{season:02d}E{episode:02d}"
+            )
+            return (season, episode)
+        m_plain = re.search(r"[Ss](\d+)\s*/\s*[Ee](\d+)", chunk)
+        if m_plain:
+            season, episode = int(m_plain.group(1)), int(m_plain.group(2))
+            logging.debug(
+                f"Episoden-Info gefunden (Sxx/Eyy explizit Titel/Topic): S{season:02d}E{episode:02d}"
+            )
+            return (season, episode)
+
     # Früh prüfen: (X/Y) im Titel – typisch für Feeds (z. B. "Bad Banks (1/6) - ...")
     # So wird nicht versehentlich SxxExx aus der Beschreibung genommen
     title_xy = re.search(r'\((\d+)/\d+\)', title)
@@ -1472,8 +1492,8 @@ def extract_episode_info(movie_data, series_title: str) -> Tuple[Optional[int], 
         logging.debug(f"Episoden-Info gefunden (Titel X/Y): S{season:02d}E{episode:02d}")
         return (season, episode)
     
-    # Pattern 1: S01E01, S1E1, S 01 E 01
-    pattern1 = re.search(r'[Ss](\d+)[\s]*[Ee](\d+)', text)
+    # Pattern 1: S01E01, S1E1, S 01 E 01, S02/E01 (Schrägstrich wie bei Sendern in Klammern)
+    pattern1 = re.search(r'[Ss](\d+)[\s/]*[Ee](\d+)', text)
     if pattern1:
         season = int(pattern1.group(1))
         episode = int(pattern1.group(2))
@@ -1529,7 +1549,6 @@ def extract_episode_info(movie_data, series_title: str) -> Tuple[Optional[int], 
     
     # Pattern 6: Nur Episode-Nummer in Klammern (X/Y) ohne Staffel-Info – nur Titel/Topic,
     # damit (1/6) o. Ä. aus der Beschreibung keine falsche Episodennummer erzeugt.
-    title_topic = f"{title} {topic}"
     pattern6 = re.search(r'\((\d+)/\d+\)', title_topic)
     if pattern6:
         episode = int(pattern6.group(1))
