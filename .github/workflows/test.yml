@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [ main, master ]
 
+# Neuere Action-Versionen nutzen Node.js 24 (statt deprecated Node 20 auf den Runnern).
+# Self-hosted: GitHub Actions Runner >= 2.327.1 erforderlich (siehe actions/checkout v5).
 jobs:
   test:
     # WICHTIG: Du musst einen Runner mit dem Label "self-hosted" oder "linux" registrieren
@@ -16,10 +18,10 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v5
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
 
