@@ -581,3 +581,64 @@ class TestScoreMovie:
         score = core.score_movie(movie_data, "deutsch", "egal", search_title="Film", metadata=metadata)
         assert isinstance(score, (int, float))
         assert score >= 0
+
+
+class TestPromotionalAndSeriesMatch:
+    """Trailer/Promo-Erkennung und strengeres Serien-Matching."""
+
+    def test_is_promotional_trailer_in_title(self):
+        assert core.is_promotional_or_non_episode(
+            {"title": "The Veil - Trailer", "topic": "ZDF", "description": ""}
+        )
+
+    def test_is_promotional_teaser_in_topic(self):
+        assert core.is_promotional_or_non_episode(
+            {"title": "Some Show", "topic": "Staffel 2 Teaser", "description": ""}
+        )
+
+    def test_is_promotional_false_for_episode(self):
+        assert not core.is_promotional_or_non_episode(
+            {"title": "The Veil (1/6)", "topic": "The Veil", "description": "Drama-Serie."}
+        )
+
+    def test_series_match_title_or_topic(self):
+        assert core.series_mediathek_result_matches(
+            "The Veil",
+            core.normalize_search_title("The Veil"),
+            "The Veil (1/6)",
+            "The Veil",
+            "",
+        )
+
+    def test_series_match_description_only_low_title_similarity_rejected(self):
+        """Substring in Beschreibung reicht nicht ohne passenden Listings-Titel."""
+        assert not core.series_mediathek_result_matches(
+            "The Veil",
+            core.normalize_search_title("The Veil"),
+            "Nachrichten",
+            "ZDFinfo",
+            "Hinweis: Lesen Sie mehr zu The Veil und anderen Serien.",
+        )
+
+    def test_series_match_description_only_with_strong_title_ok(self):
+        assert core.series_mediathek_result_matches(
+            "The Veil",
+            core.normalize_search_title("The Veil"),
+            "The Veil",
+            "Sendung",
+            "Kurzinfo nur in der Beschreibung, Titel aber identisch.",
+        )
+
+
+class TestEpisodeInfoPattern6:
+    """Pattern (X/Y) nur aus Titel/Topic, nicht aus Beschreibung."""
+
+    def test_xy_in_description_does_not_set_episode(self):
+        movie_data = {
+            "title": "Anderes Format",
+            "topic": "Show",
+            "description": "Thema The Veil (1/2) im Gespräch.",
+        }
+        season, episode = core.extract_episode_info(movie_data, "The Veil")
+        assert season is None
+        assert episode is None

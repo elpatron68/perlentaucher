@@ -996,6 +996,81 @@ def calculate_title_similarity(search_title: str, result_title: str) -> float:
     
     return jaccard
 
+
+_PROMOTIONAL_TITLE_RE = re.compile(
+    r"\b("
+    r"trailer|teasers?|vorschau|previews?|making-of|making\s+of|"
+    r"behind-the-scenes|behind\s+the\s+scenes|on\s+set|b-roll|b\s+roll|"
+    r"clip\s+zur\s+serie|serienclip|staffeltrailer|folgenvorschau|"
+    r"sneak\s+peek|exklusivclip|exklusiv-clip|promo\s*clip"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def is_promotional_or_non_episode(movie_data: dict) -> bool:
+    """
+    Erkennt Trailer, Teaser und typische Promo-Clips (nicht reguläre Episoden).
+    """
+    if not movie_data:
+        return False
+    parts = [
+        movie_data.get("title") or "",
+        movie_data.get("topic") or "",
+        movie_data.get("description") or "",
+    ]
+    blob = " ".join(parts)
+    return bool(_PROMOTIONAL_TITLE_RE.search(blob))
+
+
+def series_mediathek_result_matches(
+    series_title: str,
+    normalized_search_title: str,
+    raw_title: str,
+    raw_topic: str,
+    raw_desc: str,
+    *,
+    min_title_similarity_for_description_only: float = 0.2,
+) -> bool:
+    """
+    Prüft, ob ein MediathekViewWeb-Treffer zur Serie gehört.
+
+    Primär: Suchbegriff in Titel oder Topic (inkl. normalisierter Varianten).
+    Fallback: Treffer nur in der Beschreibung, dann nur bei ausreichender Titel-Ähnlichkeit
+    (verhindert False Positives bei Substrings wie „Veil“ im Fließtext).
+    """
+    series_title_lower = series_title.lower().strip()
+    normalized_lower = normalized_search_title.lower().strip()
+    title = raw_title.lower()
+    topic = raw_topic.lower()
+    desc = raw_desc.lower()
+    title_norm = normalize_search_title(raw_title).lower()
+    topic_norm = normalize_search_title(raw_topic).lower()
+    desc_norm = normalize_search_title(raw_desc).lower()
+
+    in_title_or_topic = (
+        series_title_lower in title
+        or series_title_lower in topic
+        or normalized_lower in title
+        or normalized_lower in topic
+        or normalized_lower in title_norm
+        or normalized_lower in topic_norm
+    )
+    if in_title_or_topic:
+        return True
+
+    in_description = (
+        series_title_lower in desc
+        or normalized_lower in desc
+        or normalized_lower in desc_norm
+    )
+    if not in_description:
+        return False
+
+    sim = calculate_title_similarity(series_title, raw_title)
+    return sim >= min_title_similarity_for_description_only
+
+
 def score_movie(movie_data, prefer_language, prefer_audio_desc, search_title: str = None, search_year: Optional[int] = None, metadata: Dict = None):
     """
     Bewertet einen Film basierend auf den Präferenzen und Titelübereinstimmung.
@@ -1210,17 +1285,41 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         if debug:
             _log_scored_matches(scored_results, movie_title, limit=10, label="Matches")
 
-        best_match = scored_results[0][1]
-        best_score = scored_results[0][0]
-        best_title = best_match.get("title", "")
-        title_similarity = calculate_title_similarity(movie_title, best_title)
+        best_match = None
+        best_score = None
+        best_title = None
+        title_similarity = None
+        for cand_score, cand in scored_results:
+            if is_promotional_or_non_episode(cand):
+                logging.debug(f"Überspringe Promo/Trailer: '{cand.get('title', '')}'")
+                continue
+            cand_title = cand.get("title", "")
+            cand_sim = calculate_title_similarity(movie_title, cand_title)
+            if cand_sim < MIN_TITLE_SIMILARITY:
+                continue
+            best_match = cand
+            best_score = cand_score
+            best_title = cand_title
+            title_similarity = cand_sim
+            break
 
-        if title_similarity < MIN_TITLE_SIMILARITY:
-            last_low_sim_match = (best_title, title_similarity)
-            logging.debug(
-                f"Beste Übereinstimmung für '{api_term}' zu schwach "
-                f"(Ähnlichkeit {title_similarity:.2f} < {MIN_TITLE_SIMILARITY}): '{best_title}' — nächste Variante …"
-            )
+        if best_match is None:
+            non_promo = [
+                (s, r) for s, r in scored_results
+                if not is_promotional_or_non_episode(r)
+            ]
+            if non_promo:
+                first_np_title = non_promo[0][1].get("title", "")
+                first_np_sim = calculate_title_similarity(movie_title, first_np_title)
+                last_low_sim_match = (first_np_title, first_np_sim)
+                logging.debug(
+                    f"Beste Übereinstimmung für '{api_term}' zu schwach oder nur Promo "
+                    f"(beste nicht-Promo: '{first_np_title}', Ähnlichkeit {first_np_sim:.2f}) — nächste Variante …"
+                )
+            else:
+                logging.debug(
+                    f"Nur Promo-/Trailer-Treffer für Suchbegriff '{api_term}', nächste Variante …"
+                )
             continue
 
         if api_term.strip() != (movie_title or "").strip():
@@ -1368,18 +1467,17 @@ def extract_episode_info(movie_data, series_title: str) -> Tuple[Optional[int], 
         logging.debug(f"Episoden-Info gefunden (1x01 Format): S{season:02d}E{episode:02d}")
         return (season, episode)
     
-    # Pattern 6: Nur Episode-Nummer in Klammern (X/Y) ohne Staffel-Info - versuche aus Kontext zu erkennen
-    pattern6 = re.search(r'\((\d+)/\d+\)', text)
+    # Pattern 6: Nur Episode-Nummer in Klammern (X/Y) ohne Staffel-Info – nur Titel/Topic,
+    # damit (1/6) o. Ä. aus der Beschreibung keine falsche Episodennummer erzeugt.
+    title_topic = f"{title} {topic}"
+    pattern6 = re.search(r'\((\d+)/\d+\)', title_topic)
     if pattern6:
         episode = int(pattern6.group(1))
-        # Versuche Staffel aus Kontext zu erkennen
-        # Wenn "Staffel 1" oder "Saison 1" irgendwo im Text steht, verwende das
-        season_match = re.search(r'(?:[Ss]taffel|[Ss]aison)\s+(\d+)', text, re.IGNORECASE)
+        season_match = re.search(r'(?:[Ss]taffel|[Ss]aison)\s+(\d+)', title_topic, re.IGNORECASE)
         if season_match:
             season = int(season_match.group(1))
             logging.debug(f"Episoden-Info gefunden (X/Y Format mit Kontext): S{season:02d}E{episode:02d}")
             return (season, episode)
-        # Fallback: Wenn keine Staffel-Info, aber Episode-Nummer gefunden, annehmen Staffel 1
         logging.debug(f"Episoden-Info gefunden (X/Y Format ohne Staffel, annehme S01): S01E{episode:02d}")
         return (1, episode)
     
@@ -1622,30 +1720,23 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
                 t = r["_source"].get("description") or r["_source"].get("Description")
             return (t or "").strip()
         
-        series_title_lower = series_title.lower().strip()
-        normalized_lower = normalized_search_title.lower().strip()
         filtered_results = []
         for result in results:
             raw_title = _get_result_title(result)
             raw_topic = _get_result_topic(result)
             raw_desc = _get_result_description(result)
-            title = raw_title.lower()
-            topic = raw_topic.lower()
-            desc = raw_desc.lower()
-            # Normalisierte Form für Vergleich (Akzente etc. ignorieren)
-            title_norm = normalize_search_title(raw_title).lower()
-            topic_norm = normalize_search_title(raw_topic).lower()
-            desc_norm = normalize_search_title(raw_desc).lower()
-            # Serientitel muss im Titel, Topic oder Description vorkommen (exakter Substring)
-            if (series_title_lower in title or series_title_lower in topic or series_title_lower in desc or
-                    normalized_lower in title or normalized_lower in topic or normalized_lower in desc or
-                    normalized_lower in title_norm or normalized_lower in topic_norm or normalized_lower in desc_norm):
-                # API liefert teils _source: Felder nach oben mergen für score_movie/Download
-                to_append = result
-                if isinstance(result.get("_source"), dict):
-                    to_append = {**result["_source"], **result}
-                    to_append.pop("_source", None)
-                filtered_results.append(to_append)
+            if not series_mediathek_result_matches(
+                series_title, normalized_search_title, raw_title, raw_topic, raw_desc
+            ):
+                continue
+            # API liefert teils _source: Felder nach oben mergen für score_movie/Download
+            to_append = result
+            if isinstance(result.get("_source"), dict):
+                to_append = {**result["_source"], **result}
+                to_append.pop("_source", None)
+            if is_promotional_or_non_episode(to_append):
+                continue
+            filtered_results.append(to_append)
         
         if not filtered_results:
             # Fallback: MediathekViewWeb-Feed (Website nutzt gleichen Feed für #query=...)
@@ -1656,19 +1747,13 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
                     raw_title = (r.get("title") or "").strip()
                     raw_topic = (r.get("topic") or "").strip()
                     raw_desc = (r.get("description") or "").strip()
-                    title = raw_title.lower()
-                    topic = raw_topic.lower()
-                    desc = raw_desc.lower()
-                    title_norm = normalize_search_title(raw_title).lower()
-                    topic_norm = normalize_search_title(raw_topic).lower()
-                    desc_norm = normalize_search_title(raw_desc).lower()
-                    if (series_title_lower in title or series_title_lower in topic or series_title_lower in desc or
-                            normalized_lower in title or normalized_lower in topic or normalized_lower in desc or
-                            normalized_lower in title_norm or normalized_lower in topic_norm or normalized_lower in desc_norm):
-                        filtered_results.append(r)
-                if not filtered_results:
-                    # Feed liefert Treffer für Suchbegriff, alle behalten
-                    filtered_results = feed_results
+                    if not series_mediathek_result_matches(
+                        series_title, normalized_search_title, raw_title, raw_topic, raw_desc
+                    ):
+                        continue
+                    if is_promotional_or_non_episode(r):
+                        continue
+                    filtered_results.append(r)
             if not filtered_results:
                 # Bei 0 Treffern: erste API-Ergebnisse ausgeben (INFO), damit Filter angepasst werden kann
                 if results:
