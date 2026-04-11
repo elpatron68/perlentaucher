@@ -110,7 +110,7 @@ class MainWindow(QMainWindow):
         # - Feed-Tab (Tab 0) wenn Konfigurationsdatei existiert
         self._set_initial_tab()
 
-        QTimer.singleShot(3500, self._run_wishlist_startup_check)
+        QTimer.singleShot(3500, self._run_wishlist_startup)
     
     def _create_menu_bar(self):
         """Erstellt die Menüleiste."""
@@ -168,6 +168,7 @@ class MainWindow(QMainWindow):
         self.download_panel.search_download_requested.connect(self._on_search_download_requested)
         self.wishlist_panel.download_like_feed_requested.connect(self._on_wishlist_download_like_feed)
         self.wishlist_panel.availability_found.connect(self._on_wishlist_availability)
+        self.wishlist_panel.startup_process_finished.connect(self._on_wishlist_startup_process_done)
     
     def _set_initial_tab(self):
         """Setzt den initialen Tab beim Start."""
@@ -283,9 +284,24 @@ class MainWindow(QMainWindow):
             "Im Tab „Wishlist“ kannst du „Verarbeiten“ oder „Auswahl wie Feed herunterladen“ nutzen.",
         )
 
-    def _run_wishlist_startup_check(self):
-        """Prüft Wishlist nach Mediathek-Verfügbarkeit (Hintergrundthread)."""
-        self.wishlist_panel.run_startup_check()
+    def _run_wishlist_startup(self):
+        """Wishlist nach Einstellung: automatisch verarbeiten oder nur Verfügbarkeit prüfen."""
+        cfg = self.settings_panel.get_config()
+        if cfg.get("wishlist_auto_process_on_startup", True):
+            self.status_bar.showMessage("Wishlist wird beim Start verarbeitet …", 5000)
+            self.wishlist_panel.run_startup_process()
+        else:
+            self.wishlist_panel.run_startup_check()
+
+    def _on_wishlist_startup_process_done(self, processed: int, successes: int):
+        """Ergebnis der automatischen Wishlist-Verarbeitung beim Start (nur Statusleiste, kein Modal)."""
+        if processed == 0:
+            self.status_bar.showMessage("Wishlist beim Start: keine Einträge.", 6000)
+        else:
+            self.status_bar.showMessage(
+                f"Wishlist beim Start: verarbeitet {processed}, erfolgreiche Downloads: {successes}.",
+                8000,
+            )
 
     def _ask_series_download_mode(self, entry_data: Dict) -> Optional[str]:
         """

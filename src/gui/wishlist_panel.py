@@ -83,6 +83,8 @@ class WishlistPanel(QWidget):
 
     # Signal: Einträge sind in der Mediathek verfügbar (Startup-Check)
     availability_found = pyqtSignal(list)
+    # Nach automatischer Verarbeitung beim Start (processed, successes)
+    startup_process_finished = pyqtSignal(int, int)
 
     def __init__(self, get_config_callable, parent=None):
         """
@@ -92,6 +94,7 @@ class WishlistPanel(QWidget):
         super().__init__(parent)
         self._get_config = get_config_callable
         self._process_thread: Optional[WishlistProcessThread] = None
+        self._startup_process_thread: Optional[WishlistProcessThread] = None
         self._init_ui()
 
     def _init_ui(self):
@@ -293,6 +296,19 @@ class WishlistPanel(QWidget):
         self._check_thread = WishlistCheckThread(path, cfg)
         self._check_thread.items_ready.connect(self._on_startup_items)
         self._check_thread.start()
+
+    def run_startup_process(self):
+        """Wishlist wie „Verarbeiten“ im Hintergrund (ohne Modal-Dialog, für Programmstart)."""
+        cfg = self._get_config()
+        path = wishlist_path_from_config(cfg)
+        args_obj = self._build_process_args(cfg)
+        self._startup_process_thread = WishlistProcessThread(path, args_obj)
+        self._startup_process_thread.finished_ok.connect(self._on_startup_process_done)
+        self._startup_process_thread.start()
+
+    def _on_startup_process_done(self, processed: int, successes: int):
+        self.refresh()
+        self.startup_process_finished.emit(processed, successes)
 
     def _on_startup_items(self, items: List[dict]):
         if items:

@@ -85,6 +85,16 @@ class SettingsPanel(QWidget):
         self.wishlist_file_edit.setMinimumHeight(MIN_FIELD_HEIGHT)
         download_layout.addRow("Wishlist-Datei:", self.wishlist_file_edit)
         
+        self.wishlist_auto_process_checkbox = QCheckBox()
+        self.wishlist_auto_process_checkbox.setText(
+            "Wishlist beim Programmstart automatisch verarbeiten (Suche & Download)"
+        )
+        self.wishlist_auto_process_checkbox.setToolTip(
+            "Wenn aktiviert, wird die Wishlist nach dem Start wie „Verarbeiten“ abgearbeitet. "
+            "Wenn deaktiviert, erscheint nur ein Hinweis, wenn Titel in der Mediathek auffindbar sind."
+        )
+        download_layout.addRow("", self.wishlist_auto_process_checkbox)
+        
         # State-Tracking Checkbox
         self.no_state_checkbox = QCheckBox()
         self.no_state_checkbox.setText("State-Tracking deaktivieren (--no-state)")
@@ -287,6 +297,9 @@ class SettingsPanel(QWidget):
         self.download_dir_edit.setText(config.get('download_dir', './downloads'))
         self.state_file_edit.setText(config.get('state_file', '.perlentaucher_state.json'))
         self.wishlist_file_edit.setText(config.get('wishlist_file', ''))
+        self.wishlist_auto_process_checkbox.setChecked(
+            config.get("wishlist_auto_process_on_startup", True)
+        )
         
         # no_state Option
         no_state = config.get('no_state', False)
@@ -342,6 +355,7 @@ class SettingsPanel(QWidget):
             'download_dir': download_dir,
             'state_file': self.state_file_edit.text(),
             'wishlist_file': self.wishlist_file_edit.text().strip(),
+            'wishlist_auto_process_on_startup': self.wishlist_auto_process_checkbox.isChecked(),
             'no_state': self.no_state_checkbox.isChecked(),
             'sprache': self.sprache_combo.currentText(),
             'audiodeskription': self.audiodeskription_combo.currentText(),
@@ -394,6 +408,7 @@ class SettingsPanel(QWidget):
             'download_dir': download_dir,
             'state_file': self.state_file_edit.text(),
             'wishlist_file': self.wishlist_file_edit.text().strip(),
+            'wishlist_auto_process_on_startup': self.wishlist_auto_process_checkbox.isChecked(),
             'no_state': self.no_state_checkbox.isChecked(),
             'sprache': self.sprache_combo.currentText(),
             'audiodeskription': self.audiodeskription_combo.currentText(),

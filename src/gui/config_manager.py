@@ -20,6 +20,7 @@ class ConfigManager:
         "audiodeskription": "egal",
         "state_file": ".perlentaucher_state.json",
         "wishlist_file": "",
+        "wishlist_auto_process_on_startup": True,
         "no_state": False,
         "notify": "",
         "tmdb_api_key": "",
