@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QFont
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import logging
 import os
 import subprocess
@@ -133,14 +133,13 @@ class DownloadPanel(QWidget):
             return
         row = index.row()
         title_item = self.table.item(row, 0)
-        filepath = getattr(title_item, "_filepath", None) if title_item else None
+        can_open = self._has_download_location(title_item)
         menu = QMenu(self)
         open_folder_action = menu.addAction("Ordner öffnen")
-        open_folder_action.setEnabled(bool(filepath))
-        if filepath:
-            # Pfad lokal binden, damit das Lambda beim Ausführen den richtigen Wert hat
-            path_for_action = filepath
-            open_folder_action.triggered.connect(lambda _, p=path_for_action: self._open_folder_for_file(p))
+        open_folder_action.setEnabled(can_open)
+        if can_open and title_item:
+            ti = title_item
+            open_folder_action.triggered.connect(lambda _, t=ti: self._open_location_for_title_item(t))
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def _on_table_item_double_clicked(self, item: QTableWidgetItem):
@@ -151,9 +150,8 @@ class DownloadPanel(QWidget):
         try:
             row = item.row()
             title_item = self.table.item(row, 0)
-            filepath = getattr(title_item, "_filepath", None) if title_item else None
-            if filepath:
-                self._open_folder_for_file(filepath)
+            if title_item and self._has_download_location(title_item):
+                self._open_location_for_title_item(title_item)
         except Exception as e:
             logging.warning(f"Fehler bei Doppelklick-Aktion 'Ordner öffnen': {e}")
 
@@ -172,9 +170,7 @@ class DownloadPanel(QWidget):
             return
 
         title_item = self.table.item(row, 0)
-        filepath = getattr(title_item, "_filepath", None) if title_item else None
-
-        if not filepath:
+        if not title_item or not self._has_download_location(title_item):
             QMessageBox.information(
                 self,
                 "Kein Ordner verfügbar",
@@ -182,11 +178,35 @@ class DownloadPanel(QWidget):
             )
             return
 
-        self._open_folder_for_file(filepath)
+        self._open_location_for_title_item(title_item)
+
+    @staticmethod
+    def _has_download_location(title_item: Optional[QTableWidgetItem]) -> bool:
+        if not title_item:
+            return False
+        sf = getattr(title_item, "_series_folder", None)
+        if sf and str(sf).strip():
+            return True
+        fp = getattr(title_item, "_filepath", None)
+        return bool(fp and str(fp).strip())
+
+    def _open_location_for_title_item(self, title_item: QTableWidgetItem):
+        """Öffnet den Zielordner: Serien-Staffel → Serienordner, sonst Ordner der Datei."""
+        series_folder = getattr(title_item, "_series_folder", None)
+        filepath = getattr(title_item, "_filepath", None)
+        if series_folder and str(series_folder).strip() and os.path.isdir(series_folder):
+            self._open_folder_path(series_folder)
+        elif filepath and str(filepath).strip():
+            self._open_folder_for_file(filepath.strip())
 
     def _open_folder_for_file(self, filepath: str):
-        """Öffnet den Ordner der Datei im systemeigenen Dateimanager (plattformunabhängig)."""
-        folder = os.path.abspath(os.path.dirname(filepath))
+        """Öffnet den Ordner, der die angegebene Datei enthält."""
+        folder = os.path.dirname(os.path.abspath(filepath))
+        self._open_folder_path(folder)
+
+    def _open_folder_path(self, folder: str):
+        """Öffnet einen bestehenden Ordner im systemeigenen Dateimanager (plattformunabhängig)."""
+        folder = os.path.abspath(folder)
         if not folder or not os.path.isdir(folder):
             QMessageBox.warning(
                 self,
@@ -208,6 +228,28 @@ class DownloadPanel(QWidget):
                 "Ordner öffnen",
                 f"Der Ordner konnte nicht geöffnet werden:\n{e}",
             )
+
+    @staticmethod
+    def _series_folder_from_entry(entry_data: Dict[str, Any], config: Dict[str, Any]) -> Optional[str]:
+        """Zielordner für Serien-Downloads (analog perlentaucher.get_series_directory)."""
+        if not entry_data:
+            return None
+        try:
+            src_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            if src_dir not in sys.path:
+                sys.path.insert(0, src_dir)
+            from src import perlentaucher as core
+
+            meta = entry_data.get("metadata") or {}
+            year = meta.get("year") or entry_data.get("year")
+            title = entry_data.get("movie_title") or entry_data.get("rss_title")
+            base = (config or {}).get("serien_dir") or (config or {}).get("download_dir")
+            if not base or not title:
+                return None
+            return core.get_series_directory(base, title, year)
+        except Exception as e:
+            logging.warning(f"Serien-Ordner konnte nicht ermittelt werden: {e}")
+            return None
 
     def _on_search_download_clicked(self):
         """Reagiert auf Klick 'Film suchen und herunterladen': prüft Suchtext und sendet Signal."""
@@ -439,6 +481,16 @@ class DownloadPanel(QWidget):
                         # Dateipfad für Kontextmenü "Ordner öffnen" speichern
                         if filepath and filepath.strip() and title_item:
                             title_item._filepath = filepath.strip()
+                        # Serien-Staffel: Thread liefert keinen Einzel-pfad → Serienordner merken
+                        elif (
+                            title_item
+                            and entry_data
+                            and entry_data.get("is_series")
+                            and not (filepath or "").strip()
+                        ):
+                            sdir = self._series_folder_from_entry(entry_data, config)
+                            if sdir:
+                                title_item._series_folder = sdir
                         # Sichere Logging-Ausgabe (filepath kann leer sein)
                         log_msg = f"Download erfolgreich: {title}"
                         if filepath and filepath.strip():
