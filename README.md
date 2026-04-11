@@ -33,10 +33,12 @@ Falls du Fehler findest, irgendetwas nicht funktioniert oder falls du eine Idee 
   - Alle Einstellungen als UI-Elemente konfigurierbar
   - RSS-Feed-Einträge in scrollbarer Liste mit Checkboxen
   - Selektiver Download von Filmen/Serien
-  - **Film per Suchbegriff**: Filmtitel eingeben und direkt in MediathekViewWeb suchen und herunterladen (ohne RSS-Feed)
+  - **Film per Suchbegriff**: Filmtitel eingeben und direkt in MediathekViewWeb suchen und herunterladen (ohne RSS-Feed); optional **Erscheinungsjahr** zur Eingrenzung der Treffer
+  - **Wishlist**: Titel mit Jahr und Typ (Film/Serie) merken; wenn der Inhalt in der Mediathek erscheint, Download (u. a. über „Verarbeiten“ oder im Docker-Zyklus); Hinweis beim GUI-Start, wenn Einträge auffindbar sind
   - Progress Bars für aktive Downloads
   - Siehe [GUI-Dokumentation](docs/gui.md) für Details
-- **Film per Suchbegriff (CLI)**: Mit `--search "Titel"` einen Film direkt nach Namen suchen und herunterladen – entspricht der Suche auf [MediathekViewWeb](https://mediathekviewweb.de/#query=…). Kein RSS-Feed nötig; `--limit` wird ignoriert.
+- **Film per Suchbegriff (CLI)**: Mit `--search "Titel"` einen Film direkt nach Namen suchen und herunterladen – entspricht der Suche auf [MediathekViewWeb](https://mediathekviewweb.de/#query=…). Optional `--year` für besseres Matching. Kein RSS-Feed nötig; `--limit` wird ignoriert.
+- **Wishlist (CLI/Docker/Web)**: JSON-basierte Merkliste (`--wishlist-file`, Standard: `.perlentaucher_wishlist.json` im Download-Ordner); `--wishlist-process` sucht und lädt bei Treffer; eigenes **Web-UI** mit `python src/perlentaucher.py --wishlist-web` (Host/Port: `--wishlist-web-host`, `--wishlist-web-port` oder Umgebungsvariablen `WISHLIST_WEB_*`). Mit `--no-wishlist-web` bzw. ohne `WISHLIST_WEB_ENABLED` startet kein Webserver. Siehe Abschnitt [Wishlist](#wishlist) unten.
 - Parst den RSS Feed der Mediathekperlen nach neuen Filmeinträgen.
 - Sucht automatisch nach dem Filmtitel oder Serientitel.
 - Lädt die beste Fassung basierend auf deinen Präferenzen herunter.
@@ -120,6 +122,7 @@ python src/perlentaucher.py [Optionen]
 - `--download-dir`: Zielordner für Downloads (Standard: aktuelles Verzeichnis).
 - `--limit`: Anzahl der zu prüfenden RSS-Einträge (Standard: 10). Wird bei `--search` ignoriert.
 - `--search`: Film per Suchbegriff (Titel) herunterladen, z. B. `--search "The Quiet Girl"`. Es wird nur dieser eine Film gesucht und heruntergeladen; der RSS-Feed wird nicht verwendet.
+- `--year`: Erscheinungsjahr (optional), sinnvoll zusammen mit `--search`.
 - `--loglevel`: Detailgrad des Logs (Standard: INFO). Optionen: DEBUG, INFO, WARNING, ERROR.
 - `--sprache`: Bevorzugte Sprache (Standard: deutsch). Optionen: `deutsch`, `englisch`, `egal`.
 - `--audiodeskription`: Bevorzugte Audiodeskription (Standard: egal). Optionen: `mit`, `ohne`, `egal`.
@@ -131,6 +134,17 @@ python src/perlentaucher.py [Optionen]
 - `--serien-download`: Download-Verhalten für Serien (Standard: `erste`). Optionen: `erste` (nur erste Episode), `staffel` (gesamte Staffel), `keine` (Serien überspringen).
 - `--serien-dir`: Basis-Verzeichnis für Serien-Downloads (Standard: `--download-dir`). Episoden werden in Unterordnern `[Titel] (Jahr)/` gespeichert.
 - `--debug-no-download`: Debug-Modus: lädt nichts herunter, aber Feed, Suche und Match-Ausgabe laufen normal (inkl. Top‑Matches mit Scores im Log).
+- **Wishlist**: `--wishlist-file` (Pfad zur JSON-Datei), `--wishlist-add "Titel"` mit optional `--wishlist-year` und `--wishlist-kind` (`movie`/`series`), `--wishlist-remove ID`, `--wishlist-list`, `--wishlist-process` (Suche + Download + Eintrag entfernen bei Erfolg).
+- **Wishlist-Web-UI**: `--wishlist-web` startet die Oberfläche (blockiert). `--wishlist-web-host` / `--wishlist-web-port` überschreiben `WISHLIST_WEB_HOST` / `WISHLIST_WEB_PORT`. `--no-wishlist-web` verhindert den Start auch bei gesetztem `WISHLIST_WEB_ENABLED`. Optional: `WISHLIST_WEB_TOKEN` für einfachen Schutz (Bearer oder Query `?token=`).
+
+### Wishlist
+
+Die Wishlist speichert Filme und Serien, die du **noch nicht** in der öffentlichen Mediathek findest. Sobald ein Eintrag dort verfügbar ist, kannst du ihn herunterladen:
+
+- **GUI**: Tab „Wishlist“ — Einträge hinzufügen (Titel, Jahr, Typ), „Verarbeiten“ für direkten Download bei Treffer, oder „Auswahl wie Feed herunterladen“ für den gleichen Ablauf wie beim RSS-Feed (inkl. Serien-Dialog). Beim Start prüft die GUI im Hintergrund, ob Einträge auffindbar sind, und zeigt einen Hinweis.
+- **CLI**: z. B. `python src/perlentaucher.py --wishlist-add "Mein Film" --wishlist-year 2025 --wishlist-kind movie` und später `--wishlist-process` (oft per Taskplaner/Cron).
+- **Docker**: Pro Intervall läuft nach dem RSS-Lauf automatisch `--wishlist-process`; optional Web-UI mit `WISHLIST_WEB_ENABLED=1` (siehe [Docker-Dokumentation](docs/docker.md)).
+- **Eigenständiges Web-UI**: `python -m src.wishlist_web --port 8765` oder über `perlentaucher.py --wishlist-web` (benötigt `fastapi`/`uvicorn` aus `requirements.txt`).
 
 ### Beispiele
 
@@ -138,6 +152,12 @@ Film per Suchbegriff herunterladen (ohne RSS-Feed):
 
 ```bash
 python src/perlentaucher.py --search "The Quiet Girl" --download-dir ./Filme
+```
+
+Mit Jahr:
+
+```bash
+python src/perlentaucher.py --search "The Quiet Girl" --year 2022 --download-dir ./Filme
 ```
 
 Nur suchen, nicht herunterladen (Debug mit Suchbegriff):

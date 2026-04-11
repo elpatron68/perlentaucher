@@ -2007,6 +2007,9 @@ def download_by_search(
     prefer_audio_desc: str = "egal",
     notify_url: Optional[str] = None,
     debug: bool = False,
+    year: Optional[int] = None,
+    tmdb_api_key: Optional[str] = None,
+    omdb_api_key: Optional[str] = None,
 ) -> Tuple[bool, Optional[str], Optional[str]]:
     """
     Sucht einen Film in MediathekViewWeb per Suchbegriff (Titel) und lädt die beste
@@ -2019,6 +2022,8 @@ def download_by_search(
         prefer_audio_desc: "mit", "ohne" oder "egal"
         notify_url: Optional - Apprise-URL für Benachrichtigungen
         debug: Wenn True, wird nur gesucht, nicht heruntergeladen
+        year: Optional - Erscheinungsjahr für besseres Matching
+        tmdb_api_key / omdb_api_key: Optional für Metadaten
 
     Returns:
         Tuple (success, title, filepath). Bei "nicht gefunden" oder Fehler: (False, None, None).
@@ -2029,7 +2034,14 @@ def download_by_search(
 
     search_term = search_term.strip()
     mvw_url = f"https://mediathekviewweb.de/#query={quote(search_term)}"
-    logging.info(f"Download per Suchbegriff: '{search_term}' (entspricht Suche: {mvw_url})")
+    yinfo = f", Jahr {year}" if year else ""
+    logging.info(f"Download per Suchbegriff: '{search_term}'{yinfo} (entspricht Suche: {mvw_url})")
+
+    metadata = None
+    if year is not None or tmdb_api_key or omdb_api_key:
+        metadata = get_metadata(search_term, year, tmdb_api_key, omdb_api_key)
+        if year and not metadata.get("year"):
+            metadata["year"] = year
 
     result = search_mediathek(
         search_term,
@@ -2037,20 +2049,21 @@ def download_by_search(
         prefer_audio_desc=prefer_audio_desc,
         notify_url=notify_url,
         entry_link=mvw_url,
-        year=None,
-        metadata=None,
+        year=year,
+        metadata=metadata,
         debug=debug,
     )
 
     if not result:
         return (False, None, None)
 
+    meta_dl = metadata if metadata is not None else {}
     if debug:
         filepath = build_download_filepath(
             result,
             download_dir,
             search_term,
-            {},
+            meta_dl,
             is_series=False,
             create_dirs=False,
         )
@@ -2061,7 +2074,7 @@ def download_by_search(
         result,
         download_dir,
         content_title=search_term,
-        metadata={},
+        metadata=meta_dl,
         is_series=False,
     )
     return (success, title, filepath)
@@ -2094,12 +2107,39 @@ def main():
                       help="Debug-Modus: keine Downloads durchführen, aber Feed/Suche/Matches ausgeben")
     parser.add_argument("--search", default=None,
                        help="Film per Suchbegriff herunterladen (z.B. 'The Quiet Girl'). Kein RSS-Feed.")
+    parser.add_argument("--year", type=int, default=None,
+                       help="Erscheinungsjahr (optional, z.B. mit --search oder --wishlist-add)")
+    parser.add_argument("--wishlist-file", default=None,
+                       help="Pfad zur Wishlist-JSON (Standard: .perlentaucher_wishlist.json im Download-Ordner)")
+    parser.add_argument("--wishlist-add", metavar="TITLE", default=None,
+                       help="Eintrag zur Wishlist hinzufügen (beendet nach Aktion)")
+    parser.add_argument("--wishlist-year", type=int, default=None,
+                       help="Jahr für --wishlist-add (optional)")
+    parser.add_argument("--wishlist-kind", choices=["movie", "series"], default="movie",
+                       help="Typ für --wishlist-add: movie oder series")
+    parser.add_argument("--wishlist-remove", metavar="ID", default=None,
+                       help="Wishlist-Eintrag nach ID entfernen")
+    parser.add_argument("--wishlist-list", action="store_true",
+                       help="Wishlist auflisten und beenden")
+    parser.add_argument("--wishlist-process", action="store_true",
+                       help="Wishlist abarbeiten: bei Mediathek-Treffer herunterladen und Eintrag entfernen")
+    parser.add_argument("--wishlist-web", action="store_true",
+                       help="Wishlist-Web-UI (FastAPI) starten; blockiert bis Abbruch")
+    parser.add_argument("--no-wishlist-web", action="store_true",
+                       help="Wishlist-Web-UI nicht starten (überstimmt WISHLIST_WEB_ENABLED)")
+    parser.add_argument("--wishlist-web-host", default=None,
+                       help="Bind-Adresse für Wishlist-Web-UI (Default: 127.0.0.1 oder WISHLIST_WEB_HOST)")
+    parser.add_argument("--wishlist-web-port", type=int, default=None,
+                       help="Port für Wishlist-Web-UI (Default: 8765 oder WISHLIST_WEB_PORT)")
     
     args = parser.parse_args()
     
     # Unterstützung für Umgebungsvariablen
     args.tmdb_api_key = args.tmdb_api_key or os.environ.get('TMDB_API_KEY')
     args.omdb_api_key = args.omdb_api_key or os.environ.get('OMDB_API_KEY')
+
+    from src.wishlist_core import default_wishlist_path
+    args.wishlist_path = args.wishlist_file or os.environ.get("WISHLIST_FILE") or default_wishlist_path(args.download_dir)
     
     setup_logging(args.loglevel)
     
@@ -2125,6 +2165,66 @@ def main():
     if state_file:
         logging.info(f"Status-Datei: {state_file}")
 
+    def _env_truthy(name: str) -> bool:
+        v = (os.environ.get(name) or "").strip().lower()
+        return v in ("1", "true", "yes", "on")
+
+    wishlist_web_start = (
+        (args.wishlist_web or _env_truthy("WISHLIST_WEB_ENABLED"))
+        and not args.no_wishlist_web
+    )
+    if wishlist_web_start:
+        host = args.wishlist_web_host or os.environ.get("WISHLIST_WEB_HOST") or "127.0.0.1"
+        port = (
+            args.wishlist_web_port
+            if args.wishlist_web_port is not None
+            else int(os.environ.get("WISHLIST_WEB_PORT", "8765"))
+        )
+        token = os.environ.get("WISHLIST_WEB_TOKEN")
+        from src.wishlist_web import run_server
+        run_server(
+            host=host,
+            port=port,
+            wishlist_path=args.wishlist_path,
+            download_dir=args.download_dir,
+            token=token,
+            cli_args=args,
+        )
+        sys.exit(0)
+
+    if args.wishlist_list:
+        from src.wishlist_core import list_items
+        items = list_items(args.wishlist_path)
+        for it in items:
+            y = it.year if it.year is not None else ""
+            print(f"{it.id}\t{it.title}\t{y}\t{it.kind}")
+        sys.exit(0)
+
+    if args.wishlist_add:
+        from src.wishlist_core import add_item
+        item = add_item(
+            args.wishlist_path,
+            args.wishlist_add.strip(),
+            args.wishlist_year,
+            args.wishlist_kind,
+        )
+        logging.info(f"Wishlist: hinzugefügt {item.id} — {item.title} ({item.kind})")
+        sys.exit(0)
+
+    if args.wishlist_remove:
+        from src.wishlist_core import remove_item
+        if not remove_item(args.wishlist_path, args.wishlist_remove.strip()):
+            logging.error("Wishlist: ID nicht gefunden.")
+            sys.exit(1)
+        logging.info("Wishlist: Eintrag entfernt.")
+        sys.exit(0)
+
+    if args.wishlist_process:
+        from src.wishlist_core import process_wishlist_items
+        processed, successes = process_wishlist_items(args.wishlist_path, args, remove_on_success=True)
+        logging.info(f"Wishlist: verarbeitet {processed}, erfolgreiche Downloads {successes}")
+        sys.exit(0)
+
     # Download per Suchbegriff (ohne RSS-Feed)
     if args.search:
         success, title, filepath = download_by_search(
@@ -2134,6 +2234,9 @@ def main():
             prefer_audio_desc=args.audiodeskription,
             notify_url=args.notify,
             debug=args.debug_no_download,
+            year=args.year,
+            tmdb_api_key=args.tmdb_api_key,
+            omdb_api_key=args.omdb_api_key,
         )
         if success:
             logging.info(f"Download per Suchbegriff abgeschlossen: {title} -> {filepath}")

@@ -20,7 +20,7 @@ from datetime import datetime
 class DownloadPanel(QWidget):
     """Panel für Download-Status."""
 
-    search_download_requested = pyqtSignal(str)
+    search_download_requested = pyqtSignal(str, object)
 
     def __init__(self, parent=None):
         """
@@ -71,12 +71,17 @@ class DownloadPanel(QWidget):
         
         layout.addLayout(toolbar)
 
-        # Suchbegriff: Film suchen und herunterladen
+        # Suchbegriff: Film suchen und herunterladen (optional Jahr schärft Treffer)
         search_layout = QHBoxLayout()
         self.search_line = QLineEdit()
         self.search_line.setPlaceholderText("Filmtitel suchen (z.B. The Quiet Girl)")
         self.search_line.setClearButtonEnabled(True)
-        search_layout.addWidget(self.search_line)
+        search_layout.addWidget(self.search_line, stretch=3)
+        self.search_year = QLineEdit()
+        self.search_year.setPlaceholderText("Jahr")
+        self.search_year.setMaximumWidth(90)
+        self.search_year.setToolTip("Erscheinungsjahr (optional)")
+        search_layout.addWidget(self.search_year)
         self.search_download_btn = QPushButton("Film suchen und herunterladen")
         self.search_download_btn.setStyleSheet("QPushButton { padding: 6px 12px; }")
         self.search_download_btn.clicked.connect(self._on_search_download_clicked)
@@ -261,7 +266,15 @@ class DownloadPanel(QWidget):
                 "Bitte geben Sie einen Filmtitel oder Suchbegriff ein.",
             )
             return
-        self.search_download_requested.emit(search_term)
+        year_text = (self.search_year.text() or "").strip()
+        year_val = None
+        if year_text:
+            try:
+                year_val = int(year_text)
+            except ValueError:
+                QMessageBox.warning(self, "Jahr", "Bitte ein gültiges Jahr eingeben oder Feld leer lassen.")
+                return
+        self.search_download_requested.emit(search_term, year_val)
 
     def start_downloads(self, entries: List[Dict], config: Dict, series_download_mode: Optional[Dict] = None):
         """
@@ -318,11 +331,18 @@ class DownloadPanel(QWidget):
                 # Stelle sicher, dass Jahr aus RSS-Feed verwendet wird wenn API kein Jahr zurückgibt
                 if not metadata.get('year') and year:
                     metadata['year'] = year
+                override = entry_data.get("is_series_override")
+                if override is True:
+                    metadata["content_type"] = "tv"
+                elif override is False:
+                    metadata["content_type"] = "movie"
                 entry_data['metadata'] = metadata
                 
-                # Aktualisiere is_series basierend auf Metadata
+                # Aktualisiere is_series: Wishlist-Override oder RSS/Metadaten
                 entry_obj = entry_data.get('entry')
-                if entry_obj:
+                if override is not None:
+                    entry_data['is_series'] = bool(override)
+                elif entry_obj:
                     entry_data['is_series'] = core.is_series(entry_obj, metadata)
             
             # Bestimme Serien-Download-Modus für diesen Eintrag

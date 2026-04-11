@@ -7,7 +7,8 @@ Eine grafische Benutzeroberfläche für Perlentaucher, die alle Funktionen der K
 - **Einstellungen-Panel**: Alle konfigurierbaren Optionen als UI-Elemente
 - **Blog-Liste**: RSS-Feed-Einträge in scrollbarer Liste mit Checkboxen
 - **Download-Management**: Progress Bars, Status-Anzeige und Log-Ausgabe
-- **Film per Suchbegriff**: Im Download-Tab kannst du einen Filmtitel (z. B. „The Quiet Girl“) eingeben und mit „Film suchen und herunterladen“ direkt in [MediathekViewWeb](https://mediathekviewweb.de) suchen und die beste Fassung herunterladen – ohne vorher den RSS-Feed zu laden
+- **Film per Suchbegriff**: Im Download-Tab kannst du einen Filmtitel (z. B. „The Quiet Girl“) eingeben, optional ein **Erscheinungsjahr**, und mit „Film suchen und herunterladen“ direkt in [MediathekViewWeb](https://mediathekviewweb.de) suchen und die beste Fassung herunterladen – ohne vorher den RSS-Feed zu laden
+- **Wishlist**: Tab „Wishlist“ — Einträge mit Titel, Jahr und Typ (Film/Serie); „Verarbeiten“ lädt bei Mediathek-Treffer; „Auswahl wie Feed herunterladen“ nutzt den gleichen Ablauf wie RSS-Downloads (inkl. Serien-Dialog). In den Einstellungen kann optional der Pfad zur Wishlist-Datei gesetzt werden (Standard: `.perlentaucher_wishlist.json` im Download-Ordner). Beim Start wird geprüft, ob gemerkte Titel bereits auffindbar sind, und es erscheint ein Hinweisdialog
 - **Cross-Platform**: Läuft auf Windows, Linux und macOS
 - **Einzelnes Executable**: Kann als standalone Executable gebaut werden
 

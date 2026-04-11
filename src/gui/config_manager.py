@@ -19,6 +19,7 @@ class ConfigManager:
         "sprache": "deutsch",
         "audiodeskription": "egal",
         "state_file": ".perlentaucher_state.json",
+        "wishlist_file": "",
         "no_state": False,
         "notify": "",
         "tmdb_api_key": "",

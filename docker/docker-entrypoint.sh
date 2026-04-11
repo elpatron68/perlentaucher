@@ -15,6 +15,11 @@ SERIEN_DOWNLOAD=${SERIEN_DOWNLOAD:-erste}
 SERIEN_DIR=${SERIEN_DIR:-${DOWNLOAD_DIR}}
 # State-Datei standardmäßig im Download-Verzeichnis speichern
 STATE_FILE=${STATE_FILE:-${DOWNLOAD_DIR}/.perlentaucher_state.json}
+# Wishlist-Datei (Filme/Serien auf die gewartet wird)
+WISHLIST_FILE=${WISHLIST_FILE:-${DOWNLOAD_DIR}/.perlentaucher_wishlist.json}
+WISHLIST_WEB_ENABLED=${WISHLIST_WEB_ENABLED:-0}
+WISHLIST_WEB_PORT=${WISHLIST_WEB_PORT:-8765}
+WISHLIST_WEB_HOST=${WISHLIST_WEB_HOST:-0.0.0.0}
 
 # Konvertiere Stunden in Sekunden
 INTERVAL_SECONDS=$((INTERVAL_HOURS * 3600))
@@ -54,6 +59,12 @@ if [ "${SERIEN_DIR}" != "${DOWNLOAD_DIR}" ]; then
     echo "Serien-Verzeichnis: ${SERIEN_DIR}"
 else
     echo "Serien-Verzeichnis: ${DOWNLOAD_DIR} (Standard)"
+fi
+echo "Wishlist-Datei: ${WISHLIST_FILE}"
+if [ "${WISHLIST_WEB_ENABLED}" = "1" ] || [ "$(echo ${WISHLIST_WEB_ENABLED} | tr '[:upper:]' '[:lower:]')" = "true" ]; then
+    echo "Wishlist-Web-UI: aktiv auf ${WISHLIST_WEB_HOST}:${WISHLIST_WEB_PORT}"
+else
+    echo "Wishlist-Web-UI: aus (WISHLIST_WEB_ENABLED nicht gesetzt)"
 fi
 echo "=========================================="
 echo ""
@@ -114,6 +125,19 @@ else
     echo ""
 fi
 
+# Optional: Wishlist-Web-UI im Hintergrund (einmal beim Start; blockiert nicht die RSS-Schleife)
+if [ "${WISHLIST_WEB_ENABLED}" = "1" ] || [ "$(echo ${WISHLIST_WEB_ENABLED} | tr '[:upper:]' '[:lower:]')" = "true" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Starte Wishlist-Web-UI im Hintergrund (${WISHLIST_WEB_HOST}:${WISHLIST_WEB_PORT})..."
+    python src/perlentaucher.py \
+        --wishlist-web \
+        --download-dir "${DOWNLOAD_DIR}" \
+        --wishlist-file "${WISHLIST_FILE}" \
+        --wishlist-web-host "${WISHLIST_WEB_HOST}" \
+        --wishlist-web-port "${WISHLIST_WEB_PORT}" \
+        >> /tmp/wishlist-web.log 2>&1 &
+    echo $! > /tmp/wishlist-web.pid
+fi
+
 # Endlosschleife
 while true; do
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Starte Download-Zyklus..."
@@ -154,6 +178,22 @@ while true; do
         ${SERIEN_DIR_ARGS}
     
     EXIT_CODE=$?
+
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Wishlist-Verarbeitung..."
+    python src/perlentaucher.py \
+        --wishlist-process \
+        --wishlist-file "${WISHLIST_FILE}" \
+        --download-dir "${DOWNLOAD_DIR}" \
+        --loglevel "${LOGLEVEL}" \
+        --sprache "${SPRACHE}" \
+        --audiodeskription "${AUDIODESKRIPTION}" \
+        --state-file "${STATE_FILE}" \
+        ${NOTIFY_ARGS} \
+        ${TMDB_API_KEY_ARGS} \
+        ${OMDB_API_KEY_ARGS} \
+        ${SERIEN_DOWNLOAD_ARGS} \
+        ${SERIEN_DIR_ARGS} \
+        || true
     
     if [ $EXIT_CODE -eq 0 ]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Download-Zyklus erfolgreich abgeschlossen."

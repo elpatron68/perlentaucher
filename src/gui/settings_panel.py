@@ -80,6 +80,11 @@ class SettingsPanel(QWidget):
         self.state_file_edit.setMinimumHeight(MIN_FIELD_HEIGHT)
         download_layout.addRow("State-Datei:", self.state_file_edit)
         
+        self.wishlist_file_edit = QLineEdit()
+        self.wishlist_file_edit.setPlaceholderText("Leer = .perlentaucher_wishlist.json im Download-Ordner")
+        self.wishlist_file_edit.setMinimumHeight(MIN_FIELD_HEIGHT)
+        download_layout.addRow("Wishlist-Datei:", self.wishlist_file_edit)
+        
         # State-Tracking Checkbox
         self.no_state_checkbox = QCheckBox()
         self.no_state_checkbox.setText("State-Tracking deaktivieren (--no-state)")
@@ -281,6 +286,7 @@ class SettingsPanel(QWidget):
         
         self.download_dir_edit.setText(config.get('download_dir', './downloads'))
         self.state_file_edit.setText(config.get('state_file', '.perlentaucher_state.json'))
+        self.wishlist_file_edit.setText(config.get('wishlist_file', ''))
         
         # no_state Option
         no_state = config.get('no_state', False)
@@ -335,6 +341,7 @@ class SettingsPanel(QWidget):
         config = {
             'download_dir': download_dir,
             'state_file': self.state_file_edit.text(),
+            'wishlist_file': self.wishlist_file_edit.text().strip(),
             'no_state': self.no_state_checkbox.isChecked(),
             'sprache': self.sprache_combo.currentText(),
             'audiodeskription': self.audiodeskription_combo.currentText(),
@@ -386,6 +393,7 @@ class SettingsPanel(QWidget):
         return {
             'download_dir': download_dir,
             'state_file': self.state_file_edit.text(),
+            'wishlist_file': self.wishlist_file_edit.text().strip(),
             'no_state': self.no_state_checkbox.isChecked(),
             'sprache': self.sprache_combo.currentText(),
             'audiodeskription': self.audiodeskription_combo.currentText(),

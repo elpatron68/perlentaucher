@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QPushButton, QButtonGroup, QRadioButton, QSizePolicy,
     QApplication, QProgressDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QThread, pyqtSlot, QObject, QUrl
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QThread, pyqtSlot, QObject, QUrl, QTimer
 from PyQt6.QtGui import QAction, QDesktopServices, QIcon, QPixmap
 from typing import Dict, Optional
 import sys
@@ -16,6 +16,7 @@ import os
 from .settings_panel import SettingsPanel
 from .blog_list_panel import BlogListPanel
 from .download_panel import DownloadPanel
+from .wishlist_panel import WishlistPanel
 from .config_manager import ConfigManager
 from .utils.update_checker import check_for_updates
 
@@ -52,7 +53,6 @@ class MainWindow(QMainWindow):
         self._connect_signals()
         
         # Prüfe auf Updates beim Start (nach kurzer Verzögerung, damit UI vollständig geladen ist)
-        from PyQt6.QtCore import QTimer
         QTimer.singleShot(2000, self._check_for_updates_on_startup)
     
     def _init_ui(self):
@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
         self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setCentralWidget(self.tabs)
         
-        # Neue Reihenfolge: 1. Feed, 2. Downloads, 3. Einstellungen
+        # Reihenfolge: Feed, Downloads, Wishlist, Einstellungen
         # Blog-Liste Panel (Feed) - Tab 0
         self.blog_list_panel = BlogListPanel(self.config_manager)
         self.blog_list_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -90,9 +90,13 @@ class MainWindow(QMainWindow):
         self.download_panel = DownloadPanel()
         self.download_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.tabs.addTab(self.download_panel, "⬇️ Downloads")
-        
-        # Einstellungen Panel - Tab 2
+
         self.settings_panel = SettingsPanel(self.config_manager)
+        self.wishlist_panel = WishlistPanel(lambda: self.settings_panel.get_config())
+        self.wishlist_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.tabs.addTab(self.wishlist_panel, "⭐ Wishlist")
+        
+        # Einstellungen Panel - Tab 3
         self.settings_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.tabs.addTab(self.settings_panel, "⚙️ Einstellungen")
         
@@ -105,6 +109,8 @@ class MainWindow(QMainWindow):
         # - Einstellungen-Tab wenn keine Konfigurationsdatei gefunden wurde
         # - Feed-Tab (Tab 0) wenn Konfigurationsdatei existiert
         self._set_initial_tab()
+
+        QTimer.singleShot(3500, self._run_wishlist_startup_check)
     
     def _create_menu_bar(self):
         """Erstellt die Menüleiste."""
@@ -160,6 +166,8 @@ class MainWindow(QMainWindow):
         self.download_panel.start_downloads_btn.clicked.connect(self._start_selected_downloads)
         # Film per Suchbegriff: Suchtext vom Download-Panel
         self.download_panel.search_download_requested.connect(self._on_search_download_requested)
+        self.wishlist_panel.download_like_feed_requested.connect(self._on_wishlist_download_like_feed)
+        self.wishlist_panel.availability_found.connect(self._on_wishlist_availability)
     
     def _set_initial_tab(self):
         """Setzt den initialen Tab beim Start."""
@@ -172,7 +180,7 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("Konfiguration geladen. Feed-Tab geöffnet.", 3000)
         else:
             # Keine Konfiguration: Öffne Einstellungen-Tab (Tab 2)
-            self.tabs.setCurrentIndex(2)
+            self.tabs.setCurrentIndex(3)
             self.status_bar.showMessage("Keine Konfigurationsdatei gefunden. Bitte Einstellungen vornehmen.", 5000)
     
     def _on_entries_loaded(self, entries):
@@ -230,7 +238,8 @@ class MainWindow(QMainWindow):
         # DownloadPanel kümmert sich um Auswahlprüfung und Fehlermeldungen
         self.download_panel.open_selected_download_folder()
 
-    def _on_search_download_requested(self, search_term: str):
+    @pyqtSlot(str, object)
+    def _on_search_download_requested(self, search_term: str, year=None):
         """Startet einen Download per Suchbegriff (synthetischer Eintrag, gleiche Tabelle/Log)."""
         config = self.settings_panel.get_config()
         entry_id = f"search:{search_term}"
@@ -238,7 +247,7 @@ class MainWindow(QMainWindow):
             "entry_id": entry_id,
             "entry": {"title": search_term, "tags": []},
             "movie_title": search_term,
-            "year": None,
+            "year": year,
             "metadata": {},
             "entry_link": "",
             "rss_title": search_term,
@@ -246,6 +255,37 @@ class MainWindow(QMainWindow):
         self.download_panel.start_downloads([synthetic_entry], config)
         self.tabs.setCurrentIndex(1)
         self.status_bar.showMessage(f"Suche & Download gestartet: {search_term}", 3000)
+
+    def _on_wishlist_download_like_feed(self, entry: Dict, cfg: Dict):
+        """Wishlist-Zeile wie Feed-Eintrag herunterladen (mit Serien-Dialog)."""
+        if entry.get("is_series_override"):
+            choice = self._ask_series_download_mode(entry)
+            if choice is None:
+                return
+            series_mode = {entry["entry_id"]: choice}
+            self.download_panel.start_downloads([entry], cfg, series_download_mode=series_mode)
+        else:
+            self.download_panel.start_downloads([entry], cfg)
+        self.tabs.setCurrentIndex(1)
+        self.status_bar.showMessage("Wishlist-Download gestartet.", 3000)
+
+    def _on_wishlist_availability(self, items: list):
+        """Hinweis nach Start-Check, wenn Einträge in der Mediathek auffindbar sind."""
+        if not items:
+            return
+        lines = "\n".join(f"• {x.get('title', '')}" for x in items[:10])
+        if len(items) > 10:
+            lines += "\n…"
+        QMessageBox.information(
+            self,
+            "Wishlist",
+            f"{len(items)} Eintrag/Einträge sind jetzt in der Mediathek verfügbar:\n\n{lines}\n\n"
+            "Im Tab „Wishlist“ kannst du „Verarbeiten“ oder „Auswahl wie Feed herunterladen“ nutzen.",
+        )
+
+    def _run_wishlist_startup_check(self):
+        """Prüft Wishlist nach Mediathek-Verfügbarkeit (Hintergrundthread)."""
+        self.wishlist_panel.run_startup_check()
 
     def _ask_series_download_mode(self, entry_data: Dict) -> Optional[str]:
         """
