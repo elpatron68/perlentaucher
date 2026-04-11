@@ -155,6 +155,7 @@ class WishlistPanel(QWidget):
         self._startup_process_thread: Optional[WishlistProcessThread] = None
         self._probe_add_thread: Optional[WishlistProbeAfterAddThread] = None
         self._download_one_thread: Optional[WishlistDownloadOneItemThread] = None
+        self._check_thread: Optional[WishlistCheckThread] = None
         self._init_ui()
 
     def _init_ui(self):
