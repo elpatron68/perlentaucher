@@ -477,6 +477,32 @@ def create_app(
     return app
 
 
+def _preflight_port(host: str, port: int) -> None:
+    """
+    Prüft, ob der Port lokal gebunden werden kann — vermeidet stilles Scheitern
+    (z. B. WinError 10048), wenn 8765 schon von einem anderen Prozess genutzt wird.
+    """
+    import socket
+
+    test_host = host
+    if host in ("0.0.0.0", "::"):
+        test_host = "127.0.0.1"
+    if ":" in test_host and test_host != "127.0.0.1":
+        return
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((test_host, port))
+    except OSError as e:
+        print(
+            f"Wishlist-Web-UI: Port {port} ist bereits belegt ({e}).\n"
+            "Anderen Prozess beenden (z. B. alte Wishlist-Instanz) oder anderen Port wählen, "
+            "z. B. --wishlist-web-port 8766 bzw. WISHLIST_WEB_PORT=8766.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 def run_server(
     host: str = "127.0.0.1",
     port: int = 8765,
@@ -499,6 +525,7 @@ def run_server(
         return build_process_args_from_env(dd)
 
     app = create_app(wl, factory, token=token, activity_path=activity_path)
+    _preflight_port(host, port)
     logging.info(f"Wishlist-Web-UI: http://{host}:{port}/  (Wishlist: {wl})")
     uvicorn.run(app, host=host, port=port, log_level="info")
 

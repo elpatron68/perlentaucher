@@ -150,6 +150,12 @@ Tipp: Du kannst die Wishlist auch dafür benutzen, **bereits vorhandene** Titel 
 - **Docker**: Pro Intervall läuft nach dem RSS-Lauf automatisch `--wishlist-process`; optional Web-UI mit `WISHLIST_WEB_ENABLED=1` (siehe [Docker-Dokumentation](docs/docker.md)).
 - **Eigenständiges Web-UI**: `python -m src.wishlist_web --port 8765` oder über `perlentaucher.py --wishlist-web` (benötigt `fastapi`/`uvicorn` aus `requirements.txt`).
 
+**Wishlist-Web startet nicht bzw. die Eingabeaufforderung kehrt sofort zurück?**
+
+- Start immer aus dem **Projektroot** mit dem **venv-Python**, z. B. `python src/perlentaucher.py --wishlist-web` oder `.venv\Scripts\python.exe src\perlentaucher.py --wishlist-web`. Unter Windows führt `.\src\perlentaucher.py` oft über den Launcher `py.exe` — der kann eine andere Installation ohne installierte Abhängigkeiten nutzen.
+- **Port 8765 belegt** (z. B. noch laufende alte Instanz): anderen Port setzen, z. B. `--wishlist-web-port 8766`, oder den blockierenden Prozess beenden. Perlentaucher meldet das beim Start auf der Konsole.
+- Eine Meldung wie *„wishlist-web is not in the list of known options … Electron/Chromium“* kommt von der **Cursor-/Editor-Umgebung**, nicht von Perlentaucher — den Server im normalen Terminal starten.
+
 ### Beispiele
 
 Film per Suchbegriff herunterladen (ohne RSS-Feed):
