@@ -2228,6 +2228,14 @@ def main():
         from src.wishlist_core import process_wishlist_items
         processed, successes = process_wishlist_items(args.wishlist_path, args, remove_on_success=True)
         logging.info(f"Wishlist: verarbeitet {processed}, erfolgreiche Downloads {successes}")
+        # Exit 0: leere Wishlist (0,0) oder jeder Eintrag erfolgreich entfernt (processed == successes).
+        # Exit 1: mindestens ein Eintrag ohne erfolgreichen Abschluss (Monitoring/Docker).
+        if processed != successes:
+            logging.warning(
+                "Wishlist: nicht alle Einträge erfolgreich abgeschlossen "
+                f"({successes}/{processed} mit Download entfernt)."
+            )
+            sys.exit(1)
         sys.exit(0)
 
     # Download per Suchbegriff (ohne RSS-Feed)
