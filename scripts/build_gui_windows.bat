@@ -47,7 +47,9 @@ if errorlevel 1 (
     echo WARNUNG: Konnte altes Verzeichnis %DIST_TMP% nicht vollstaendig loeschen.
 )
 
-pyinstaller build.spec --clean --distpath "%DIST_TMP%"
+REM pyinstaller.bat ohne "call" beendet das aufrufende Skript vorzeitig (kein move nach dist).
+REM python -m PyInstaller laeuft immer als Prozess und setzt dieses Skript fort.
+python -m PyInstaller build.spec --clean --distpath "%DIST_TMP%"
 if errorlevel 1 (
     echo FEHLER: PyInstaller ist mit Fehlercode beendet worden.
     pause
