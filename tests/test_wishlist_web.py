@@ -175,6 +175,16 @@ def test_index_returns_html(tmp_path):
     assert "text/html" in r.headers.get("content-type", "")
     assert "Wunschliste" in r.text
     assert "Verlauf" in r.text
+    assert "/favicon.ico" in r.text
+    assert "/assets/icon_32.png" in r.text
+
+
+def test_favicon_and_assets_served(tmp_path):
+    wl = str(tmp_path / "wl.json")
+    app = create_app(wl, _factory(tmp_path), token=None)
+    client = TestClient(app)
+    assert client.get("/favicon.ico").status_code == 200
+    assert client.get("/assets/icon_32.png").status_code == 200
 
 
 def test_api_history_empty(tmp_path):

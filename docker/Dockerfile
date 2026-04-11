@@ -15,6 +15,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Kopiere das src-Verzeichnis
 COPY src/ ./src/
 
+# Icons für Wishlist-Web-UI (Favicon, /assets/…)
+COPY assets/ ./assets/
+
 # Kopiere das Entrypoint-Script
 COPY docker/docker-entrypoint.sh .
 RUN chmod +x docker-entrypoint.sh

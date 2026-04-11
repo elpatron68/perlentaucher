@@ -16,10 +16,13 @@ except ImportError:
 
 try:
     from fastapi import FastAPI, HTTPException, Request
-    from fastapi.responses import HTMLResponse
+    from fastapi.responses import FileResponse, HTMLResponse
+    from fastapi.staticfiles import StaticFiles
     import uvicorn
 except ImportError:
     FastAPI = None  # type: ignore
+    FileResponse = None  # type: ignore
+    StaticFiles = None  # type: ignore
 
 from src.wishlist_activity import (
     append_activity,
@@ -42,6 +45,10 @@ from src.wishlist_core import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Projektroot/…/src/wishlist_web.py → Projektroot/assets (Icons, Logo)
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ASSETS_DIR = os.path.join(_PROJECT_ROOT, "assets")
 
 if BaseModel is not None:
 
@@ -81,6 +88,13 @@ INDEX_HTML = """<!DOCTYPE html>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Perlentaucher Wishlist</title>
+  <link rel="icon" href="/favicon.ico" sizes="any"/>
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/icon_16.png"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icon_32.png"/>
+  <link rel="icon" type="image/png" sizes="48x48" href="/assets/icon_48.png"/>
+  <link rel="icon" type="image/png" sizes="256x256" href="/assets/icon_256.png"/>
+  <link rel="icon" type="image/png" sizes="512x512" href="/assets/icon_512.png"/>
+  <link rel="apple-touch-icon" href="/assets/icon_256.png"/>
   <style>
     :root { font-family: system-ui, sans-serif; background: #1a1b26; color: #c0caf5; }
     body { max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
@@ -345,6 +359,9 @@ def create_app(
 
     app = FastAPI(title="Perlentaucher Wishlist", version="1.0")
 
+    if StaticFiles is not None and os.path.isdir(ASSETS_DIR):
+        app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+
     if activity_path:
         _hist = activity_path
     else:
@@ -369,6 +386,13 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     async def index():
         return HTMLResponse(INDEX_HTML)
+
+    @app.get("/favicon.ico")
+    async def favicon_ico():
+        ico = os.path.join(ASSETS_DIR, "icon.ico")
+        if os.path.isfile(ico) and FileResponse is not None:
+            return FileResponse(ico, media_type="image/x-icon")
+        raise HTTPException(status_code=404, detail="favicon not found")
 
     @app.get("/api/items")
     async def get_items(request: Request):
