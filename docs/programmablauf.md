@@ -1,6 +1,10 @@
 # Programmablauf
 
-Das folgende Diagramm zeigt den vollständigen Ablauf des Scripts:
+**Geltungsbereich:** Das folgende Diagramm beschreibt den **RSS-Feed-Hauptpfad** (Mediathekperlen → MediathekViewWeb → Download). Daneben gibt es weitere Einstiege, die hier nicht eingezeichnet sind:
+
+- **`--search` / `--year`**: Direktsuche ohne RSS; `--notify` meldet bei leerer Suche Warnungen aus `search_mediathek`; nach einem echten Download nur „bereits vorhanden“ über `download_content` (`notify_source=search`), keine separaten Erfolgs-/Fehler-Pushes wie bei der Wishlist.
+- **Wishlist** (`--wishlist-process`, GUI, Docker): Ablauf über `wishlist_core` → bei Treffer `download_content` mit `notify_source=wishlist` (Erfolg, Fehler, übersprungen).
+- **`--wishlist-web`**: Startet nur die HTTP-Oberfläche (kein Feed-Download).
 
 ```mermaid
 flowchart TD
@@ -27,32 +31,30 @@ flowchart TD
     SearchSeries --> ExtractEpisodes[Episode-Info extrahieren<br/>Staffel/Episode]
     ExtractEpisodes --> SortEpisodes[Episoden sortieren<br/>nach Staffel/Episode]
     SortEpisodes --> DownloadEpisodes[Alle Episoden<br/>herunterladen]
-    DownloadEpisodes --> NotifySeries[Benachrichtigung:<br/>Staffel-Download]
-    NotifySeries --> MarkProcessed2
-    IsSeries -->|Nein| SearchMVW[Suche in MediathekViewWeb<br/>mit API]
+    DownloadEpisodes --> StaffelOhnePush[Staffel: kein<br/>Zusammenfassungs-Push]
+    StaffelOhnePush --> MarkProcessed2
+    IsSeries -->|Nein| SearchMVW
     SearchMVW --> Results{Ergebnisse<br/>gefunden?}
-    Results -->|Nein| NotifyNotFound[Benachrichtigung:<br/>Film nicht gefunden]
+    Results -->|Nein| NotifyNotFound[Optional: Apprise-Warnung<br/>„Suche erfolglos“<br/>in search_mediathek]
     NotifyNotFound --> MarkProcessed1[Als verarbeitet markieren]
     MarkProcessed1 --> NextEntry
     Results -->|Ja| ScoreResults[Bewerte alle Ergebnisse<br/>Sprache + Audiodeskription + Größe]
     ScoreResults --> SelectBest[Wähle beste Übereinstimmung<br/>höchste Punktzahl]
     SelectBest --> ExtractEpisodeInfo[Episode-Info extrahieren<br/>falls Serie]
-    ExtractEpisodeInfo --> BuildFilename
-    SearchMVW --> Results{Ergebnisse<br/>gefunden?}
-    BuildFilename{Dateiname<br/>generieren}
+    ExtractEpisodeInfo --> BuildFilename{Dateiname<br/>generieren}
     BuildFilename -->|Film| BuildMovieFilename[Film: Name Jahr Provider-ID]
     BuildFilename -->|Serie| BuildSeriesFilename[Serie: Name Jahr - S01E01 Provider-ID<br/>in Unterordner]
     BuildMovieFilename --> CheckFile{Datei bereits<br/>vorhanden?}
     BuildSeriesFilename --> CheckFile
-    CheckFile -->|Ja| SkipDownload[Download überspringen]
+    CheckFile -->|Ja| SkipDownload[Download überspringen<br/>optional Push „bereits vorhanden“]
     SkipDownload --> MarkProcessed2
-    CheckFile -->|Nein| Download[Film herunterladen<br/>mit Fortschrittsanzeige]
+    CheckFile -->|Nein| Download[Film/Episode herunterladen<br/>mit Fortschrittsanzeige]
     Download --> DownloadSuccess{Download<br/>erfolgreich?}
     DownloadSuccess -->|Nein| Cleanup[Partielle Datei löschen]
-    Cleanup --> NotifyError[Benachrichtigung:<br/>Download fehlgeschlagen]
-    NotifyError --> MarkProcessed2[Als verarbeitet markieren]
-    DownloadSuccess -->|Ja| NotifySuccess[Benachrichtigung:<br/>Download erfolgreich]
-    NotifySuccess --> MarkProcessed2
+    Cleanup --> FeedKeinPush[Fehler: kein separater<br/>Push RSS-Feed]
+    FeedKeinPush --> MarkProcessed2[Als verarbeitet markieren]
+    DownloadSuccess -->|Ja| FeedKeinPushOk[Erfolg: kein separater<br/>Push RSS-Feed]
+    FeedKeinPushOk --> MarkProcessed2
     MarkProcessed2 --> NextEntry
     NextEntry -->|Ja| ExtractTitle
     NextEntry -->|Nein| End
@@ -61,9 +63,10 @@ flowchart TD
     style End fill:#FFB6C1
     style SearchMVW fill:#87CEEB
     style Download fill:#FFD700
-    style NotifySuccess fill:#98FB98
-    style NotifyError fill:#FFA07A
     style NotifyNotFound fill:#FFA07A
+    style FeedKeinPush fill:#E8E8E8
+    style FeedKeinPushOk fill:#E8E8E8
+    style StaffelOhnePush fill:#E8E8E8
 ```
 
 **Hauptschritte:**
@@ -102,9 +105,11 @@ flowchart TD
     - **Filme**: `Filmname (Jahr) [tmdbid-123].mp4`
     - **Serien**: `[serien-dir]/[Titel] (Jahr)/[Titel] (Jahr) - S01E01 [tmdbid-123].mp4`
 
-11. **Download**: Der Film oder die Episode wird heruntergeladen. Falls die Datei bereits existiert, wird der Download übersprungen.
+11. **Download**: Der Film oder die Episode wird heruntergeladen. Falls die Datei bereits existiert, wird in `download_content` der Download übersprungen.
 
-12. **Benachrichtigungen** (optional): Bei Erfolg, Fehler oder wenn kein Film/Serie gefunden wurde, können Benachrichtigungen via Apprise gesendet werden. Bei Staffel-Downloads wird der Fortschritt angezeigt.
+12. **Benachrichtigungen** (optional, `--notify` / Apprise) — **vereinfachte Übersicht**:
+    - **RSS-Feed (`notify_source=feed`)**: In `download_content` wird bei **bereits vorhandener Datei** eine Info-Push gesendet. **Keine** separaten Pushes nach erfolgreichem oder fehlgeschlagenem Download aus dem Feed-Hauptpfad; bei **keinem Treffer** in der Mediathek können weiterhin **Warnungen** aus `search_mediathek` / `search_mediathek_series` kommen (z. B. „Film nicht gefunden“).
+    - **Wishlist** (`notify_source=wishlist`): Erfolg, Fehler und „bereits vorhanden“ über `download_content`.
+    - **Such-Download** (`--search`, `notify_source=search`): wie Feed nur „bereits vorhanden“ nach dem echten Download; bei erfolgloser Suche Warnungen aus `search_mediathek`.
 
 13. **State-Tracking**: Jeder verarbeitete Eintrag wird in der State-Datei gespeichert, um Doppel-Downloads zu vermeiden. Bei Serien werden auch die heruntergeladenen Episoden gespeichert.
-
