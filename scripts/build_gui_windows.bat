@@ -70,9 +70,21 @@ if exist dist\PerlentaucherGUI.exe (
     )
 )
 
-move /Y "%DIST_TMP%\PerlentaucherGUI.exe" dist\PerlentaucherGUI.exe
+REM Quoted paths (Leerzeichen im Repo-Pfad); move-Ziel muss existieren
+move /Y "%DIST_TMP%\PerlentaucherGUI.exe" "dist\PerlentaucherGUI.exe"
 if errorlevel 1 (
-    echo FEHLER: Konnte EXE nicht nach dist\ verschieben.
+    echo WARNUNG: move fehlgeschlagen, versuche copy...
+    copy /Y "%DIST_TMP%\PerlentaucherGUI.exe" "dist\PerlentaucherGUI.exe"
+    if errorlevel 1 (
+        echo FEHLER: EXE konnte nicht nach dist\ verschoben oder kopiert werden.
+        pause
+        exit /b 1
+    )
+    del /f /q "%DIST_TMP%\PerlentaucherGUI.exe" 2>nul
+)
+
+if not exist "dist\PerlentaucherGUI.exe" (
+    echo FEHLER: dist\PerlentaucherGUI.exe fehlt nach dem Kopiervorgang.
     pause
     exit /b 1
 )
@@ -81,6 +93,9 @@ rmdir /s /q "%DIST_TMP%" 2>nul
 
 echo.
 echo Build abgeschlossen.
-for %%F in ("dist\PerlentaucherGUI.exe") do echo   Datei: %%~fF  Groesse: %%~zF Bytes  Zeit: %%~tF
+echo   Datei: %CD%\dist\PerlentaucherGUI.exe
+dir "dist\PerlentaucherGUI.exe"
+echo.
+echo Tipp: Skript bei Problemen mit  cmd /c scripts\build_gui_windows.bat  starten.
 echo.
 pause
