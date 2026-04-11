@@ -26,9 +26,10 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
-_src = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _src not in sys.path:
-    sys.path.insert(0, _src)
+# Projekt-Root (wie download_panel/thread_manager: gui/ -> src/ -> root), nicht nur src/
+_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 
 def wishlist_path_from_config(config: Dict) -> str:
