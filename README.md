@@ -141,7 +141,7 @@ python src/perlentaucher.py [Optionen]
 
 Die Wishlist speichert Filme und Serien, die du **noch nicht** in der öffentlichen Mediathek findest. Sobald ein Eintrag dort verfügbar ist, kannst du ihn herunterladen:
 
-Tipp: Du kannst die Wishlist auch dafür benutzen, **bereits vorhandene** Titel aus der Mediathek bequem mit Perlentaucher herunterzuladen. Dabei werden deine bevorzugten Einstellungen (Sprache, Auflösung, Download Verzeichnis) berücksichtigt. Somit sparst du dir die Suche, den Download, das Umbenennen der Datei und das Tagging.
+Tipp: Du kannst die Wishlist auch dafür benutzen, **bereits vorhandene** Titel aus der Mediathek bequem mit Perlentaucher herunterzuladen. Dabei werden deine bevorzugten Einstellungen (Sprache, Auflösung, Download-Verzeichnis) berücksichtigt. Somit sparst du dir die Suche, den Download, das Umbenennen der Datei und das Tagging.
 
 - **GUI**: Tab „Wishlist“ — Einträge hinzufügen (Titel, Jahr, Typ), „Verarbeiten“ für direkten Download bei Treffer, oder „Auswahl wie Feed herunterladen“ für den gleichen Ablauf wie beim RSS-Feed (inkl. Serien-Dialog). Beim Start prüft die GUI im Hintergrund, ob Einträge auffindbar sind, und zeigt einen Hinweis.
 - **CLI**: z. B. `python src/perlentaucher.py --wishlist-add "Mein Film" --wishlist-year 2025 --wishlist-kind movie` und später `--wishlist-process` (oft per Taskplaner/Cron).
