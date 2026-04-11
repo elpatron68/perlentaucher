@@ -23,6 +23,8 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QLabel,
     QAbstractItemView,
+    QListWidget,
+    QDialogButtonBox,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
@@ -78,6 +80,62 @@ class WishlistCheckThread(QThread):
         self.items_ready.emit([x.to_dict() for x in avail])
 
 
+class WishlistProbeAfterAddThread(QThread):
+    """Mediathek-Probe nach neuem Eintrag (blockiert GUI nicht)."""
+
+    result_ready = pyqtSignal(object)
+
+    def __init__(self, item, config: Dict, parent=None):
+        super().__init__(parent)
+        self._item = item
+        self._config = config
+
+    def run(self):
+        from src.wishlist_core import probe_wishlist_item
+
+        r = probe_wishlist_item(
+            self._item,
+            sprache=self._config.get("sprache", "deutsch"),
+            audiodeskription=self._config.get("audiodeskription", "egal"),
+            serien_download=self._config.get("serien_download", "erste"),
+            tmdb_api_key=self._config.get("tmdb_api_key") or None,
+            omdb_api_key=self._config.get("omdb_api_key") or None,
+        )
+        self.result_ready.emit(r)
+
+
+class WishlistDownloadOneItemThread(QThread):
+    """Lädt genau einen Wishlist-Eintrag (optional Treffer-Index)."""
+
+    done = pyqtSignal(bool, str)
+
+    def __init__(
+        self,
+        wishlist_path: str,
+        item_id: str,
+        args_obj: object,
+        candidate_index: int = 0,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._path = wishlist_path
+        self._item_id = item_id
+        self._args_obj = args_obj
+        self._candidate_index = candidate_index
+
+    def run(self):
+        from src.wishlist_core import process_one_wishlist_item
+
+        ok, code = process_one_wishlist_item(
+            self._path,
+            self._item_id,
+            self._args_obj,
+            candidate_index=self._candidate_index,
+            remove_on_success=True,
+        )
+        self.done.emit(ok, code)
+
+
 class WishlistPanel(QWidget):
     """Wishlist mit Tabelle und Aktionen."""
 
@@ -95,6 +153,8 @@ class WishlistPanel(QWidget):
         self._get_config = get_config_callable
         self._process_thread: Optional[WishlistProcessThread] = None
         self._startup_process_thread: Optional[WishlistProcessThread] = None
+        self._probe_add_thread: Optional[WishlistProbeAfterAddThread] = None
+        self._download_one_thread: Optional[WishlistDownloadOneItemThread] = None
         self._init_ui()
 
     def _init_ui(self):
@@ -208,7 +268,121 @@ class WishlistPanel(QWidget):
         path = wishlist_path_from_config(cfg)
         from src.wishlist_core import add_item
 
-        add_item(path, t, year, kind, note=note_e.text().strip())
+        item = add_item(path, t, year, kind, note=note_e.text().strip())
+        self.refresh()
+        self._start_probe_after_add(item)
+
+    def _start_probe_after_add(self, item):
+        cfg = self._get_config()
+        self._probe_add_thread = WishlistProbeAfterAddThread(item, cfg)
+        self._probe_add_thread.result_ready.connect(
+            lambda r, iid=item.id: self._on_probe_after_add_result(r, iid)
+        )
+        self._probe_add_thread.start()
+
+    def _on_probe_after_add_result(self, probe: dict, item_id: str):
+        if probe.get("status") == "serien_skipped":
+            QMessageBox.information(
+                self,
+                "Wishlist",
+                probe.get("message", "Serien-Download ist deaktiviert."),
+            )
+            return
+        if probe.get("status") == "not_found":
+            QMessageBox.information(
+                self,
+                "Wishlist",
+                "Kein passender Treffer in der Mediathek gefunden. "
+                "Der Eintrag bleibt auf der Liste — du kannst später „Verarbeiten“ nutzen.",
+            )
+            return
+        if probe.get("status") == "staffel_available":
+            n = int(probe.get("episode_count") or 0)
+            reply = QMessageBox.question(
+                self,
+                "Wishlist",
+                f"In der Mediathek wurden etwa {n} Episoden gefunden.\n\n"
+                "Gesamte Staffel jetzt herunterladen?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._start_download_one_item(item_id, 0)
+            return
+
+        cands = probe.get("candidates") or []
+        if not cands:
+            return
+
+        st = probe.get("status")
+        cand_idx = 0
+        if st == "ambiguous":
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Treffer auswählen")
+            v = QVBoxLayout(dlg)
+            v.addWidget(
+                QLabel("Mehrere mögliche Treffer — bitte die passende Fassung wählen:")
+            )
+            lw = QListWidget()
+            for c in cands:
+                lw.addItem(
+                    f"{c['title']}  (Ähnlichkeit {c['title_similarity']:.2f}, Score {c['score']:.0f})"
+                )
+            lw.setCurrentRow(0)
+            v.addWidget(lw)
+            bb = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            )
+            bb.accepted.connect(dlg.accept)
+            bb.rejected.connect(dlg.reject)
+            v.addWidget(bb)
+            if dlg.exec() != QDialog.DialogCode.Accepted:
+                return
+            cand_idx = lw.currentRow()
+        else:
+            top = cands[0]
+            reply = QMessageBox.question(
+                self,
+                "Wishlist",
+                f"In der Mediathek gefunden:\n„{top['title']}“\n\nJetzt herunterladen?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            cand_idx = 0
+
+        self._start_download_one_item(item_id, cand_idx)
+
+    def _start_download_one_item(self, item_id: str, candidate_index: int):
+        cfg = self._get_config()
+        path = wishlist_path_from_config(cfg)
+        args_obj = self._build_process_args(cfg)
+        self._download_one_thread = WishlistDownloadOneItemThread(
+            path, item_id, args_obj, candidate_index
+        )
+        self._download_one_thread.done.connect(self._on_download_one_item_done)
+        self._download_one_thread.start()
+
+    def _on_download_one_item_done(self, ok: bool, code: str):
+        if ok and code == "success":
+            QMessageBox.information(
+                self,
+                "Wishlist",
+                "Download erfolgreich. Der Eintrag wurde von der Wishlist entfernt.",
+            )
+        elif ok and code == "debug":
+            QMessageBox.information(
+                self,
+                "Wishlist",
+                "Debug-Modus: Es wurde kein Download durchgeführt.",
+            )
+        else:
+            QMessageBox.warning(
+                self,
+                "Wishlist",
+                f"Download nicht erfolgreich (Code: {code}). Der Eintrag bleibt auf der Liste.",
+            )
         self.refresh()
 
     def _on_remove(self):

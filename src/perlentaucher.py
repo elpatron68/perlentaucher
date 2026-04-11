@@ -9,7 +9,7 @@ import json
 import semver
 import unicodedata
 from datetime import datetime
-from typing import Optional, Dict, Tuple, List
+from typing import Optional, Dict, Tuple, List, Any
 from urllib.parse import quote
 
 # Projekt-Root auf sys.path, damit „from src.…“ funktioniert (z. B. python src/perlentaucher.py)
@@ -1449,6 +1449,88 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
             body += f"\n🔗 Blog-Eintrag: {entry_link}"
         send_notification(notify_url, "Suche erfolglos", body, "warning")
     return None
+
+
+def list_mediathek_movie_candidates(
+    movie_title: str,
+    prefer_language: str = "deutsch",
+    prefer_audio_desc: str = "egal",
+    year: Optional[int] = None,
+    metadata: Optional[Dict] = None,
+    limit: int = 8,
+) -> List[Dict[str, Any]]:
+    """
+    Liefert bis zu ``limit`` Treffer aus MediathekViewWeb (absteigend nach Score),
+    vergleichbar mit der Auswahl in search_mediathek, aber ohne nur den ersten Treffer
+    zurückzugeben. Für Wishlist-Probe und manuelle Trefferauswahl.
+
+    Jedes Element ist ein Dict mit: score (float), title_similarity (float), title (str), result (API-Dict).
+    Leere Liste, wenn nichts Passendes gefunden wurde.
+    """
+    metadata = metadata or {}
+    search_terms = mediathek_movie_search_terms(movie_title)
+    if not search_terms:
+        return []
+
+    MIN_TITLE_SIMILARITY_FOR_SCORING = 0.1
+    MIN_TITLE_SIMILARITY = 0.2
+
+    for api_term in search_terms:
+        results = _fetch_mvw_api_movie_results(api_term)
+        if not results:
+            continue
+
+        scored_results: List[Tuple[float, Dict]] = []
+        for result in results:
+            try:
+                result_title = result.get("title", "")
+                title_similarity = calculate_title_similarity(movie_title, result_title)
+                normalized_search = movie_title.lower().strip()
+                normalized_result = result_title.lower().strip()
+                title_contained = normalized_search in normalized_result or normalized_result in normalized_search
+                if title_similarity < MIN_TITLE_SIMILARITY_FOR_SCORING and not title_contained:
+                    continue
+                score = score_movie(
+                    result,
+                    prefer_language,
+                    prefer_audio_desc,
+                    search_title=movie_title,
+                    search_year=year,
+                    metadata=metadata,
+                )
+                scored_results.append((score, result))
+            except Exception as e:
+                logging.debug(f"Fehler beim Bewerten eines Kandidaten für '{movie_title}': {e}")
+                continue
+
+        if not scored_results:
+            continue
+
+        scored_results.sort(key=lambda x: x[0], reverse=True)
+
+        out: List[Dict[str, Any]] = []
+        for cand_score, cand in scored_results:
+            if is_promotional_or_non_episode(cand):
+                continue
+            cand_title = cand.get("title", "")
+            cand_sim = calculate_title_similarity(movie_title, cand_title)
+            if cand_sim < MIN_TITLE_SIMILARITY:
+                continue
+            out.append(
+                {
+                    "score": float(cand_score),
+                    "title_similarity": float(cand_sim),
+                    "title": cand_title,
+                    "result": cand,
+                }
+            )
+            if len(out) >= limit:
+                break
+        if out:
+            return out
+
+    return []
+
 
 def extract_episode_info(movie_data, series_title: str) -> Tuple[Optional[int], Optional[int]]:
     """

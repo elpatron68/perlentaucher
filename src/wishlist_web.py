@@ -28,7 +28,9 @@ from src.wishlist_core import (
     check_wishlist_availability,
     default_wishlist_path,
     list_items,
+    process_one_wishlist_item,
     process_wishlist_items,
+    probe_wishlist_item,
     remove_item,
 )
 
@@ -94,7 +96,7 @@ INDEX_HTML = """<!DOCTYPE html>
 </head>
 <body>
   <h1>Wunschliste</h1>
-  <p>Filme und Serien, die noch nicht in der Mediathek sind — bei Verfügbarkeit herunterladen (<code>Verarbeiten</code>).</p>
+  <p>Beliebige Titel merken und in den öffentlichen Mediatheken suchen — nach dem Hinzufügen folgt eine Verfügbarkeitsprüfung; bei mehreren Treffern kannst du die passende Fassung wählen.</p>
 
   <form id="addf">
     <label>Titel <input name="title" required placeholder="Filmtitel"/></label>
@@ -143,13 +145,90 @@ INDEX_HTML = """<!DOCTYPE html>
     function escapeHtml(s) {
       const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
     }
+    async function offerDownloadAfterProbe(item, probe) {
+      const msg = document.getElementById('msg');
+      msg.style.display = 'block';
+      msg.style.background = '#24283b';
+      msg.innerHTML = '';
+      if (probe.status === 'not_found') {
+        show('Kein passender Treffer in der Mediathek. Der Eintrag bleibt auf der Liste.', false);
+        return;
+      }
+      if (probe.status === 'serien_skipped') {
+        show(probe.message || 'Serien-Download ist deaktiviert.', false);
+        return;
+      }
+      if (probe.status === 'staffel_available') {
+        const n = probe.episode_count || 0;
+        if (!confirm('Es wurden etwa ' + n + ' Episoden gefunden. Gesamte Staffel jetzt herunterladen?')) {
+          show('Eintrag gespeichert. Du kannst später „Verarbeiten“ nutzen.', false);
+          return;
+        }
+        try {
+          const r = await api('/api/items/' + encodeURIComponent(item.id) + '/download', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ candidate_index: 0 })
+          });
+          show('Download: ' + (r.ok ? 'OK (' + r.code + ')' : 'Fehler (' + r.code + ')'), r.ok ? false : true);
+        } catch (e) { show(String(e), true); }
+        return;
+      }
+      const cands = probe.candidates || [];
+      if (cands.length === 0) return;
+      const intro = document.createElement('p');
+      intro.textContent = probe.status === 'ambiguous'
+        ? 'Mehrere Treffer — wähle die passende Fassung und starte den Download:'
+        : 'In der Mediathek gefunden — Download starten?';
+      msg.appendChild(intro);
+      const sel = document.createElement('select');
+      sel.style.width = '100%';
+      sel.style.marginTop = '0.5rem';
+      cands.forEach(function(c, i) {
+        const o = document.createElement('option');
+        o.value = String(c.index !== undefined ? c.index : i);
+        o.textContent = c.title + ' (Ähnlichkeit ' + (c.title_similarity || 0).toFixed(2) + ')';
+        sel.appendChild(o);
+      });
+      msg.appendChild(sel);
+      const row = document.createElement('div');
+      row.style.marginTop = '0.75rem';
+      const btnDl = document.createElement('button');
+      btnDl.type = 'button';
+      btnDl.textContent = 'Jetzt herunterladen';
+      btnDl.onclick = async function() {
+        const idx = parseInt(sel.value, 10) || 0;
+        try {
+          const r = await api('/api/items/' + encodeURIComponent(item.id) + '/download', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ candidate_index: idx })
+          });
+          show('Ergebnis: ' + r.code + (r.ok ? ' — bei Erfolg wurde der Eintrag entfernt.' : ''), r.ok ? false : true);
+          loadRows();
+        } catch (e) { show(String(e), true); }
+      };
+      const btnSkip = document.createElement('button');
+      btnSkip.type = 'button';
+      btnSkip.className = 'secondary';
+      btnSkip.textContent = 'Später';
+      btnSkip.onclick = function() {
+        show('Eintrag gespeichert. Du kannst später „Verarbeiten“ nutzen.', false);
+      };
+      row.appendChild(btnDl);
+      row.appendChild(btnSkip);
+      msg.appendChild(row);
+    }
     document.getElementById('addf').onsubmit = async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const body = { title: fd.get('title'), year: fd.get('year') ? parseInt(fd.get('year'),10) : null, kind: fd.get('kind') };
-      await api('/api/items', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
-      show('Eintrag hinzugefügt.');
-      e.target.reset();
+      show('Mediathek wird geprüft …', 'loading');
+      try {
+        const r = await api('/api/items', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        e.target.reset();
+        await offerDownloadAfterProbe(r.item, r.probe);
+      } catch (err) {
+        show(String(err), true);
+      }
       loadRows();
     };
     document.getElementById('reload').onclick = () => loadRows();
@@ -236,7 +315,34 @@ def create_app(
             raise HTTPException(400, "title required")
         kind: WishlistKind = "series" if body.kind == "series" else "movie"
         item = add_item(wishlist_path, title, body.year, kind, note=body.note.strip())
-        return item.to_dict()
+        args = process_args_factory()
+        probe = probe_wishlist_item(
+            item,
+            sprache=getattr(args, "sprache", "deutsch"),
+            audiodeskription=getattr(args, "audiodeskription", "egal"),
+            serien_download=getattr(args, "serien_download", "erste"),
+            tmdb_api_key=getattr(args, "tmdb_api_key", None),
+            omdb_api_key=getattr(args, "omdb_api_key", None),
+        )
+        return {"item": item.to_dict(), "probe": probe}
+
+    @app.post("/api/items/{item_id}/download")
+    async def download_one(request: Request, item_id: str):
+        _auth(request)
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        ci = int(data.get("candidate_index", 0))
+        args = process_args_factory()
+        ok, code = process_one_wishlist_item(
+            wishlist_path,
+            item_id,
+            args,
+            candidate_index=ci,
+            remove_on_success=True,
+        )
+        return {"ok": ok, "code": code}
 
     @app.delete("/api/items/{item_id}")
     async def del_item(request: Request, item_id: str):

@@ -13,6 +13,8 @@
 
 Ein Python-Script, das automatisch Film-Empfehlungen vom RSS-Feed [Mediathekperlen](https://nexxtpress.de/author/mediathekperlen/) parst, bei [MediathekViewWeb](https://mediathekviewweb.de) sucht und die beste Qualität herunterlädt.
 
+**Nicht nur Mediathekperlen:** Über die **Wishlist** (GUI, Web-UI oder CLI) kannst du **beliebige Titel** eintragen, die in den öffentlichen Mediatheken ([ARD, ZDF, …](https://mediathekviewweb.de)) verfügbar sind — unabhängig vom Blog-Feed. So lassen sich Inhalte gezielt suchen, mit deinen Qualitäts- und Spracheinstellungen herunterladen und sauber benennen/taggen, auch wenn sie nie bei Mediathekperlen vorgestellt wurden.
+
 ## Vorwort und Motivation
 
 Dieses Projekt entstand anlässlich des ersten [DI.DAY](https://di.day) #diday am 4. Januar 2026. Hintergrund war der Gedanke, einen kleinen Beitrag zur Unabhängigkeit von Big-Tech-Unternehmen zu leisten. Der *Perlentaucher* soll dir die Entscheidung erleichtern, ob du vielleicht das eine oder andere Streaming-Abo kündigen kannst:
@@ -34,7 +36,7 @@ Falls du Fehler findest, irgendetwas nicht funktioniert oder falls du eine Idee 
   - RSS-Feed-Einträge in scrollbarer Liste mit Checkboxen
   - Selektiver Download von Filmen/Serien
   - **Film per Suchbegriff**: Filmtitel eingeben und direkt in MediathekViewWeb suchen und herunterladen (ohne RSS-Feed); optional **Erscheinungsjahr** zur Eingrenzung der Treffer
-  - **Wishlist**: Titel mit Jahr und Typ (Film/Serie) merken; wenn der Inhalt in der Mediathek erscheint, Download (u. a. über „Verarbeiten“ oder im Docker-Zyklus); Hinweis beim GUI-Start, wenn Einträge auffindbar sind
+  - **Wishlist**: Beliebige Titel (Film/Serie, optional Jahr) in den Mediatheken außerhalb des Blog-Feeds; nach dem Hinzufügen Verfügbarkeitsprüfung und Download-Angebot; bei mehreren möglichen Treffern Auswahl des passenden Formats
   - Progress Bars für aktive Downloads
   - Siehe [GUI-Dokumentation](docs/gui.md) für Details
 - **Film per Suchbegriff (CLI)**: Mit `--search "Titel"` einen Film direkt nach Namen suchen und herunterladen – entspricht der Suche auf [MediathekViewWeb](https://mediathekviewweb.de/#query=…). Optional `--year` für besseres Matching. Kein RSS-Feed nötig; `--limit` wird ignoriert.

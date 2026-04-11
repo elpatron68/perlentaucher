@@ -202,6 +202,229 @@ def check_wishlist_availability(
     return available, total
 
 
+def _classify_movie_probe(candidates: List[Dict[str, Any]]) -> str:
+    """'clear' = ein dominanter Treffer, 'ambiguous' = Nutzer soll wählen."""
+    if len(candidates) <= 1:
+        return "clear"
+    s0, s1 = candidates[0]["score"], candidates[1]["score"]
+    sim0, sim1 = candidates[0]["title_similarity"], candidates[1]["title_similarity"]
+    top = max(abs(s0), 1e-6)
+    score_gap_ratio = (s0 - s1) / top
+    sim_gap = sim0 - sim1
+    if score_gap_ratio > 0.06 and sim_gap > 0.1:
+        return "clear"
+    return "ambiguous"
+
+
+def probe_wishlist_item(
+    item: WishlistItem,
+    sprache: str = "deutsch",
+    audiodeskription: str = "egal",
+    serien_download: str = "erste",
+    tmdb_api_key: Optional[str] = None,
+    omdb_api_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Prüft einen Eintrag direkt nach dem Hinzufügen (MediathekViewWeb).
+    Rückgabe ist JSON-tauglich (keine rohen API-Objekte).
+    """
+    meta = _metadata_for_item(item.title, item.year, item.kind, tmdb_api_key, omdb_api_key)
+
+    if item.kind == "series" and serien_download == "keine":
+        return {
+            "status": "serien_skipped",
+            "message": "Serien-Download ist auf „keine“ gestellt — Eintrag bleibt nur auf der Liste.",
+        }
+
+    if item.kind == "series" and serien_download == "staffel":
+        eps = core.search_mediathek_series(
+            item.title,
+            prefer_language=sprache,
+            prefer_audio_desc=audiodeskription,
+            notify_url=None,
+            entry_link="",
+            year=item.year,
+            metadata=meta,
+            debug=False,
+        )
+        if not eps:
+            return {"status": "not_found"}
+        return {
+            "status": "staffel_available",
+            "episode_count": len(eps),
+        }
+
+    raw = core.list_mediathek_movie_candidates(
+        item.title,
+        prefer_language=sprache,
+        prefer_audio_desc=audiodeskription,
+        year=item.year,
+        metadata=meta,
+        limit=8,
+    )
+    if not raw:
+        return {"status": "not_found"}
+
+    pub = [
+        {
+            "index": i,
+            "title": x["title"],
+            "score": x["score"],
+            "title_similarity": x["title_similarity"],
+        }
+        for i, x in enumerate(raw)
+    ]
+    sub = _classify_movie_probe(raw)
+    return {
+        "status": "ambiguous" if sub == "ambiguous" else "clear",
+        "candidates": pub,
+    }
+
+
+def _process_movie_with_result(
+    result: Dict[str, Any],
+    movie_title: str,
+    year: Optional[int],
+    metadata: Dict[str, Any],
+    entry_link: str,
+    args: Any,
+    entry_id: str,
+    state_file: Optional[str],
+) -> Tuple[bool, str]:
+    if not result:
+        if state_file:
+            core.save_processed_entry(state_file, entry_id, status="not_found", movie_title=movie_title)
+        return False, "not_found"
+    if args.debug_no_download:
+        fp = core.build_download_filepath(
+            result, args.download_dir, movie_title, metadata, is_series=False, create_dirs=False
+        )
+        logging.info(f"DEBUG-MODUS: Wishlist-Film übersprungen: '{result.get('title')}' -> {fp}")
+        return True, "debug"
+    success, title, filepath = core.download_content(
+        result, args.download_dir, movie_title, metadata, is_series=False
+    )
+    if state_file:
+        st = "download_success" if success else "download_failed"
+        fn = os.path.basename(filepath) if filepath else None
+        core.save_processed_entry(state_file, entry_id, status=st, movie_title=movie_title, filename=fn)
+    return success, "success" if success else "failed"
+
+
+def _process_series_erste_with_result(
+    result: Dict[str, Any],
+    movie_title: str,
+    year: Optional[int],
+    metadata: Dict[str, Any],
+    entry_link: str,
+    args: Any,
+    entry_id: str,
+    state_file: Optional[str],
+) -> Tuple[bool, str]:
+    if not result:
+        return False, "not_found"
+    season, episode = core.extract_episode_info(result, movie_title)
+    series_base_dir = args.serien_dir if args.serien_dir else args.download_dir
+    if args.debug_no_download:
+        fp = core.build_download_filepath(
+            result,
+            args.download_dir,
+            movie_title,
+            metadata,
+            is_series=True,
+            series_base_dir=series_base_dir,
+            season=season,
+            episode=episode,
+            create_dirs=False,
+        )
+        logging.info(f"DEBUG-MODUS: Wishlist-Serie übersprungen: '{result.get('title')}' -> {fp}")
+        return True, "debug"
+    success, title, filepath = core.download_content(
+        result,
+        args.download_dir,
+        movie_title,
+        metadata,
+        is_series=True,
+        series_base_dir=series_base_dir,
+        season=season,
+        episode=episode,
+    )
+    if state_file:
+        st = "download_success" if success else "download_failed"
+        fn = os.path.basename(filepath) if filepath else None
+        core.save_processed_entry(
+            state_file, entry_id, status=st, movie_title=movie_title, filename=fn, is_series=True
+        )
+    return success, "success" if success else "failed"
+
+
+def process_one_wishlist_item(
+    path: str,
+    item_id: str,
+    args: Any,
+    candidate_index: int = 0,
+    remove_on_success: bool = True,
+) -> Tuple[bool, str]:
+    """
+    Verarbeitet genau einen Wishlist-Eintrag. Bei Film/Serie (erste Folge) kann ``candidate_index``
+    die Auswahl aus list_mediathek_movie_candidates steuern. Bei Staffel-Modus wird die komplette Staffel geladen.
+    """
+    data = load_wishlist(path)
+    raw_item = next((x for x in data.get("items", []) if x.get("id") == item_id), None)
+    if not raw_item:
+        return False, "not_found_item"
+    item = WishlistItem.from_dict(raw_item)
+    metadata = _metadata_for_item(
+        item.title, item.year, item.kind, getattr(args, "tmdb_api_key", None), getattr(args, "omdb_api_key", None)
+    )
+    entry_id = f"wishlist:{item.id}"
+    entry_link = f"wishlist:{item.id}"
+    state_file = None if getattr(args, "no_state", False) else getattr(args, "state_file", None)
+    serien_mode = getattr(args, "serien_download", "erste")
+
+    if item.kind == "series" and serien_mode == "keine":
+        return False, "serien_skipped"
+
+    if item.kind == "series" and serien_mode == "staffel":
+        ok, code = _process_series_staffel(
+            item.title, item.year, metadata, entry_link, args, entry_id, state_file
+        )
+    elif item.kind == "series":
+        cands = core.list_mediathek_movie_candidates(
+            item.title,
+            prefer_language=args.sprache,
+            prefer_audio_desc=args.audiodeskription,
+            year=item.year,
+            metadata=metadata,
+            limit=8,
+        )
+        if not cands:
+            return False, "not_found"
+        ci = max(0, min(int(candidate_index), len(cands) - 1))
+        ok, code = _process_series_erste_with_result(
+            cands[ci]["result"], item.title, item.year, metadata, entry_link, args, entry_id, state_file
+        )
+    else:
+        cands = core.list_mediathek_movie_candidates(
+            item.title,
+            prefer_language=args.sprache,
+            prefer_audio_desc=args.audiodeskription,
+            year=item.year,
+            metadata=metadata,
+            limit=8,
+        )
+        if not cands:
+            return False, "not_found"
+        ci = max(0, min(int(candidate_index), len(cands) - 1))
+        ok, code = _process_movie_with_result(
+            cands[ci]["result"], item.title, item.year, metadata, entry_link, args, entry_id, state_file
+        )
+
+    if ok and code == "success" and remove_on_success:
+        remove_item(path, item_id)
+    return ok, code
+
+
 def _process_series_erste(
     movie_title: str,
     year: Optional[int],
