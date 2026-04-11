@@ -1,6 +1,7 @@
 @echo off
 setlocal EnableExtensions
-REM Build-Script für Windows-GUI (immer relativ zu diesem Skript: Repo-Root)
+REM Ruft das Python-Build-Skript auf (pip + PyInstaller + Kopie nach dist).
+REM Alles in einem Python-Prozess — vermeidet CMD/PowerShell-Probleme nach PyInstaller.
 
 cd /d "%~dp0.."
 if errorlevel 1 (
@@ -8,96 +9,13 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-echo Projektverzeichnis: %CD%
-echo.
 
-REM Wenn die GUI laeuft, ist die EXE gesperrt: EndUpdateResourceW / Fehler 110, teils leere oder alte Datei
-tasklist /FI "IMAGENAME eq PerlentaucherGUI.exe" 2>nul | find /I "PerlentaucherGUI.exe" >nul
-if not errorlevel 1 (
-    echo FEHLER: PerlentaucherGUI.exe laeuft noch.
-    echo         Bitte Anwendung beenden und das Skript erneut ausfuehren.
-    echo         Hinweis: PyInstaller kann sonst das Manifest nicht in die EXE schreiben.
-    pause
-    exit /b 1
+python "%~dp0build_gui_windows.py"
+set "EXITCODE=%ERRORLEVEL%"
+if not "%EXITCODE%"=="0" (
+    echo.
+    echo FEHLER: Build endete mit Code %EXITCODE%
 )
-
-echo Building Perlentaucher GUI for Windows...
-echo.
-
-REM Stelle sicher, dass PyInstaller installiert ist
-python -m pip install --upgrade pyinstaller
-if errorlevel 1 (
-    echo FEHLER: pip install pyinstaller fehlgeschlagen.
-    pause
-    exit /b 1
-)
-
-REM Installiere GUI-Abhängigkeiten
-python -m pip install -r requirements-gui.txt
-if errorlevel 1 (
-    echo FEHLER: pip install requirements-gui.txt fehlgeschlagen.
-    pause
-    exit /b 1
-)
-
-REM Zuerst in temporaeres Verzeichnis bauen (vermeidet halb ueberschriebene dist\*.exe bei Sperre)
-set "DIST_TMP=dist_pyinstaller_tmp"
-if exist "%DIST_TMP%" rmdir /s /q "%DIST_TMP%"
-if errorlevel 1 (
-    echo WARNUNG: Konnte altes Verzeichnis %DIST_TMP% nicht vollstaendig loeschen.
-)
-
-REM pyinstaller.bat ohne "call" beendet das aufrufende Skript vorzeitig (kein move nach dist).
-REM python -m PyInstaller laeuft immer als Prozess und setzt dieses Skript fort.
-python -m PyInstaller build.spec --clean --distpath "%DIST_TMP%"
-if errorlevel 1 (
-    echo FEHLER: PyInstaller ist mit Fehlercode beendet worden.
-    pause
-    exit /b 1
-)
-
-if not exist "%DIST_TMP%\PerlentaucherGUI.exe" (
-    echo FEHLER: Erwartete Datei fehlt: %DIST_TMP%\PerlentaucherGUI.exe
-    pause
-    exit /b 1
-)
-
-if not exist dist mkdir dist
-if exist dist\PerlentaucherGUI.exe (
-    del /f /q dist\PerlentaucherGUI.exe
-    if errorlevel 1 (
-        echo FEHLER: Konnte alte dist\PerlentaucherGUI.exe nicht loeschen (Datei gesperrt?).
-        pause
-        exit /b 1
-    )
-)
-
-REM Quoted paths (Leerzeichen im Repo-Pfad); move-Ziel muss existieren
-move /Y "%DIST_TMP%\PerlentaucherGUI.exe" "dist\PerlentaucherGUI.exe"
-if errorlevel 1 (
-    echo WARNUNG: move fehlgeschlagen, versuche copy...
-    copy /Y "%DIST_TMP%\PerlentaucherGUI.exe" "dist\PerlentaucherGUI.exe"
-    if errorlevel 1 (
-        echo FEHLER: EXE konnte nicht nach dist\ verschoben oder kopiert werden.
-        pause
-        exit /b 1
-    )
-    del /f /q "%DIST_TMP%\PerlentaucherGUI.exe" 2>nul
-)
-
-if not exist "dist\PerlentaucherGUI.exe" (
-    echo FEHLER: dist\PerlentaucherGUI.exe fehlt nach dem Kopiervorgang.
-    pause
-    exit /b 1
-)
-
-rmdir /s /q "%DIST_TMP%" 2>nul
-
-echo.
-echo Build abgeschlossen.
-echo   Datei: %CD%\dist\PerlentaucherGUI.exe
-dir "dist\PerlentaucherGUI.exe"
-echo.
-echo Tipp: Skript bei Problemen mit  cmd /c scripts\build_gui_windows.bat  starten.
 echo.
 pause
+exit /b %EXITCODE%
