@@ -12,6 +12,11 @@ from datetime import datetime
 from typing import Optional, Dict, Tuple, List
 from urllib.parse import quote
 
+# Projekt-Root auf sys.path, damit „from src.…“ funktioniert (z. B. python src/perlentaucher.py)
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 try:
     import apprise
     APPRISE_AVAILABLE = True
