@@ -891,13 +891,13 @@ _GERMAN_SYNC_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Originalton / OmU / OmDT / OV … (bei Präferenz „deutsch“ soll die Synchronfassung gewinnen)
+# Originalton / OmU / OmDT / OV / ONE „(Originalversion)“ …
 _ORIGINAL_VERSION_RE = re.compile(
     r"\b("
     r"omu|omdt|om\.?\s*u\.?|"
     r"original\s+mit\s+deutschen\s+untertiteln|"
     r"original\s+mit\s+untertiteln|"
-    r"originalfassung|original\s+version|"
+    r"originalfassung|originalversion|original\s+version|"
     r"o\.?\s*v\.?|\bov\b|"
     r"englisch|english|"
     r"o[\s-]?ton|originalton"

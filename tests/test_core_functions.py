@@ -633,6 +633,21 @@ class TestDetectLanguage:
             "description": "Original mit deutschen Untertiteln.",
         }) == "englisch"
 
+    def test_originalversion_one_brand_is_english(self):
+        """ARD/ONE: zweite Listeinträge mit (Originalversion) im Titel."""
+        assert core.detect_language({
+            "title": "Folge 6: Frankensteins Braut (S02/E06) (Originalversion)",
+            "topic": "The Frankenstein Chronicles",
+            "description": "",
+        }) == "englisch"
+
+    def test_same_episode_without_originalversion_not_marked_original(self):
+        assert core.detect_language({
+            "title": "Folge 6: Frankensteins Braut (S02/E06)",
+            "topic": "The Frankenstein Chronicles",
+            "description": "",
+        }) == "deutsch"
+
 
 class TestPromotionalAndSeriesMatch:
     """Trailer/Promo-Erkennung und strengeres Serien-Matching."""
