@@ -81,7 +81,13 @@ INDEX_HTML = """<!DOCTYPE html>
     button { cursor: pointer; background: #7aa2f7; color: #1a1b26; border: none; font-weight: 600; width: auto; margin-right: 0.5rem; margin-top: 1rem; }
     button.secondary { background: #414868; color: #c0caf5; }
     table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; font-size: 0.9rem; }
-    th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid #3b4261; }
+    th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid #3b4261; vertical-align: middle; }
+    table tbody td button { margin-top: 0; margin-bottom: 0; }
+    td.col-actions { text-align: center; width: 3.25rem; padding: 0.35rem 0.3rem; }
+    button.btn-icon-del {
+      padding: 0.35rem 0.45rem; font-size: 1.15rem; line-height: 1; min-height: 2rem; min-width: 2rem;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
     .msg { margin-top: 1rem; padding: 0.75rem; border-radius: 6px; background: #24283b; white-space: pre-wrap; }
     a { color: #7dcfff; }
   </style>
@@ -107,7 +113,7 @@ INDEX_HTML = """<!DOCTYPE html>
   <button type="button" class="secondary" id="reload">Aktualisieren</button>
   <button type="button" id="check">Prüfen (Verfügbarkeit)</button>
   <button type="button" id="process">Verarbeiten (Download)</button>
-  <table><thead><tr><th>Titel</th><th>Jahr</th><th>Typ</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+  <table><thead><tr><th>Titel</th><th>Jahr</th><th>Typ</th><th class="col-actions" aria-label="Aktionen"></th></tr></thead><tbody id="rows"></tbody></table>
 
   <script>
     const api = (path, opt) => fetch(path, opt).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); });
@@ -125,7 +131,7 @@ INDEX_HTML = """<!DOCTYPE html>
       tb.innerHTML = '';
       for (const it of data.items) {
         const tr = document.createElement('tr');
-        tr.innerHTML = '<td>'+escapeHtml(it.title)+'</td><td>'+(it.year||'')+'</td><td>'+(it.kind==='series'?'Serie':'Film')+'</td><td><button data-id="'+it.id+'" class="del secondary">Entfernen</button></td>';
+        tr.innerHTML = '<td>'+escapeHtml(it.title)+'</td><td>'+(it.year||'')+'</td><td>'+(it.kind==='series'?'Serie':'Film')+'</td><td class="col-actions"><button type="button" data-id="'+escapeHtml(it.id)+'" class="del secondary btn-icon-del" aria-label="Eintrag entfernen" title="Entfernen">🗑️</button></td>';
         tb.appendChild(tr);
       }
       tb.querySelectorAll('.del').forEach(b => b.onclick = async () => {
