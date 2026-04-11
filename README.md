@@ -1,6 +1,8 @@
 # Perlentaucher
 
-Logo
+<p align="center">
+  <img src="assets/perlerntaucher_512.png" alt="Perlentaucher Logo" width="256" height="256" />
+</p>
 
 [License: MIT](https://opensource.org/licenses/MIT)
 [Python 3.9+](https://www.python.org/downloads/)
