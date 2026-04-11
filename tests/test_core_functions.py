@@ -601,6 +601,25 @@ class TestScoreMovie:
         score_omu = core.score_movie(omu_ep, "deutsch", "egal", search_title="The Frankenstein Chronicles")
         assert score_sync > score_omu
 
+    def test_score_originalversion_penalty_beats_huge_file(self):
+        """(Originalversion) im Titel darf nicht durch sehr große Datei gegen Sync gewinnen."""
+        st = "The Frankenstein Chronicles"
+        sync = {
+            "title": "Folge 6: Frankensteins Braut (S02/E06)",
+            "topic": st,
+            "description": "",
+            "size": int(1e9),
+        }
+        orig = {
+            "title": "Folge 6: Frankensteins Braut (S02/E06) (Originalversion)",
+            "topic": st,
+            "description": "",
+            "size": int(500 * (1024**3)),
+        }
+        score_sync = core.score_movie(sync, "deutsch", "egal", search_title=st)
+        score_orig = core.score_movie(orig, "deutsch", "egal", search_title=st)
+        assert score_sync > score_orig
+
 
 class TestDetectLanguage:
     """Erkennung Synchron vs. Original (OmU, OV, …)."""

@@ -943,6 +943,25 @@ def detect_language(movie_data):
     # Keine explizite Sprache: typisch deutschsprachige Mediathek → deutsch
     return "deutsch"
 
+
+def _title_has_original_broadcast_marker(title: str) -> bool:
+    """
+    Sender markieren Originalfassung oft im Listings-Titel in Klammern.
+    NFKC: volle Breite Klammern wie bei manchen APIs.
+    """
+    if not title:
+        return False
+    t = unicodedata.normalize("NFKC", title)
+    return bool(
+        re.search(
+            r"\(originalversion\)|\(original-version\)|\(originalfassung\)|"
+            r"\(ov\)|\(o\.\s*v\.\)|\(omu\)|\(omdt\)",
+            t,
+            re.IGNORECASE,
+        )
+    )
+
+
 def get_significant_words(text: str) -> set:
     """
     Extrahiert signifikante Wörter aus einem Text, ignoriert Stopwords.
@@ -1200,6 +1219,11 @@ def score_movie(movie_data, prefer_language, prefer_audio_desc, search_title: st
         score -= 2500
     elif prefer_language == "englisch" and language == "deutsch":
         score -= 2500
+
+    # Präferenz „deutsch“: Markierung im Titel (z. B. ONE „(Originalversion)“) muss auch bei
+    # geringer Titel-Ähnlichkeit zum Seriennamen und großer Datei die Synchronfassung nicht verdrängen.
+    if prefer_language == "deutsch" and _title_has_original_broadcast_marker(movie_data.get("title") or ""):
+        score -= 35000
     
     # Audiodeskription-Präferenz
     has_ad = has_audio_description(movie_data)
