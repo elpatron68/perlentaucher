@@ -2446,7 +2446,7 @@ def main():
                         continue
                     nu = args.notify if args.notify else None
                     ns = "feed" if nu else None
-                    success, title, filepath, skipped_existing = download_content(
+                    success, title, filepath, _skipped = download_content(
                         result, args.download_dir, movie_title, metadata,
                         is_series=True, series_base_dir=series_base_dir,
                         season=season, episode=episode,
@@ -2459,24 +2459,8 @@ def main():
                         save_processed_entry(state_file, entry_id, status=status, movie_title=movie_title, 
                                            filename=filename, is_series=True)
                         logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}' (Status: {status})")
-                    
-                    # Benachrichtigung senden
-                    if args.notify:
-                        if success and skipped_existing:
-                            pass  # bereits in download_content (Datei schon vorhanden)
-                        elif success:
-                            body = f"Episode erfolgreich heruntergeladen:\n\n"
-                            body += f"📺 {title}\n"
-                            body += f"💾 {filepath}\n"
-                            if entry_link:
-                                body += f"\n🔗 Blog-Eintrag: {entry_link}"
-                            send_notification(args.notify, "Download erfolgreich", body, "success")
-                        else:
-                            body = f"Download fehlgeschlagen:\n\n"
-                            body += f"📺 {title}\n"
-                            if entry_link:
-                                body += f"\n🔗 Blog-Eintrag: {entry_link}"
-                            send_notification(args.notify, "Download fehlgeschlagen", body, "error")
+                    # RSS-Feed: keine separaten Erfolgs-/Fehler-Pushes (notify_source=feed in download_content:
+                    # nur Benachrichtigung bei „Datei bereits vorhanden“).
                 else:
                     logging.warning(f"Überspringe Serie '{movie_title}' - nicht in der Mediathek gefunden.")
                     if state_file:
@@ -2621,19 +2605,8 @@ def main():
                         episodes_list = [f"S{s:02d}E{e:02d}" for s, e, _ in episodes_with_info if s is not None and e is not None]
                         save_processed_entry(state_file, entry_id, status=status, movie_title=movie_title, 
                                             is_series=True, episodes=episodes_list)
-                    
-                    # Benachrichtigung für Staffel-Download
-                    if args.notify:
-                        body = f"Staffel-Download abgeschlossen:\n\n"
-                        body += f"📺 {movie_title}\n"
-                        body += f"✅ {downloaded_count}/{total_episodes} Episoden erfolgreich\n"
-                        if failed_count > 0:
-                            body += f"❌ {failed_count} Episoden fehlgeschlagen\n"
-                        if entry_link:
-                            body += f"\n🔗 Blog-Eintrag: {entry_link}"
-                        notification_type = "success" if failed_count == 0 else "warning"
-                        send_notification(args.notify, "Staffel-Download abgeschlossen", body, notification_type)
-                    
+                    # RSS-Feed: keine Staffel-Zusammenfassung per Push (nur „bereits vorhanden“ pro Episode in download_content).
+
                     continue
                 else:
                     # Keine Episoden gefunden
@@ -2659,7 +2632,7 @@ def main():
                     continue
                 nu = args.notify if args.notify else None
                 ns = "feed" if nu else None
-                success, title, filepath, skipped_existing = download_content(
+                success, title, filepath, _skipped = download_content(
                     result, args.download_dir, movie_title, metadata, is_series=False,
                     notify_url=nu, notify_source=ns,
                 )
@@ -2669,24 +2642,8 @@ def main():
                     filename = os.path.basename(filepath) if filepath else None
                     save_processed_entry(state_file, entry_id, status=status, movie_title=movie_title, filename=filename)
                     logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}' (Status: {status})")
-                
-                # Benachrichtigung senden
-                if args.notify:
-                    if success and skipped_existing:
-                        pass  # bereits in download_content (Datei schon vorhanden)
-                    elif success:
-                        body = f"Film erfolgreich heruntergeladen:\n\n"
-                        body += f"📽️ {title}\n"
-                        body += f"💾 {filepath}\n"
-                        if entry_link:
-                            body += f"\n🔗 Blog-Eintrag: {entry_link}"
-                        send_notification(args.notify, "Download erfolgreich", body, "success")
-                    else:
-                        body = f"Download fehlgeschlagen:\n\n"
-                        body += f"📽️ {title}\n"
-                        if entry_link:
-                            body += f"\n🔗 Blog-Eintrag: {entry_link}"
-                        send_notification(args.notify, "Download fehlgeschlagen", body, "error")
+                # RSS-Feed: keine separaten Erfolgs-/Fehler-Pushes (notify_source=feed in download_content:
+                # nur Benachrichtigung bei „Datei bereits vorhanden“).
             else:
                 logging.warning(f"Überspringe '{movie_title}' - nicht in der Mediathek gefunden.")
                 # Auch nicht gefundene Filme als verarbeitet markieren, damit sie nicht immer wieder versucht werden
