@@ -17,6 +17,14 @@ from src import perlentaucher as core
 WishlistKind = Literal["movie", "series"]
 
 
+def _notify_download_kwargs(args: Any) -> Dict[str, Any]:
+    """Apprise/Ntfy: Wishlist-Kontext für download_content."""
+    nu = getattr(args, "notify", None)
+    if nu:
+        return {"notify_url": nu, "notify_source": "wishlist"}
+    return {"notify_url": None, "notify_source": None}
+
+
 @dataclass
 class WishlistItem:
     id: str
@@ -301,8 +309,8 @@ def _process_movie_with_result(
         )
         logging.info(f"DEBUG-MODUS: Wishlist-Film übersprungen: '{result.get('title')}' -> {fp}")
         return True, "debug"
-    success, title, filepath = core.download_content(
-        result, args.download_dir, movie_title, metadata, is_series=False
+    success, title, filepath, _sk = core.download_content(
+        result, args.download_dir, movie_title, metadata, is_series=False, **_notify_download_kwargs(args)
     )
     if state_file:
         st = "download_success" if success else "download_failed"
@@ -339,7 +347,7 @@ def _process_series_erste_with_result(
         )
         logging.info(f"DEBUG-MODUS: Wishlist-Serie übersprungen: '{result.get('title')}' -> {fp}")
         return True, "debug"
-    success, title, filepath = core.download_content(
+    success, title, filepath, _sk = core.download_content(
         result,
         args.download_dir,
         movie_title,
@@ -348,6 +356,7 @@ def _process_series_erste_with_result(
         series_base_dir=series_base_dir,
         season=season,
         episode=episode,
+        **_notify_download_kwargs(args),
     )
     if state_file:
         st = "download_success" if success else "download_failed"
@@ -462,7 +471,7 @@ def _process_series_erste(
         )
         logging.info(f"DEBUG-MODUS: Wishlist-Serie übersprungen: '{result.get('title')}' -> {fp}")
         return True, "debug"
-    success, title, filepath = core.download_content(
+    success, title, filepath, _sk = core.download_content(
         result,
         args.download_dir,
         movie_title,
@@ -471,6 +480,7 @@ def _process_series_erste(
         series_base_dir=series_base_dir,
         season=season,
         episode=episode,
+        **_notify_download_kwargs(args),
     )
     if state_file:
         st = "download_success" if success else "download_failed"
@@ -550,7 +560,7 @@ def _process_series_staffel(
     for season, episode_num, episode_data in episodes_with_info:
         if season is None or episode_num is None:
             continue
-        success, title, filepath = core.download_content(
+        success, title, filepath, _sk = core.download_content(
             episode_data,
             args.download_dir,
             movie_title,
@@ -559,6 +569,7 @@ def _process_series_staffel(
             series_base_dir=series_base_dir,
             season=season,
             episode=episode_num,
+            **_notify_download_kwargs(args),
         )
         if success:
             downloaded_count += 1
@@ -617,8 +628,8 @@ def _process_movie(
         )
         logging.info(f"DEBUG-MODUS: Wishlist-Film übersprungen: '{result.get('title')}' -> {fp}")
         return True, "debug"
-    success, title, filepath = core.download_content(
-        result, args.download_dir, movie_title, metadata, is_series=False
+    success, title, filepath, _sk = core.download_content(
+        result, args.download_dir, movie_title, metadata, is_series=False, **_notify_download_kwargs(args)
     )
     if state_file:
         st = "download_success" if success else "download_failed"

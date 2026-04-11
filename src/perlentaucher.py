@@ -2018,12 +2018,14 @@ def build_download_filepath(movie_data, download_dir, content_title: str, metada
     return filepath
 
 
-def download_content(movie_data, download_dir, content_title: str, metadata: Dict, is_series: bool = False, 
-                     series_base_dir: Optional[str] = None, season: Optional[int] = None, 
-                     episode: Optional[int] = None):
+def download_content(movie_data, download_dir, content_title: str, metadata: Dict, is_series: bool = False,
+                     series_base_dir: Optional[str] = None, season: Optional[int] = None,
+                     episode: Optional[int] = None,
+                     notify_url: Optional[str] = None,
+                     notify_source: Optional[str] = None):
     """
     Lädt einen Film oder eine Episode herunter.
-    
+
     Args:
         movie_data: Die Filmdaten von MediathekViewWeb
         download_dir: Download-Verzeichnis (für Filme) oder Basis-Verzeichnis (für Serien)
@@ -2033,9 +2035,12 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
         series_base_dir: Optional - Basis-Verzeichnis für Serien (wenn is_series=True)
         season: Optional - Staffel-Nummer (für Serien)
         episode: Optional - Episoden-Nummer (für Serien)
-    
+        notify_url: Optional Apprise-URL; bei gesetztem ``notify_source`` werden Treffer gemeldet
+            (Wishlist: Erfolg/Fehlschlag/„bereits vorhanden“; Feed/Suche: nur „bereits vorhanden“).
+        notify_source: ``"wishlist"``, ``"feed"`` oder ``"search"`` — steuert Formulierung der Benachrichtigung.
+
     Returns:
-        tuple: (success: bool, title: str, filepath: str)
+        tuple: (success: bool, title: str, filepath: str, skipped_existing: bool)
     """
     url = movie_data.get("url_video")
     title = movie_data.get("title")
@@ -2055,10 +2060,38 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
         file_size = os.path.getsize(filepath)
         file_size_mb = file_size / (1024 * 1024)
         logging.info(f"Datei bereits vorhanden, überspringe Download: '{title}' -> {filepath} ({file_size_mb:.1f} MB)")
-        return (True, title, filepath)
+        if notify_url and notify_source:
+            icon = "📺" if is_series else "📽️"
+            if notify_source == "wishlist":
+                subj = "Wishlist: Übersprungen (bereits vorhanden)"
+                body = (
+                    "Wishlist: Die Datei existiert bereits — es wurde nichts erneut heruntergeladen.\n\n"
+                    f"{icon} {title}\n"
+                    f"💾 {filepath}\n"
+                    f"📌 Gesucht: {content_title}"
+                )
+            elif notify_source == "feed":
+                subj = "Download übersprungen (bereits vorhanden)"
+                body = (
+                    "Die Datei existiert bereits — Download wurde übersprungen.\n\n"
+                    f"{icon} {title}\n"
+                    f"💾 {filepath}\n"
+                )
+                if content_title:
+                    body += f"📌 Feed-Titel: {content_title}\n"
+            else:  # search
+                subj = "Such-Download übersprungen (bereits vorhanden)"
+                body = (
+                    "Die Datei existiert bereits — es wurde nichts erneut heruntergeladen.\n\n"
+                    f"{icon} {title}\n"
+                    f"💾 {filepath}\n"
+                    f"📌 Suchbegriff: {content_title}"
+                )
+            send_notification(notify_url, subj, body, "info")
+        return (True, title, filepath, True)
 
     logging.info(f"Starte Download: '{title}' -> {filepath}")
-    
+
     try:
         with requests.get(url, stream=True) as r:
             r.raise_for_status()
@@ -2075,16 +2108,37 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
                     # Fortschritt alle 50MB loggen
                     if downloaded % (50 * 1024 * 1024) < chunk_size: # ca. alle 50MB
                          logging.info(f"Heruntergeladen: {downloaded / (1024*1024):.1f} MB ...")
-        
+
         logging.info(f"Download abgeschlossen: {filepath}")
-        return (True, title, filepath)
+        if notify_url and notify_source == "wishlist":
+            icon = "📺" if is_series else "📽️"
+            kind = "Episode" if is_series else "Film"
+            body = (
+                f"Wishlist: {kind} wurde heruntergeladen.\n\n"
+                f"{icon} {title}\n"
+                f"💾 {filepath}\n"
+                f"📌 Wishlist-Titel: {content_title}"
+            )
+            if is_series and season is not None and episode is not None:
+                body += f"\n📺 S{season:02d}E{episode:02d}"
+            send_notification(notify_url, "Wishlist: Download erfolgreich", body, "success")
+        return (True, title, filepath, False)
 
     except Exception as e:
         logging.error(f"Download fehlgeschlagen für '{title}': {e}")
         # Clean up partial file
         if os.path.exists(filepath):
             os.remove(filepath)
-        return (False, title, filepath)
+        if notify_url and notify_source == "wishlist":
+            icon = "📺" if is_series else "📽️"
+            body = (
+                "Wishlist: Download ist fehlgeschlagen.\n\n"
+                f"{icon} {title}\n"
+                f"📌 Wishlist-Titel: {content_title}\n"
+                f"⚠️ {e}"
+            )
+            send_notification(notify_url, "Wishlist: Download fehlgeschlagen", body, "error")
+        return (False, title, filepath, False)
 
 
 def download_by_search(
@@ -2157,12 +2211,16 @@ def download_by_search(
         logging.info(f"DEBUG-MODUS: Download übersprungen: '{result.get('title')}' -> {filepath}")
         return (True, result.get("title"), filepath)
 
-    success, title, filepath = download_content(
+    nu = notify_url if notify_url else None
+    ns = "search" if nu else None
+    success, title, filepath, _skipped = download_content(
         result,
         download_dir,
         content_title=search_term,
         metadata=meta_dl,
         is_series=False,
+        notify_url=nu,
+        notify_source=ns,
     )
     return (success, title, filepath)
 
@@ -2386,9 +2444,14 @@ def main():
                         )
                         logging.info(f"DEBUG-MODUS: Download übersprungen: '{result.get('title')}' -> {filepath}")
                         continue
-                    success, title, filepath = download_content(result, args.download_dir, movie_title, metadata, 
-                                                               is_series=True, series_base_dir=series_base_dir,
-                                                               season=season, episode=episode)
+                    nu = args.notify if args.notify else None
+                    ns = "feed" if nu else None
+                    success, title, filepath, skipped_existing = download_content(
+                        result, args.download_dir, movie_title, metadata,
+                        is_series=True, series_base_dir=series_base_dir,
+                        season=season, episode=episode,
+                        notify_url=nu, notify_source=ns,
+                    )
                     # Markiere Eintrag als verarbeitet nach Download-Versuch
                     if state_file:
                         status = 'download_success' if success else 'download_failed'
@@ -2399,7 +2462,9 @@ def main():
                     
                     # Benachrichtigung senden
                     if args.notify:
-                        if success:
+                        if success and skipped_existing:
+                            pass  # bereits in download_content (Datei schon vorhanden)
+                        elif success:
                             body = f"Episode erfolgreich heruntergeladen:\n\n"
                             body += f"📺 {title}\n"
                             body += f"💾 {filepath}\n"
@@ -2520,9 +2585,14 @@ def main():
                             skipped_episodes.append(title)
                             continue
                         
-                        success, title, filepath = download_content(episode_data, args.download_dir, movie_title, metadata,
-                                                                     is_series=True, series_base_dir=series_base_dir,
-                                                                     season=season, episode=episode_num)
+                        nu = args.notify if args.notify else None
+                        ns = "feed" if nu else None
+                        success, title, filepath, _sk = download_content(
+                            episode_data, args.download_dir, movie_title, metadata,
+                            is_series=True, series_base_dir=series_base_dir,
+                            season=season, episode=episode_num,
+                            notify_url=nu, notify_source=ns,
+                        )
                         if success:
                             downloaded_count += 1
                         else:
@@ -2587,7 +2657,12 @@ def main():
                     )
                     logging.info(f"DEBUG-MODUS: Download übersprungen: '{result.get('title')}' -> {filepath}")
                     continue
-                success, title, filepath = download_content(result, args.download_dir, movie_title, metadata, is_series=False)
+                nu = args.notify if args.notify else None
+                ns = "feed" if nu else None
+                success, title, filepath, skipped_existing = download_content(
+                    result, args.download_dir, movie_title, metadata, is_series=False,
+                    notify_url=nu, notify_source=ns,
+                )
                 # Markiere Eintrag als verarbeitet nach Download-Versuch
                 if state_file:
                     status = 'download_success' if success else 'download_failed'
@@ -2597,7 +2672,9 @@ def main():
                 
                 # Benachrichtigung senden
                 if args.notify:
-                    if success:
+                    if success and skipped_existing:
+                        pass  # bereits in download_content (Datei schon vorhanden)
+                    elif success:
                         body = f"Film erfolgreich heruntergeladen:\n\n"
                         body += f"📽️ {title}\n"
                         body += f"💾 {filepath}\n"

@@ -66,7 +66,7 @@ def test_process_wishlist_removes_on_success(tmp_path):
         "src.wishlist_core.core.search_mediathek", return_value=fake_result
     ), patch(
         "src.wishlist_core.core.download_content",
-        return_value=(True, "X", str(tmp_path / "dl" / "f.mp4")),
+        return_value=(True, "X", str(tmp_path / "dl" / "f.mp4"), False),
     ):
         proc, succ = process_wishlist_items(str(p), args, remove_on_success=True)
         assert proc == 1
