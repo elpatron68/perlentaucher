@@ -82,7 +82,7 @@ INDEX_HTML = """<!DOCTYPE html>
     button.secondary { background: #414868; color: #c0caf5; }
     table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; font-size: 0.9rem; }
     th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid #3b4261; }
-    .msg { margin-top: 1rem; padding: 0.75rem; border-radius: 6px; background: #24283b; }
+    .msg { margin-top: 1rem; padding: 0.75rem; border-radius: 6px; background: #24283b; white-space: pre-wrap; }
     a { color: #7dcfff; }
   </style>
 </head>
@@ -101,7 +101,7 @@ INDEX_HTML = """<!DOCTYPE html>
     </label>
     <button type="submit">Hinzufügen</button>
   </form>
-  <div id="msg" class="msg" style="display:none;"></div>
+  <div id="msg" class="msg" style="display:none;" role="status" aria-live="polite"></div>
 
   <h2>Einträge</h2>
   <button type="button" class="secondary" id="reload">Aktualisieren</button>
@@ -114,7 +114,9 @@ INDEX_HTML = """<!DOCTYPE html>
     function show(m, err) {
       const el = document.getElementById('msg');
       el.style.display = 'block';
-      el.style.background = err ? '#3f2d2d' : '#24283b';
+      if (err === true) el.style.background = '#3f2d2d';
+      else if (err === 'loading') el.style.background = '#414868';
+      else el.style.background = '#24283b';
       el.textContent = m;
     }
     async function loadRows() {
@@ -146,10 +148,34 @@ INDEX_HTML = """<!DOCTYPE html>
     };
     document.getElementById('reload').onclick = () => loadRows();
     document.getElementById('check').onclick = async () => {
+      const btn = document.getElementById('check');
+      btn.disabled = true;
+      show('Mediathek wird geprüft … Bitte warten.', 'loading');
       try {
         const r = await api('/api/check', { method: 'POST' });
-        show('Verfügbar: ' + r.available.map(x => x.title).join(', ') || 'keine');
-      } catch (e) { show(String(e), true); }
+        const total = typeof r.total === 'number' ? r.total : (r.available || []).length;
+        const list = r.available || [];
+        const n = list.length;
+        if (total === 0) {
+          show('Prüfung abgeschlossen.\\n\\nDie Wishlist ist leer — es gibt keine Einträge zu prüfen.', false);
+        } else if (n === 0) {
+          show('Prüfung abgeschlossen.\\n\\nKeiner der ' + total + ' Einträge ist in der Mediathek (MediathekViewWeb) auffindbar. Die Titel sind vermutlich noch nicht verfügbar oder die Suche findet keine passende Fassung.', false);
+        } else {
+          const lines = list.map(function(x) {
+            const y = x.year ? ' (' + x.year + ')' : '';
+            const kind = x.kind === 'series' ? 'Serie' : 'Film';
+            return '• ' + x.title + y + ' — ' + kind;
+          }).join('\\n');
+          const summary = n === total
+            ? 'Alle ' + n + ' Einträge sind in der Mediathek auffindbar.'
+            : n + ' von ' + total + ' Einträgen sind in der Mediathek auffindbar.';
+          show('Prüfung abgeschlossen.\\n\\n' + summary + '\\n\\nGefundene Titel:\\n' + lines, false);
+        }
+      } catch (e) {
+        show('Prüfung fehlgeschlagen: ' + e, true);
+      } finally {
+        btn.disabled = false;
+      }
     };
     document.getElementById('process').onclick = async () => {
       try {
@@ -217,7 +243,7 @@ def create_app(
     async def check(request: Request):
         _auth(request)
         args = process_args_factory()
-        avail = check_wishlist_availability(
+        avail, total = check_wishlist_availability(
             wishlist_path,
             sprache=getattr(args, "sprache", "deutsch"),
             audiodeskription=getattr(args, "audiodeskription", "egal"),
@@ -225,7 +251,11 @@ def create_app(
             tmdb_api_key=getattr(args, "tmdb_api_key", None),
             omdb_api_key=getattr(args, "omdb_api_key", None),
         )
-        return {"available": [a.to_dict() for a in avail]}
+        return {
+            "total": total,
+            "available_count": len(avail),
+            "available": [a.to_dict() for a in avail],
+        }
 
     @app.post("/api/process")
     async def process(request: Request):

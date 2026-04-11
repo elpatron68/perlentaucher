@@ -66,7 +66,7 @@ class WishlistCheckThread(QThread):
     def run(self):
         from src.wishlist_core import check_wishlist_availability
 
-        avail = check_wishlist_availability(
+        avail, _total = check_wishlist_availability(
             self.wishlist_path,
             sprache=self.config.get("sprache", "deutsch"),
             audiodeskription=self.config.get("audiodeskription", "egal"),

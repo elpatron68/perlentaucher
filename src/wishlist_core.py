@@ -182,10 +182,12 @@ def check_wishlist_availability(
     serien_download: str = "erste",
     tmdb_api_key: Optional[str] = None,
     omdb_api_key: Optional[str] = None,
-) -> List[WishlistItem]:
-    """Gibt Wishlist-Einträge zurück, die aktuell in der Mediathek auffindbar sind."""
+) -> Tuple[List[WishlistItem], int]:
+    """Gibt Wishlist-Einträge zurück, die aktuell in der Mediathek auffindbar sind, und die Gesamtanzahl."""
     available: List[WishlistItem] = []
-    for item in list_items(path):
+    items = list_items(path)
+    total = len(items)
+    for item in items:
         meta = _metadata_for_item(item.title, item.year, item.kind, tmdb_api_key, omdb_api_key)
         if check_item_available(
             item.title,
@@ -197,7 +199,7 @@ def check_wishlist_availability(
             serien_download,
         ):
             available.append(item)
-    return available
+    return available, total
 
 
 def _process_series_erste(
