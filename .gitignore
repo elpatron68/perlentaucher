@@ -4,6 +4,7 @@ test_downloads/
 downloads/
 *.pyc
 .perlentaucher_state.json
+.perlentaucher_wishlist.json
 .notizen.txt
 run_perlentaucher.sh
 run_perlentaucher.bat
