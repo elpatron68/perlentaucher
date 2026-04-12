@@ -739,33 +739,16 @@ class TestPromotionalAndSeriesMatch:
             "Kurzinfo nur in der Beschreibung, Titel aber identisch.",
         )
 
-    def test_series_match_nautilus_u_boat_doc_rejected(self):
-        """Serie „Nautilus“ vs. Schiffsdoku mit gleichem Namensfragment."""
-        assert not core.series_mediathek_result_matches(
-            "Nautilus",
-            core.normalize_search_title("Nautilus"),
-            "Die USS Nautilus - Legendäre Schiffe der U.S. Navy",
-            "ZDFinfo Doku",
-            "",
-        )
+    def test_series_topic_alignment_prefers_listing_with_show_topic(self):
+        """Gleicher Suchbegriff: Topic = Serienname stärker als nur Vorkommen im Fließtext-Titel."""
+        ep = {"title": "Folge 2", "topic": "Gamma"}
+        other = {"title": "Report: heute über Gamma und mehr", "topic": "Info-Magazin"}
+        assert core.series_candidate_topic_alignment("Gamma", ep) >= 0.95
+        assert core.series_candidate_topic_alignment("Gamma", other) < core.series_candidate_topic_alignment("Gamma", ep)
 
-    def test_series_match_nautilus_show_topic_ok(self):
-        assert core.series_mediathek_result_matches(
-            "Nautilus",
-            core.normalize_search_title("Nautilus"),
-            "Folge 1",
-            "Nautilus",
-            "",
-        )
-
-    def test_series_listing_similarity_prefers_topic(self):
-        doc = {
-            "title": "Die USS Nautilus - Legendäre Schiffe der U.S. Navy",
-            "topic": "ZDFinfo Doku",
-        }
-        ep = {"title": "Folge 1", "topic": "Nautilus"}
-        assert core.calculate_title_similarity_for_series_listing("Nautilus", doc) < 0.2
-        assert core.calculate_title_similarity_for_series_listing("Nautilus", ep) > 0.5
+    def test_series_listing_similarity_boosts_episode_when_topic_is_show(self):
+        ep = {"title": "Folge 1", "topic": "Gamma"}
+        assert core.calculate_title_similarity_for_series_listing("Gamma", ep) > 0.5
 
 
 class TestEpisodeInfoPattern6:
