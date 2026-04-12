@@ -1,0 +1,14 @@
+# Standard für pytest: nur Kern-Code (ohne Qt-GUI), damit --cov-fail-under sinnvoll bleibt.
+# Vollständigen Report inkl. GUI: pytest --cov=src --cov-config=coveragerc-full.ini --cov-report=html
+[run]
+source = src
+omit =
+    src/gui/*
+    src/perlentaucher_gui.py
+
+[report]
+# Zeilen, die nur defensive Importe/optional sind, ignorieren (optional erweitern)
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError
