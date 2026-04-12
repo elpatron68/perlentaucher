@@ -4,8 +4,10 @@ Wishlist-Web-UI (FastAPI): CRUD + Verarbeitung für Headless/Konsolen-Nutzung.
 from __future__ import annotations
 
 import argparse
+import html
 import logging
 import os
+import subprocess
 import sys
 from typing import Any, Optional
 
@@ -80,6 +82,64 @@ def build_process_args_from_env(download_dir: Optional[str] = None) -> Any:
     a.state_file = os.environ.get("STATE_FILE", ".perlentaucher_state.json")
     a.activity_source = "web"
     return a
+
+
+def build_wishlist_web_version_footer() -> str:
+    """
+    Versionsstring für die Web-UI: ``git describe --tags --always``.
+    Bei geänderten/ungetrackten Dateien (unreines Repo) wird die kurze Commit-ID angehängt.
+    Ohne Git (z. B. Docker-Image nur mit Quelltext): Fallback ``src._version.__version__``.
+    """
+    root = _PROJECT_ROOT
+    try:
+        if os.path.isdir(os.path.join(root, ".git")) or os.path.isfile(os.path.join(root, ".git")):
+            d = subprocess.run(
+                ["git", "describe", "--tags", "--always"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if d.returncode == 0 and (d.stdout or "").strip():
+                line = d.stdout.strip()
+                st = subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if st.returncode == 0 and (st.stdout or "").strip():
+                    r = subprocess.run(
+                        ["git", "rev-parse", "--short", "HEAD"],
+                        cwd=root,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    if r.returncode == 0 and (r.stdout or "").strip():
+                        return f"{line}+{r.stdout.strip()}"
+                return line
+    except Exception as ex:
+        logger.debug("Wishlist-Web: Git-Version nicht ermittelbar: %s", ex)
+
+    try:
+        from src._version import __version__
+
+        return str(__version__)
+    except Exception:
+        return ""
+
+
+def _wishlist_version_footer_html() -> str:
+    v = build_wishlist_web_version_footer()
+    if not v:
+        return ""
+    esc = html.escape(v)
+    return (
+        f'<footer id="wl-footer" style="margin-top:2.5rem;padding-top:1rem;border-top:1px solid #3b4261;'
+        f'font-size:0.8rem;color:#565f89;">Perlentaucher {esc}</footer>'
+    )
 
 
 INDEX_HTML = """<!DOCTYPE html>
@@ -343,6 +403,7 @@ INDEX_HTML = """<!DOCTYPE html>
     loadRows();
     loadHistory();
   </script>
+__WISHLIST_VERSION_FOOTER__
 </body>
 </html>
 """
@@ -358,6 +419,8 @@ def create_app(
         raise RuntimeError("FastAPI und Uvicorn müssen installiert sein: pip install fastapi uvicorn[standard]")
 
     app = FastAPI(title="Perlentaucher Wishlist", version="1.0")
+
+    _index_html = INDEX_HTML.replace("__WISHLIST_VERSION_FOOTER__", _wishlist_version_footer_html())
 
     if StaticFiles is not None and os.path.isdir(ASSETS_DIR):
         app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
@@ -385,7 +448,7 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
-        return HTMLResponse(INDEX_HTML)
+        return HTMLResponse(_index_html)
 
     @app.get("/favicon.ico")
     async def favicon_ico():

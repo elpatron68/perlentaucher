@@ -14,7 +14,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from src.wishlist_core import add_item, save_wishlist  # noqa: E402
-from src.wishlist_web import build_process_args_from_env, create_app  # noqa: E402
+from src.wishlist_web import build_process_args_from_env, build_wishlist_web_version_footer, create_app  # noqa: E402
 
 
 def _factory(tmp_path):
@@ -177,6 +177,15 @@ def test_index_returns_html(tmp_path):
     assert "Verlauf" in r.text
     assert "/favicon.ico" in r.text
     assert "/assets/icon_32.png" in r.text
+    assert 'id="wl-footer"' in r.text
+    assert "__WISHLIST_VERSION_FOOTER__" not in r.text
+    assert build_wishlist_web_version_footer() in r.text
+
+
+def test_build_wishlist_web_version_footer_nonempty():
+    s = build_wishlist_web_version_footer()
+    assert isinstance(s, str)
+    assert len(s) > 0
 
 
 def test_favicon_and_assets_served(tmp_path):
