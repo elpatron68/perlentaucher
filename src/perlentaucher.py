@@ -1325,7 +1325,7 @@ def _log_scored_matches(scored_results, search_title: str, limit: int = 10, labe
         )
 
 
-def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="egal", notify_url=None, entry_link=None, year: Optional[int] = None, metadata: Dict = None, debug: bool = False):
+def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="egal", notify_url=None, notify_source=None, entry_link=None, year: Optional[int] = None, metadata: Dict = None, debug: bool = False):
     """
     Sucht nach einem Film in MediathekViewWeb und wählt die beste Fassung
     basierend auf den Präferenzen und Titelübereinstimmung aus.
@@ -1471,7 +1471,7 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
     variants_hint = ", ".join(repr(t) for t in search_terms)
     if not any_api_hits:
         logging.warning(f"Keine API-Ergebnisse für '{movie_title}' (Suchvarianten: {variants_hint})")
-        if notify_url and APPRISE_AVAILABLE:
+        if notify_source != "wishlist" and notify_url and APPRISE_AVAILABLE:
             body = "Keine Ergebnisse in der Mediathek gefunden:\n\n"
             body += f"📽️ {movie_title}\n"
             body += f"ℹ️ Versuchte Suchbegriffe: {variants_hint}\n"
@@ -1486,7 +1486,7 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
             f"Keine relevante Übereinstimmung für '{movie_title}': bester Kandidat '{bt}' "
             f"(Ähnlichkeit {tsim:.2f}). Suchvarianten: {variants_hint}"
         )
-        if notify_url and APPRISE_AVAILABLE:
+        if notify_source != "wishlist" and notify_url and APPRISE_AVAILABLE:
             body = "Keine relevante Übereinstimmung gefunden:\n\n"
             body += f"📽️ Gesucht: {movie_title}\n"
             body += f"❌ Bester Kandidat: {bt}\n"
@@ -1500,7 +1500,7 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
     logging.warning(
         f"Keine gültigen Ergebnisse für '{movie_title}' nach Scoring (Suchvarianten: {variants_hint})"
     )
-    if notify_url and APPRISE_AVAILABLE:
+    if notify_source != "wishlist" and notify_url and APPRISE_AVAILABLE:
         body = "Keine gültigen Ergebnisse für Film gefunden:\n\n"
         body += f"📽️ {movie_title}\n"
         body += "ℹ️ Die API lieferte Treffer, aber keine erreichten die Titel-Schwelle.\n"
@@ -1982,7 +1982,7 @@ def _filter_series_mvw_results(
 
 
 def search_mediathek_series(series_title: str, prefer_language: str = "deutsch", prefer_audio_desc: str = "egal", 
-                            notify_url: Optional[str] = None, entry_link: Optional[str] = None, 
+                            notify_url: Optional[str] = None, notify_source: Optional[str] = None, entry_link: Optional[str] = None, 
                             year: Optional[int] = None, metadata: Optional[Dict] = None, debug: bool = False) -> list:
     """
     Sucht nach allen Episoden einer Serie in MediathekViewWeb.
@@ -2012,7 +2012,7 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
 
         if not results:
             logging.warning(f"Keine Ergebnisse gefunden für Serie '{series_title}'")
-            if notify_url and APPRISE_AVAILABLE:
+            if notify_source != "wishlist" and notify_url and APPRISE_AVAILABLE:
                 body = f"Keine Ergebnisse in der Mediathek gefunden:\n\n"
                 body += f"📺 {series_title}\n"
                 if entry_link:
@@ -2036,7 +2036,7 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
                         rt, rp, _ = _mvw_raw_title_topic_desc(r)
                         logging.info(f"  [{i+1}] title={rt!r} topic={rp!r}")
                 logging.warning(f"Keine Episoden für Serie '{series_title}' gefunden")
-                if notify_url and APPRISE_AVAILABLE:
+                if notify_source != "wishlist" and notify_url and APPRISE_AVAILABLE:
                     body = f"Keine Episoden für Serie gefunden:\n\n"
                     body += f"📺 {series_title}\n"
                     if entry_link:
