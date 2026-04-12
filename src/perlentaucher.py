@@ -1054,6 +1054,52 @@ def calculate_title_similarity(search_title: str, result_title: str) -> float:
     return jaccard
 
 
+def series_candidate_topic_alignment(series_title: str, movie_data: Dict) -> float:
+    """
+    Wie gut Topic/Titel die Serie als Sendung identifizieren (0..1).
+    Reine Titel-Substring-Treffer ohne passendes Topic werden abgewertet.
+    """
+    nt = normalize_search_title(series_title).lower().strip()
+    if not nt:
+        return 0.5
+    topic = (movie_data.get("topic") or "").strip()
+    title = (movie_data.get("title") or "").strip()
+    topic_n = normalize_search_title(topic).lower().strip()
+    title_n = normalize_search_title(title).lower().strip()
+
+    if nt == topic_n:
+        return 1.0
+
+    topic_tokens = set(re.findall(r"[\wöäüß]+", topic_n, flags=re.I))
+    if " " not in nt and nt in topic_tokens:
+        return 1.0
+
+    if title_n.startswith(nt + " ") or title_n.startswith(nt + ":") or title_n.startswith(nt + " -"):
+        return 0.92
+    st_low = series_title.lower().strip()
+    if title.lower().strip().startswith(st_low):
+        return 0.9
+
+    if nt not in title_n:
+        return 0.2
+
+    pos = title_n.find(nt)
+    if pos <= 0 or title_n[:pos].strip() in ("", "|", "-", ":", "–"):
+        return 0.55
+    return 0.35
+
+
+def calculate_title_similarity_for_series_listing(search_title: str, movie_data: Dict) -> float:
+    """Kombiniert Titel-Ähnlichkeit mit Topic-/Serien-Kontext (für Serien-Suche & Wishlist)."""
+    t = movie_data.get("title") or ""
+    base = calculate_title_similarity(search_title, t)
+    align = series_candidate_topic_alignment(search_title, movie_data)
+    combined = base * align
+    if align >= 0.9 and base < 0.3:
+        return max(combined, align * 0.82)
+    return combined
+
+
 _PROMOTIONAL_TITLE_RE = re.compile(
     r"\b("
     r"trailer|teasers?|vorschau|previews?|making-of|making\s+of|"
@@ -1128,7 +1174,15 @@ def series_mediathek_result_matches(
     return sim >= min_title_similarity_for_description_only
 
 
-def score_movie(movie_data, prefer_language, prefer_audio_desc, search_title: str = None, search_year: Optional[int] = None, metadata: Dict = None):
+def score_movie(
+    movie_data,
+    prefer_language,
+    prefer_audio_desc,
+    search_title: str = None,
+    search_year: Optional[int] = None,
+    metadata: Dict = None,
+    use_series_listing_similarity: bool = False,
+):
     """
     Bewertet einen Film basierend auf den Präferenzen und Titelübereinstimmung.
     Höhere Punktzahl = bessere Übereinstimmung.
@@ -1148,7 +1202,10 @@ def score_movie(movie_data, prefer_language, prefer_audio_desc, search_title: st
     # wichtiger ist als andere Faktoren (Dateigröße, Sprache, etc.)
     if search_title:
         result_title = movie_data.get("title", "")
-        title_similarity = calculate_title_similarity(search_title, result_title)
+        if use_series_listing_similarity:
+            title_similarity = calculate_title_similarity_for_series_listing(search_title, movie_data)
+        else:
+            title_similarity = calculate_title_similarity(search_title, result_title)
         # Titelübereinstimmung ist sehr wichtig - multipliziere mit sehr hohem Faktor
         score += title_similarity * 100000
     
@@ -1460,6 +1517,7 @@ def list_mediathek_movie_candidates(
     year: Optional[int] = None,
     metadata: Optional[Dict] = None,
     limit: int = 8,
+    for_series: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Liefert bis zu ``limit`` Treffer aus MediathekViewWeb (absteigend nach Score),
@@ -1468,25 +1526,24 @@ def list_mediathek_movie_candidates(
 
     Jedes Element ist ein Dict mit: score (float), title_similarity (float), title (str), result (API-Dict).
     Leere Liste, wenn nichts Passendes gefunden wurde.
+
+    ``for_series=True``: gleiche breite API-Suche und Filter wie ``search_mediathek_series`` (nicht
+    nur Titelfeld-Suche), plus topic-gewichtete Ähnlichkeit — verhindert z. B. Doku-False-Positives.
     """
     metadata = metadata or {}
-    search_terms = mediathek_movie_search_terms(movie_title)
-    if not search_terms:
-        return []
 
     MIN_TITLE_SIMILARITY_FOR_SCORING = 0.1
     MIN_TITLE_SIMILARITY = 0.2
 
-    for api_term in search_terms:
-        results = _fetch_mvw_api_movie_results(api_term)
-        if not results:
-            continue
-
+    def _score_and_pack_results(results: List[Dict]) -> List[Dict[str, Any]]:
         scored_results: List[Tuple[float, Dict]] = []
         for result in results:
             try:
                 result_title = result.get("title", "")
-                title_similarity = calculate_title_similarity(movie_title, result_title)
+                if for_series:
+                    title_similarity = calculate_title_similarity_for_series_listing(movie_title, result)
+                else:
+                    title_similarity = calculate_title_similarity(movie_title, result_title)
                 normalized_search = movie_title.lower().strip()
                 normalized_result = result_title.lower().strip()
                 title_contained = normalized_search in normalized_result or normalized_result in normalized_search
@@ -1499,6 +1556,7 @@ def list_mediathek_movie_candidates(
                     search_title=movie_title,
                     search_year=year,
                     metadata=metadata,
+                    use_series_listing_similarity=for_series,
                 )
                 scored_results.append((score, result))
             except Exception as e:
@@ -1506,7 +1564,7 @@ def list_mediathek_movie_candidates(
                 continue
 
         if not scored_results:
-            continue
+            return []
 
         scored_results.sort(key=lambda x: x[0], reverse=True)
 
@@ -1515,7 +1573,11 @@ def list_mediathek_movie_candidates(
             if is_promotional_or_non_episode(cand):
                 continue
             cand_title = cand.get("title", "")
-            cand_sim = calculate_title_similarity(movie_title, cand_title)
+            cand_sim = (
+                calculate_title_similarity_for_series_listing(movie_title, cand)
+                if for_series
+                else calculate_title_similarity(movie_title, cand_title)
+            )
             if cand_sim < MIN_TITLE_SIMILARITY:
                 continue
             out.append(
@@ -1528,6 +1590,26 @@ def list_mediathek_movie_candidates(
             )
             if len(out) >= limit:
                 break
+        return out
+
+    if for_series:
+        normalized = _series_api_query_term(movie_title)
+        raw = _fetch_mvw_api_series_raw_results(normalized)
+        filtered = _filter_series_mvw_results(movie_title, normalized, raw)
+        if not filtered:
+            feed = _fetch_mvw_feed_results(normalized)
+            filtered = _filter_series_mvw_results(movie_title, normalized, feed or [])
+        return _score_and_pack_results(filtered)
+
+    search_terms = mediathek_movie_search_terms(movie_title)
+    if not search_terms:
+        return []
+
+    for api_term in search_terms:
+        results = _fetch_mvw_api_movie_results(api_term)
+        if not results:
+            continue
+        out = _score_and_pack_results(results)
         if out:
             return out
 
@@ -1780,6 +1862,124 @@ def _fetch_mvw_feed_results(query: str) -> list:
         return []
 
 
+def _series_api_query_term(series_title: str) -> str:
+    """
+    Suchbegriff für Mediathek-API und Normalisierung in series_mediathek_result_matches:
+    normalize_search_title, dann optionales (Jahr) am Ende entfernen („Serie (2024)“ → „Serie“).
+    """
+    n = normalize_search_title(series_title)
+    s = re.sub(r"\s*\(\s*\d{4}\s*\)\s*$", "", n).strip()
+    return s or n
+
+
+def _merge_mvw_result_if_source(result: Dict) -> Dict:
+    """API liefert teils _source — für score_movie/Download nach oben mergen."""
+    if isinstance(result.get("_source"), dict):
+        merged = {**result["_source"], **result}
+        merged.pop("_source", None)
+        return merged
+    return result
+
+
+def _fetch_mvw_api_series_raw_results(normalized_search_title: str) -> list:
+    """
+    Breite MediathekViewWeb-Suche (wie Website / #query), nicht nur Titelfeld.
+    Zuerst Feldsuche mit großem size — reine {\"query\": ...} liefert oft irrelevante Top-Treffer
+    und würde die breitere Liste verhindern (break nach erstem nicht-leeren Ergebnis).
+    """
+    payloads = [
+        {
+            "queries": [
+                {"fields": ["title", "topic", "description"], "query": normalized_search_title}
+            ],
+            "future": False,
+            "offset": 0,
+            "size": 500,
+        },
+        {
+            "queries": [
+                {"fields": ["title", "topic"], "query": normalized_search_title}
+            ],
+            "future": False,
+            "offset": 0,
+            "size": 500,
+        },
+        {"query": normalized_search_title},
+    ]
+    results: List[Any] = []
+    for payload in payloads:
+        try:
+            response = requests.post(
+                MVW_API_URL,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            data = response.json()
+            results = data.get("result", {}).get("results", [])
+            if results:
+                logging.debug(
+                    f"Serien-API: {len(results)} Roh-Einträge (Payload mit Feldsuche/query)"
+                )
+                break
+        except (requests.RequestException, KeyError, ValueError, TypeError) as e:
+            logging.debug(f"Serien-API-Payload fehlgeschlagen: {e}")
+            continue
+
+    if not results:
+        try:
+            resp = requests.get(
+                "https://mediathekviewweb.de/api/query",
+                params={"query": normalized_search_title},
+                headers={"Accept": "application/json"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("result", {}).get("results", [])
+            if results:
+                logging.debug(f"Serien-API (GET): {len(results)} Roh-Einträge")
+        except (requests.RequestException, KeyError, ValueError, TypeError) as e:
+            logging.debug(f"Serien-API GET fehlgeschlagen: {e}")
+
+    return results or []
+
+
+def _mvw_raw_title_topic_desc(result: Dict) -> Tuple[str, str, str]:
+    """Liest title/topic/description aus API-Dict inkl. _source."""
+    t = result.get("title") or result.get("Title")
+    if t is None and isinstance(result.get("_source"), dict):
+        t = result["_source"].get("title") or result["_source"].get("Title")
+    tp = result.get("topic") or result.get("Topic")
+    if tp is None and isinstance(result.get("_source"), dict):
+        tp = result["_source"].get("topic") or result["_source"].get("Topic")
+    d = result.get("description") or result.get("Description")
+    if d is None and isinstance(result.get("_source"), dict):
+        d = result["_source"].get("description") or result["_source"].get("Description")
+    return (t or "").strip(), (tp or "").strip(), (d or "").strip()
+
+
+def _filter_series_mvw_results(
+    series_title: str,
+    normalized_search_title: str,
+    results: list,
+) -> List[Dict]:
+    """Wie search_mediathek_series: nur passende Episoden, _source gemergt, ohne Promo."""
+    filtered: List[Dict] = []
+    for result in results:
+        raw_title, raw_topic, raw_desc = _mvw_raw_title_topic_desc(result)
+        if not series_mediathek_result_matches(
+            series_title, normalized_search_title, raw_title, raw_topic, raw_desc
+        ):
+            continue
+        to_append = _merge_mvw_result_if_source(result)
+        if is_promotional_or_non_episode(to_append):
+            continue
+        filtered.append(to_append)
+    return filtered
+
+
 def search_mediathek_series(series_title: str, prefer_language: str = "deutsch", prefer_audio_desc: str = "egal", 
                             notify_url: Optional[str] = None, entry_link: Optional[str] = None, 
                             year: Optional[int] = None, metadata: Optional[Dict] = None, debug: bool = False) -> list:
@@ -1798,68 +1998,17 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
     Returns:
         Liste von Episoden-Daten (sortiert nach Score), oder leere Liste wenn keine gefunden
     """
-    # Normalisiere Suchbegriff (entfernt Sonderzeichen/Akzente für bessere Suche)
-    normalized_search_title = normalize_search_title(series_title)
-    if normalized_search_title != series_title:
+    # Normalisiere Suchbegriff (inkl. (Jahr) für API/Matching)
+    normalized_search_title = _series_api_query_term(series_title)
+    if normalized_search_title != series_title.strip():
         logging.debug(f"Suchbegriff normalisiert: '{series_title}' → '{normalized_search_title}'")
     
     logging.info(f"Suche in MediathekViewWeb nach Serie: '{series_title}' (normalisiert: '{normalized_search_title}')")
-    # Reihenfolge wichtig: Website (#query=...) nutzt vermutlich minimales "query".
-    # Mit sortBy/size liefert die API teils ungefilterte Treffer.
-    payloads = [
-        # Minimal wie Website – nur "query", API-Standard (Relevanz?)
-        {"query": normalized_search_title},
-        # Explizit Felder durchsuchen
-        {
-            "queries": [
-                {"fields": ["title", "topic", "description"], "query": normalized_search_title}
-            ],
-            "future": False,
-            "offset": 0,
-            "size": 500
-        },
-        {
-            "queries": [
-                {"fields": ["title", "topic"], "query": normalized_search_title}
-            ],
-            "future": False,
-            "offset": 0,
-            "size": 500
-        },
-    ]
-    
+
     results = []
     try:
-        for payload in payloads:
-            try:
-                response = requests.post(MVW_API_URL, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
-                response.raise_for_status()
-                data = response.json()
-                results = data.get("result", {}).get("results", [])
-                if results:
-                    logging.debug(f"Serien-Suche: {len(results)} Roh-Ergebnisse mit verwendetem API-Format")
-                    break
-            except (requests.RequestException, KeyError, ValueError, TypeError) as e:
-                logging.debug(f"Serien-Suche mit anderem API-Format fehlgeschlagen: {e}")
-                continue
-        
-        # Fallback: GET mit query-Parameter (wie Website #query=...)
-        if not results:
-            try:
-                resp = requests.get(
-                    "https://mediathekviewweb.de/api/query",
-                    params={"query": normalized_search_title},
-                    headers={"Accept": "application/json"},
-                    timeout=10,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                results = data.get("result", {}).get("results", [])
-                if results:
-                    logging.debug(f"Serien-Suche (GET): {len(results)} Roh-Ergebnisse")
-            except (requests.RequestException, KeyError, ValueError, TypeError) as e:
-                logging.debug(f"Serien-Suche GET fehlgeschlagen: {e}")
-        
+        results = _fetch_mvw_api_series_raw_results(normalized_search_title)
+
         if not results:
             logging.warning(f"Keine Ergebnisse gefunden für Serie '{series_title}'")
             if notify_url and APPRISE_AVAILABLE:
@@ -1870,64 +2019,21 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
                 send_notification(notify_url, "Serie nicht gefunden", body, "warning")
             return []
         
-        # Filtere Ergebnisse: Nur die, die den Serientitel enthalten
-        # API kann "title"/"topic"/"description", "Title"/"Topic" oder _source.* liefern
-        def _get_result_title(r):
-            t = r.get("title") or r.get("Title")
-            if t is None and isinstance(r.get("_source"), dict):
-                t = r["_source"].get("title") or r["_source"].get("Title")
-            return (t or "").strip()
-        def _get_result_topic(r):
-            t = r.get("topic") or r.get("Topic")
-            if t is None and isinstance(r.get("_source"), dict):
-                t = r["_source"].get("topic") or r["_source"].get("Topic")
-            return (t or "").strip()
-        def _get_result_description(r):
-            t = r.get("description") or r.get("Description")
-            if t is None and isinstance(r.get("_source"), dict):
-                t = r["_source"].get("description") or r["_source"].get("Description")
-            return (t or "").strip()
-        
-        filtered_results = []
-        for result in results:
-            raw_title = _get_result_title(result)
-            raw_topic = _get_result_topic(result)
-            raw_desc = _get_result_description(result)
-            if not series_mediathek_result_matches(
-                series_title, normalized_search_title, raw_title, raw_topic, raw_desc
-            ):
-                continue
-            # API liefert teils _source: Felder nach oben mergen für score_movie/Download
-            to_append = result
-            if isinstance(result.get("_source"), dict):
-                to_append = {**result["_source"], **result}
-                to_append.pop("_source", None)
-            if is_promotional_or_non_episode(to_append):
-                continue
-            filtered_results.append(to_append)
-        
+        filtered_results = _filter_series_mvw_results(series_title, normalized_search_title, results)
+
         if not filtered_results:
             # Fallback: MediathekViewWeb-Feed (Website nutzt gleichen Feed für #query=...)
             feed_results = _fetch_mvw_feed_results(normalized_search_title)
             if feed_results:
                 logging.info(f"Serien-API-Filter 0 Treffer, nutze MediathekViewWeb-Feed: {len(feed_results)} Einträge")
-                for r in feed_results:
-                    raw_title = (r.get("title") or "").strip()
-                    raw_topic = (r.get("topic") or "").strip()
-                    raw_desc = (r.get("description") or "").strip()
-                    if not series_mediathek_result_matches(
-                        series_title, normalized_search_title, raw_title, raw_topic, raw_desc
-                    ):
-                        continue
-                    if is_promotional_or_non_episode(r):
-                        continue
-                    filtered_results.append(r)
+                filtered_results = _filter_series_mvw_results(series_title, normalized_search_title, feed_results)
             if not filtered_results:
                 # Bei 0 Treffern: erste API-Ergebnisse ausgeben (INFO), damit Filter angepasst werden kann
                 if results:
                     logging.info(f"Serien-Filter lieferte 0 Treffer bei {len(results)} API-Ergebnissen. Erste Titel:")
                     for i, r in enumerate(results[:5]):
-                        logging.info(f"  [{i+1}] title={_get_result_title(r)!r} topic={_get_result_topic(r)!r}")
+                        rt, rp, _ = _mvw_raw_title_topic_desc(r)
+                        logging.info(f"  [{i+1}] title={rt!r} topic={rp!r}")
                 logging.warning(f"Keine Episoden für Serie '{series_title}' gefunden")
                 if notify_url and APPRISE_AVAILABLE:
                     body = f"Keine Episoden für Serie gefunden:\n\n"
@@ -1941,8 +2047,15 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
         scored_results = []
         for result in filtered_results:
             try:
-                score = score_movie(result, prefer_language, prefer_audio_desc,
-                                  search_title=series_title, search_year=year, metadata=metadata)
+                score = score_movie(
+                    result,
+                    prefer_language,
+                    prefer_audio_desc,
+                    search_title=series_title,
+                    search_year=year,
+                    metadata=metadata,
+                    use_series_listing_similarity=True,
+                )
                 scored_results.append((score, result))
             except Exception as e:
                 logging.debug(f"Fehler beim Bewerten einer Episode für '{series_title}': {e}")
@@ -2532,8 +2645,15 @@ def main():
                             episodes_without_info.append(episode_data)
                             continue
                         
-                        score = score_movie(episode_data, args.sprache, args.audiodeskription,
-                                          search_title=movie_title, search_year=year, metadata=metadata)
+                        score = score_movie(
+                            episode_data,
+                            args.sprache,
+                            args.audiodeskription,
+                            search_title=movie_title,
+                            search_year=year,
+                            metadata=metadata,
+                            use_series_listing_similarity=True,
+                        )
                         episode_key = (season, episode_num)
                         if episode_key not in episodes_dict or score > episodes_dict[episode_key][0]:
                             episodes_dict[episode_key] = (score, episode_data)
@@ -2543,8 +2663,15 @@ def main():
                         max_ep_s1 = max((e for (s, e) in episodes_dict if s == 1), default=0)
                         for i, episode_data in enumerate(episodes_without_info):
                             fallback_ep = max_ep_s1 + 1 + i
-                            score = score_movie(episode_data, args.sprache, args.audiodeskription,
-                                              search_title=movie_title, search_year=year, metadata=metadata)
+                            score = score_movie(
+                                episode_data,
+                                args.sprache,
+                                args.audiodeskription,
+                                search_title=movie_title,
+                                search_year=year,
+                                metadata=metadata,
+                                use_series_listing_similarity=True,
+                            )
                             key = (1, fallback_ep)
                             if key not in episodes_dict or score > episodes_dict[key][0]:
                                 episodes_dict[key] = (score, episode_data)

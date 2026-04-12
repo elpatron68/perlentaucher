@@ -739,6 +739,17 @@ class TestPromotionalAndSeriesMatch:
             "Kurzinfo nur in der Beschreibung, Titel aber identisch.",
         )
 
+    def test_series_topic_alignment_prefers_listing_with_show_topic(self):
+        """Gleicher Suchbegriff: Topic = Serienname stärker als nur Vorkommen im Fließtext-Titel."""
+        ep = {"title": "Folge 2", "topic": "Gamma"}
+        other = {"title": "Report: heute über Gamma und mehr", "topic": "Info-Magazin"}
+        assert core.series_candidate_topic_alignment("Gamma", ep) >= 0.95
+        assert core.series_candidate_topic_alignment("Gamma", other) < core.series_candidate_topic_alignment("Gamma", ep)
+
+    def test_series_listing_similarity_boosts_episode_when_topic_is_show(self):
+        ep = {"title": "Folge 1", "topic": "Gamma"}
+        assert core.calculate_title_similarity_for_series_listing("Gamma", ep) > 0.5
+
 
 class TestEpisodeInfoPattern6:
     """Pattern (X/Y) nur aus Titel/Topic, nicht aus Beschreibung."""
