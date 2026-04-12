@@ -410,7 +410,8 @@ class WishlistPanel(QWidget):
         a.serien_download = cfg.get("serien_download", "erste")
         a.tmdb_api_key = cfg.get("tmdb_api_key") or None
         a.omdb_api_key = cfg.get("omdb_api_key") or None
-        a.notify = cfg.get("notify") or None
+        # Keine Apprise-Benachrichtigungen aus der GUI (u. a. PyInstaller: Plugin-Pfade).
+        a.notify = None
         a.debug_no_download = cfg.get("debug_no_download", False)
         a.download_dir = cfg.get("download_dir", ".")
         a.serien_dir = cfg.get("serien_dir") or None
