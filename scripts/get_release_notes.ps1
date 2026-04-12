@@ -10,8 +10,13 @@ param(
     [string]$NewTag,
     
     [string]$OpenRouterApiKey = $null,
-    [string]$OpenRouterModel = "anthropic/claude-3.5-sonnet"
+    # Standard: günstiges, stabil verfügbares Modell; 404 von OpenRouter oft „Modell existiert nicht“
+    [string]$OpenRouterModel = "openai/gpt-4o-mini"
 )
+
+if ($env:OPENROUTER_MODEL) {
+    $OpenRouterModel = $env:OPENROUTER_MODEL
+}
 
 # Hole Commits zwischen den Tags (oder seit letztem Tag)
 if ($LastTag) {
@@ -151,6 +156,7 @@ Beginne mit: "# Release $NewTag"
             max_tokens = 2000
         } | ConvertTo-Json -Depth 10 -Compress
         
+        Write-Host "  Modell: $OpenRouterModel" -ForegroundColor Gray
         $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers -Body $body -ErrorAction Stop
         
         if ($response.choices -and $response.choices.Count -gt 0) {
@@ -166,6 +172,10 @@ Beginne mit: "# Release $NewTag"
     }
     catch {
         Write-Host "⚠ Fehler bei AI-Generierung: $($_.Exception.Message)" -ForegroundColor Yellow
+        if ($_.ErrorDetails.Message) {
+            Write-Host "  API-Details: $($_.ErrorDetails.Message)" -ForegroundColor Gray
+        }
+        Write-Host "  Hinweis: HTTP 404 von OpenRouter bedeutet oft eine ungültige Modell-ID — prüfe https://openrouter.ai/models oder setze `$env:OPENROUTER_MODEL." -ForegroundColor Gray
         Write-Host "Verwende Fallback-Methode..." -ForegroundColor Gray
         $OpenRouterApiKey = $null  # Fallback zu manueller Generierung
     }
