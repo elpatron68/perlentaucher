@@ -147,7 +147,7 @@ Tipp: Du kannst die Wishlist auch dafür benutzen, **bereits vorhandene** Titel 
 
 - **GUI**: Tab „Wishlist“ — Einträge hinzufügen (Titel, Jahr, Typ), „Verarbeiten“ für direkten Download bei Treffer, oder „Auswahl wie Feed herunterladen“ für den gleichen Ablauf wie beim RSS-Feed (inkl. Serien-Dialog). Beim Start prüft die GUI im Hintergrund, ob Einträge auffindbar sind, und zeigt einen Hinweis.
 - **CLI**: z. B. `python src/perlentaucher.py --wishlist-add "Mein Film" --wishlist-year 2025 --wishlist-kind movie` und später `--wishlist-process` (oft per Taskplaner/Cron).
-- **Docker**: Pro Intervall läuft nach dem RSS-Lauf automatisch `--wishlist-process`; optional Web-UI mit `WISHLIST_WEB_ENABLED=1` (siehe [Docker-Dokumentation](docs/docker.md)).
+- **Docker**: Pro Intervall läuft nach dem RSS-Lauf automatisch `--wishlist-process`. Die **Wishlist-Web-UI** ist standardmäßig aus; zum Aktivieren `WISHLIST_WEB_ENABLED=1` (oder `true`) setzen und den Container-Port nach außen mappen (Standard im Container: `8765`, siehe [Docker-Nutzung](#docker-nutzung) und [Docker-Dokumentation](docs/docker.md)).
 - **Eigenständiges Web-UI**: `python -m src.wishlist_web --port 8765` oder über `perlentaucher.py --wishlist-web` (benötigt `fastapi`/`uvicorn` aus `requirements.txt`).
 
 **Wishlist-Web startet nicht bzw. die Eingabeaufforderung kehrt sofort zurück?**
@@ -300,6 +300,19 @@ Unterstützte Dienste (Beispiele):
 ## Docker-Nutzung
 
 Eine detaillierte Anleitung zur Docker-Nutzung findest du in der [Docker-Dokumentation](docs/docker.md).
+
+**Wishlist-Web-UI aktivieren:** Umgebungsvariable `WISHLIST_WEB_ENABLED=1` setzen und den Port der Web-Oberfläche veröffentlichen (Standard im Container: **8765**):
+
+```bash
+docker run -d \
+  --name perlentaucher \
+  -v /pfad/zu/downloads:/downloads \
+  -e WISHLIST_WEB_ENABLED=1 \
+  -p 8765:8765 \
+  codeberg.org/elpatron/perlentaucher:latest
+```
+
+Anschließend z. B. `http://localhost:8765` aufrufen. Optional: `WISHLIST_WEB_PORT`, `WISHLIST_WEB_HOST`, `WISHLIST_WEB_TOKEN` und `WISHLIST_FILE` — siehe Umgebungsvariablen in der [Docker-Dokumentation](docs/docker.md).
 
 ## CI/CD
 
