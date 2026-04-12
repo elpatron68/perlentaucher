@@ -4,11 +4,13 @@ Perlentaucher nutzt **zwei Coverage-Konfigurationen**, damit die Mindestabdeckun
 
 ## Konfigurationsdateien
 
-| Datei | Zweck |
-|--------|--------|
-| [`.coveragerc`](../.coveragerc) | Standard für `pytest`: `source = src`, aber **ohne** `src/gui/*` und ohne `src/perlentaucher_gui.py`. Enthält `exclude_lines` für typische Nicht-Mess-Zeilen (`pragma: no cover`, `if TYPE_CHECKING:`, …). |
-| [`coveragerc-full.ini`](../coveragerc-full.ini) | Misst **alles** unter `src`, **inklusive** GUI. Keine `omit`-Regeln. |
-| [`pytest.ini`](../pytest.ini) | Verwendet standardmäßig `--cov=src` mit `--cov-config=.coveragerc` und `--cov-fail-under=30`. |
+
+| Datei                                           | Zweck                                                                                                                                                                                                      |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `[.coveragerc](../.coveragerc)`                 | Standard für `pytest`: `source = src`, aber **ohne** `src/gui/*` und ohne `src/perlentaucher_gui.py`. Enthält `exclude_lines` für typische Nicht-Mess-Zeilen (`pragma: no cover`, `if TYPE_CHECKING:`, …). |
+| `[coveragerc-full.ini](../coveragerc-full.ini)` | Misst **alles** unter `src`, **inklusive** GUI. Keine `omit`-Regeln.                                                                                                                                       |
+| `[pytest.ini](../pytest.ini)`                   | Verwendet standardmäßig `--cov=src` mit `--cov-config=.coveragerc` und `--cov-fail-under=30`.                                                                                                              |
+
 
 ## Standard: Tests mit Kern-Coverage
 
