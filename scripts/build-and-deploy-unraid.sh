@@ -16,7 +16,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-REMOTE_HOST="${REMOTE_HOST:-root@192.168.155.5}"
+REMOTE_HOST="${REMOTE_HOST:-root@192.168.177.5}"
 REMOTE_DIR="${REMOTE_DIR:-/mnt/user/appdata/perlentaucher-branch-test}"
 IMAGE_TAG="${IMAGE_TAG:-perlentaucher:branch-test}"
 TAR_NAME="${TAR_NAME:-perlentaucher-branch.tar}"
