@@ -312,7 +312,9 @@ docker run -d \
   codeberg.org/elpatron/perlentaucher:latest
 ```
 
-Anschließend z. B. `http://localhost:8765` aufrufen. Optional: `WISHLIST_WEB_PORT`, `WISHLIST_WEB_HOST`, `WISHLIST_WEB_TOKEN` und `WISHLIST_FILE` — siehe Umgebungsvariablen in der [Docker-Dokumentation](docs/docker.md). Der mitgelieferte Entrypoint startet die Web-UI nur einmal im Hintergrund und setzt für RSS- und Wishlist-Process-Läufe `--no-wishlist-web`, damit kein zweiter Server denselben Port belegt.
+**Port-Mapping ist zusätzlich nötig:** `WISHLIST_WEB_PORT` legt nur fest, **auf welchem Port im Container** die Web-UI lauscht — ersetzt **kein** Veröffentlichen nach außen. Ohne `-p Host:Container` zeigt `docker ps` unter **PORTS** nichts, und vom Host aus ist die UI nicht erreichbar. Unter **Unraid** (und ähnlichen Oberflächen) musst du die Zuordnung unter **Ports** eintragen, nicht nur die Variable setzen.
+
+Anschließend z. B. `http://localhost:8765` aufrufen (bei abweichendem `WISHLIST_WEB_PORT` Host- und Container-Port im `-p`-Mapping anpassen, z. B. `-p 9426:9426`). `WISHLIST_WEB_HOST=127.0.0.1` lässt die UI vom Host aus meist nicht zu — `0.0.0.0` verwenden bzw. den Entrypoint setzt um. Optional: `WISHLIST_WEB_PORT`, `WISHLIST_WEB_HOST`, `WISHLIST_WEB_TOKEN` und `WISHLIST_FILE` — siehe [Docker-Dokumentation](docs/docker.md). Der Entrypoint startet die Web-UI nur einmal im Hintergrund und setzt für RSS- und Wishlist-Process-Läufe `--no-wishlist-web`, damit kein zweiter Server denselben Port belegt; nach dem Start erscheint ein kurzer TCP-Check oder ein Log-Auszug bei Problemen.
 
 ## CI/CD
 

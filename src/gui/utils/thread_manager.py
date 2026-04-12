@@ -311,7 +311,8 @@ class DownloadThread(QThread):
                         self.config.get('audiodeskription', 'egal'),
                         search_title=series_title,
                         search_year=year,
-                        metadata=metadata
+                        metadata=metadata,
+                        use_series_listing_similarity=True,
                     )
                 except Exception as e:
                     logging.debug(f"Fehler beim Bewerten einer Episode: {e}")
@@ -334,7 +335,8 @@ class DownloadThread(QThread):
                             self.config.get('audiodeskription', 'egal'),
                             search_title=series_title,
                             search_year=year,
-                            metadata=metadata
+                            metadata=metadata,
+                            use_series_listing_similarity=True,
                         )
                     except Exception as e:
                         logging.debug(f"Fehler beim Bewerten einer Episode: {e}")

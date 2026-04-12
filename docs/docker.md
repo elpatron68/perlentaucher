@@ -202,7 +202,7 @@ docker run -d \
 - `WISHLIST_FILE`: Pfad zur Wishlist-JSON (Standard: `{DOWNLOAD_DIR}/.perlentaucher_wishlist.json`). Pro Intervall wird nach dem RSS-Lauf `--wishlist-process` ausgeführt (Treffer werden heruntergeladen, Eintrag entfernt).
 - `WISHLIST_WEB_ENABLED`: `1` oder `true` startet die Wishlist-Web-Oberfläche **einmal** beim Container-Start im Hintergrund (Standard: aus). Ohne Aktivierung läuft nur die CLI-Verarbeitung. *(Der Entrypoint setzt für RSS- und Wishlist-Process-Aufrufe intern `--no-wishlist-web`, damit nicht eine zweite Instanz denselben Port belegt — siehe Hintergrundprozess mit `--wishlist-web`.)*
 - `WISHLIST_WEB_PORT`: Port der Wishlist-Web-UI (Standard: `8765`)
-- `WISHLIST_WEB_HOST`: Bind-Adresse (Standard: `0.0.0.0` im Image, damit der Port aus dem Netzwerk erreichbar ist — absichern z. B. durch Firewall/Reverse-Proxy)
+- `WISHLIST_WEB_HOST`: Bind-Adresse (Standard: `0.0.0.0` im Image, damit der Port aus dem Netzwerk erreichbar ist — absichern z. B. durch Firewall/Reverse-Proxy). **`127.0.0.1` oder `localhost` ist im Container nur der Loopback** — von deinem Rechner aus ist die Web-UI dann trotz `-p …:…` oft **nicht** erreichbar; der Entrypoint setzt in dem Fall auf `0.0.0.0` um. Die **Host-Port-Angabe** bei `-p` muss zum **Container-Port** passen (`WISHLIST_WEB_PORT`, Standard `8765`).
 - `WISHLIST_WEB_TOKEN`: Optionaler Bearer-/Query-`token` für die HTTP-API der Wishlist-Web-UI
 
 **Wichtig:** 

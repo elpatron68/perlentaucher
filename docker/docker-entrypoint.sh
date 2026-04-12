@@ -20,6 +20,13 @@ WISHLIST_FILE=${WISHLIST_FILE:-${DOWNLOAD_DIR}/.perlentaucher_wishlist.json}
 WISHLIST_WEB_ENABLED=${WISHLIST_WEB_ENABLED:-0}
 WISHLIST_WEB_PORT=${WISHLIST_WEB_PORT:-8765}
 WISHLIST_WEB_HOST=${WISHLIST_WEB_HOST:-0.0.0.0}
+# 127.0.0.1/localhost: Server nur im Container-Loopback — Docker-Portmapping vom Host aus greift dann nicht
+case "${WISHLIST_WEB_HOST}" in
+  127.0.0.1|localhost|::1)
+    echo "⚠️  WISHLIST_WEB_HOST=${WISHLIST_WEB_HOST} — für Zugriff vom Docker-Host (z. B. -p …) wird auf 0.0.0.0 umgestellt."
+    WISHLIST_WEB_HOST=0.0.0.0
+    ;;
+esac
 
 # Konvertiere Stunden in Sekunden
 INTERVAL_SECONDS=$((INTERVAL_HOURS * 3600))
@@ -136,6 +143,21 @@ if [ "${WISHLIST_WEB_ENABLED}" = "1" ] || [ "$(echo ${WISHLIST_WEB_ENABLED} | tr
         --wishlist-web-port "${WISHLIST_WEB_PORT}" \
         >> /tmp/wishlist-web.log 2>&1 &
     echo $! > /tmp/wishlist-web.pid
+    # TCP-Check: Uvicorn-Fehler stehen nur in /tmp/wishlist-web.log (nicht in docker logs)
+    WL_OK=0
+    for _try in 1 2 3 4 5 6 7 8 9 10; do
+        if python -c "import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', int('${WISHLIST_WEB_PORT}'))); s.close()" 2>/dev/null; then
+            WL_OK=1
+            break
+        fi
+        sleep 1
+    done
+    if [ "${WL_OK}" -eq 1 ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Wishlist-Web-UI: Port ${WISHLIST_WEB_PORT} lauscht (TCP-Check OK)."
+    else
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - ⚠️  Wishlist-Web-UI: Kein Listener auf 127.0.0.1:${WISHLIST_WEB_PORT} — Auszug aus /tmp/wishlist-web.log:"
+        tail -n 80 /tmp/wishlist-web.log 2>/dev/null || echo "(Log leer oder nicht lesbar)"
+    fi
 fi
 
 # Endlosschleife

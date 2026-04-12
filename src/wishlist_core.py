@@ -270,6 +270,7 @@ def probe_wishlist_item(
         year=item.year,
         metadata=meta,
         limit=8,
+        for_series=(item.kind == "series"),
     )
     if not raw:
         return {"status": "not_found"}
@@ -421,6 +422,7 @@ def process_one_wishlist_item(
             year=item.year,
             metadata=metadata,
             limit=8,
+            for_series=True,
         )
         if not cands:
             log_wishlist_item_result(
@@ -567,6 +569,7 @@ def _process_series_staffel(
             search_title=movie_title,
             search_year=year,
             metadata=metadata,
+            use_series_listing_similarity=True,
         )
         episode_key = (season, episode_num)
         if episode_key not in episodes_dict or score > episodes_dict[episode_key][0]:
@@ -582,6 +585,7 @@ def _process_series_staffel(
                 search_title=movie_title,
                 search_year=year,
                 metadata=metadata,
+                use_series_listing_similarity=True,
             )
             key = (1, fallback_ep)
             if key not in episodes_dict or score > episodes_dict[key][0]:

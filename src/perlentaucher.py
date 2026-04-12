@@ -1054,6 +1054,87 @@ def calculate_title_similarity(search_title: str, result_title: str) -> float:
     return jaccard
 
 
+def series_mediathek_title_false_positive(
+    series_title: str,
+    raw_title: str,
+    raw_topic: str,
+) -> bool:
+    """
+    Bekannte Verwechslungen: Einwort-Serientitel kommt in Dokus/Reportagen vor,
+    obwohl das Topic nicht die Serie ist (z. B. „Nautilus“ vs. USS-Nautilus-Doku).
+    """
+    st = (series_title or "").strip()
+    if not st or " " in st:
+        return False
+    sl = st.lower()
+    tl = (raw_title or "").lower()
+    top = (raw_topic or "").lower().strip()
+    tnorm = normalize_search_title(raw_topic or "").lower()
+
+    if sl == tnorm or sl == top:
+        return False
+
+    if sl == "nautilus":
+        if re.search(r"\b(u\.?s\.?s\.?|uss)\s+nautilus\b", tl, re.I):
+            return True
+        if "legendäre schiffe" in tl or "legendare schiffe" in tl:
+            return True
+        if re.search(r"\bu\.?\s*s\.?\s*navy\b", tl, re.I) or "us navy" in tl:
+            return True
+    return False
+
+
+def series_candidate_topic_alignment(series_title: str, movie_data: Dict) -> float:
+    """
+    Wie gut Topic/Titel die Serie als Sendung identifizieren (0..1).
+    Reine Titel-Substring-Treffer ohne passendes Topic werden abgewertet
+    (Wishlist/WebUI-Kandidaten vs. Doku mit gleichem Namensfragment).
+    """
+    nt = normalize_search_title(series_title).lower().strip()
+    if not nt:
+        return 0.5
+    topic = (movie_data.get("topic") or "").strip()
+    title = (movie_data.get("title") or "").strip()
+    topic_n = normalize_search_title(topic).lower().strip()
+    title_n = normalize_search_title(title).lower().strip()
+
+    if nt == topic_n:
+        return 1.0
+
+    topic_tokens = set(re.findall(r"[\wöäüß]+", topic_n, flags=re.I))
+    if " " not in nt and nt in topic_tokens:
+        return 1.0
+
+    if title_n.startswith(nt + " ") or title_n.startswith(nt + ":") or title_n.startswith(nt + " -"):
+        return 0.92
+    st_low = series_title.lower().strip()
+    if title.lower().strip().startswith(st_low):
+        return 0.9
+
+    if nt not in title_n:
+        return 0.2
+
+    if series_mediathek_title_false_positive(series_title, title, topic):
+        return 0.08
+
+    pos = title_n.find(nt)
+    if pos <= 0 or title_n[:pos].strip() in ("", "|", "-", ":", "–"):
+        return 0.55
+    return 0.35
+
+
+def calculate_title_similarity_for_series_listing(search_title: str, movie_data: Dict) -> float:
+    """Kombiniert Titel-Ähnlichkeit mit Topic-/Serien-Kontext (für Serien-Suche & Wishlist)."""
+    t = movie_data.get("title") or ""
+    base = calculate_title_similarity(search_title, t)
+    align = series_candidate_topic_alignment(search_title, movie_data)
+    combined = base * align
+    # Episodentitel ohne Seriennamen („Folge 1“), Topic aber = Serie — typisch in der Mediathek
+    if align >= 0.9 and base < 0.3:
+        return max(combined, align * 0.82)
+    return combined
+
+
 _PROMOTIONAL_TITLE_RE = re.compile(
     r"\b("
     r"trailer|teasers?|vorschau|previews?|making-of|making\s+of|"
@@ -1114,6 +1195,8 @@ def series_mediathek_result_matches(
         or normalized_lower in topic_norm
     )
     if in_title_or_topic:
+        if series_mediathek_title_false_positive(series_title, raw_title, raw_topic):
+            return False
         return True
 
     in_description = (
@@ -1128,7 +1211,15 @@ def series_mediathek_result_matches(
     return sim >= min_title_similarity_for_description_only
 
 
-def score_movie(movie_data, prefer_language, prefer_audio_desc, search_title: str = None, search_year: Optional[int] = None, metadata: Dict = None):
+def score_movie(
+    movie_data,
+    prefer_language,
+    prefer_audio_desc,
+    search_title: str = None,
+    search_year: Optional[int] = None,
+    metadata: Dict = None,
+    use_series_listing_similarity: bool = False,
+):
     """
     Bewertet einen Film basierend auf den Präferenzen und Titelübereinstimmung.
     Höhere Punktzahl = bessere Übereinstimmung.
@@ -1148,7 +1239,10 @@ def score_movie(movie_data, prefer_language, prefer_audio_desc, search_title: st
     # wichtiger ist als andere Faktoren (Dateigröße, Sprache, etc.)
     if search_title:
         result_title = movie_data.get("title", "")
-        title_similarity = calculate_title_similarity(search_title, result_title)
+        if use_series_listing_similarity:
+            title_similarity = calculate_title_similarity_for_series_listing(search_title, movie_data)
+        else:
+            title_similarity = calculate_title_similarity(search_title, result_title)
         # Titelübereinstimmung ist sehr wichtig - multipliziere mit sehr hohem Faktor
         score += title_similarity * 100000
     
@@ -1460,6 +1554,7 @@ def list_mediathek_movie_candidates(
     year: Optional[int] = None,
     metadata: Optional[Dict] = None,
     limit: int = 8,
+    for_series: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Liefert bis zu ``limit`` Treffer aus MediathekViewWeb (absteigend nach Score),
@@ -1468,6 +1563,9 @@ def list_mediathek_movie_candidates(
 
     Jedes Element ist ein Dict mit: score (float), title_similarity (float), title (str), result (API-Dict).
     Leere Liste, wenn nichts Passendes gefunden wurde.
+
+    ``for_series=True``: Topic-gewichtete Titelähnlichkeit (Serien-Wishlist/WebUI), damit Doku-Treffer
+    mit Namensfragment nicht vor echten Serien-Episoden landen.
     """
     metadata = metadata or {}
     search_terms = mediathek_movie_search_terms(movie_title)
@@ -1486,7 +1584,10 @@ def list_mediathek_movie_candidates(
         for result in results:
             try:
                 result_title = result.get("title", "")
-                title_similarity = calculate_title_similarity(movie_title, result_title)
+                if for_series:
+                    title_similarity = calculate_title_similarity_for_series_listing(movie_title, result)
+                else:
+                    title_similarity = calculate_title_similarity(movie_title, result_title)
                 normalized_search = movie_title.lower().strip()
                 normalized_result = result_title.lower().strip()
                 title_contained = normalized_search in normalized_result or normalized_result in normalized_search
@@ -1499,6 +1600,7 @@ def list_mediathek_movie_candidates(
                     search_title=movie_title,
                     search_year=year,
                     metadata=metadata,
+                    use_series_listing_similarity=for_series,
                 )
                 scored_results.append((score, result))
             except Exception as e:
@@ -1515,7 +1617,11 @@ def list_mediathek_movie_candidates(
             if is_promotional_or_non_episode(cand):
                 continue
             cand_title = cand.get("title", "")
-            cand_sim = calculate_title_similarity(movie_title, cand_title)
+            cand_sim = (
+                calculate_title_similarity_for_series_listing(movie_title, cand)
+                if for_series
+                else calculate_title_similarity(movie_title, cand_title)
+            )
             if cand_sim < MIN_TITLE_SIMILARITY:
                 continue
             out.append(
@@ -1941,8 +2047,15 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
         scored_results = []
         for result in filtered_results:
             try:
-                score = score_movie(result, prefer_language, prefer_audio_desc,
-                                  search_title=series_title, search_year=year, metadata=metadata)
+                score = score_movie(
+                    result,
+                    prefer_language,
+                    prefer_audio_desc,
+                    search_title=series_title,
+                    search_year=year,
+                    metadata=metadata,
+                    use_series_listing_similarity=True,
+                )
                 scored_results.append((score, result))
             except Exception as e:
                 logging.debug(f"Fehler beim Bewerten einer Episode für '{series_title}': {e}")
@@ -2532,8 +2645,15 @@ def main():
                             episodes_without_info.append(episode_data)
                             continue
                         
-                        score = score_movie(episode_data, args.sprache, args.audiodeskription,
-                                          search_title=movie_title, search_year=year, metadata=metadata)
+                        score = score_movie(
+                            episode_data,
+                            args.sprache,
+                            args.audiodeskription,
+                            search_title=movie_title,
+                            search_year=year,
+                            metadata=metadata,
+                            use_series_listing_similarity=True,
+                        )
                         episode_key = (season, episode_num)
                         if episode_key not in episodes_dict or score > episodes_dict[episode_key][0]:
                             episodes_dict[episode_key] = (score, episode_data)
@@ -2543,8 +2663,15 @@ def main():
                         max_ep_s1 = max((e for (s, e) in episodes_dict if s == 1), default=0)
                         for i, episode_data in enumerate(episodes_without_info):
                             fallback_ep = max_ep_s1 + 1 + i
-                            score = score_movie(episode_data, args.sprache, args.audiodeskription,
-                                              search_title=movie_title, search_year=year, metadata=metadata)
+                            score = score_movie(
+                                episode_data,
+                                args.sprache,
+                                args.audiodeskription,
+                                search_title=movie_title,
+                                search_year=year,
+                                metadata=metadata,
+                                use_series_listing_similarity=True,
+                            )
                             key = (1, fallback_ep)
                             if key not in episodes_dict or score > episodes_dict[key][0]:
                                 episodes_dict[key] = (score, episode_data)

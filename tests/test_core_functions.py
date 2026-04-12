@@ -739,6 +739,34 @@ class TestPromotionalAndSeriesMatch:
             "Kurzinfo nur in der Beschreibung, Titel aber identisch.",
         )
 
+    def test_series_match_nautilus_u_boat_doc_rejected(self):
+        """Serie „Nautilus“ vs. Schiffsdoku mit gleichem Namensfragment."""
+        assert not core.series_mediathek_result_matches(
+            "Nautilus",
+            core.normalize_search_title("Nautilus"),
+            "Die USS Nautilus - Legendäre Schiffe der U.S. Navy",
+            "ZDFinfo Doku",
+            "",
+        )
+
+    def test_series_match_nautilus_show_topic_ok(self):
+        assert core.series_mediathek_result_matches(
+            "Nautilus",
+            core.normalize_search_title("Nautilus"),
+            "Folge 1",
+            "Nautilus",
+            "",
+        )
+
+    def test_series_listing_similarity_prefers_topic(self):
+        doc = {
+            "title": "Die USS Nautilus - Legendäre Schiffe der U.S. Navy",
+            "topic": "ZDFinfo Doku",
+        }
+        ep = {"title": "Folge 1", "topic": "Nautilus"}
+        assert core.calculate_title_similarity_for_series_listing("Nautilus", doc) < 0.2
+        assert core.calculate_title_similarity_for_series_listing("Nautilus", ep) > 0.5
+
 
 class TestEpisodeInfoPattern6:
     """Pattern (X/Y) nur aus Titel/Topic, nicht aus Beschreibung."""
