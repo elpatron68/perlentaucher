@@ -164,7 +164,9 @@ while true; do
         SERIEN_DIR_ARGS="--serien-dir ${SERIEN_DIR}"
     fi
     
+    # --no-wishlist-web: WISHLIST_WEB_ENABLED gilt sonst für jeden Aufruf — die UI läuft bereits im Hintergrund
     python src/perlentaucher.py \
+        --no-wishlist-web \
         --download-dir "${DOWNLOAD_DIR}" \
         --limit "${LIMIT}" \
         --loglevel "${LOGLEVEL}" \
@@ -183,6 +185,7 @@ while true; do
     # Exit-Code erfassen, ohne set -e zu triggern (Schleife soll weiterlaufen)
     WISHLIST_EXIT=0
     python src/perlentaucher.py \
+        --no-wishlist-web \
         --wishlist-process \
         --wishlist-file "${WISHLIST_FILE}" \
         --download-dir "${DOWNLOAD_DIR}" \

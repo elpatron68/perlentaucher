@@ -312,7 +312,7 @@ docker run -d \
   codeberg.org/elpatron/perlentaucher:latest
 ```
 
-Anschließend z. B. `http://localhost:8765` aufrufen. Optional: `WISHLIST_WEB_PORT`, `WISHLIST_WEB_HOST`, `WISHLIST_WEB_TOKEN` und `WISHLIST_FILE` — siehe Umgebungsvariablen in der [Docker-Dokumentation](docs/docker.md).
+Anschließend z. B. `http://localhost:8765` aufrufen. Optional: `WISHLIST_WEB_PORT`, `WISHLIST_WEB_HOST`, `WISHLIST_WEB_TOKEN` und `WISHLIST_FILE` — siehe Umgebungsvariablen in der [Docker-Dokumentation](docs/docker.md). Der mitgelieferte Entrypoint startet die Web-UI nur einmal im Hintergrund und setzt für RSS- und Wishlist-Process-Läufe `--no-wishlist-web`, damit kein zweiter Server denselben Port belegt.
 
 ## CI/CD
 
