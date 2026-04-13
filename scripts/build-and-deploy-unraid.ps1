@@ -51,3 +51,8 @@ finally {
 }
 
 Write-Host "==> Fertig. Image auf $RemoteHost geladen ($ImageTag)."
+Write-Host ""
+Write-Host "WICHTIG: Nur 'docker restart' reicht nicht — der Container nutzt weiter die alte Image-ID." -ForegroundColor Yellow
+Write-Host "         Container neu anlegen, z. B.:" -ForegroundColor Yellow
+Write-Host "           docker compose -f <dein-compose.yml> up -d --force-recreate" -ForegroundColor Cyan
+Write-Host "         oder Docker-UI: Container stoppen, entfernen, mit gleichem Tag neu erstellen." -ForegroundColor Cyan
