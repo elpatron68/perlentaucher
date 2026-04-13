@@ -17,6 +17,7 @@ from src.wishlist_activity import (  # noqa: E402
     list_activity,
     log_activity_event,
     log_wishlist_item_result,
+    query_activity,
     resolve_activity_path,
     summarize_probe_for_log,
 )
@@ -75,6 +76,41 @@ class TestListAndClear:
             append_activity(str(p), "a", f"x{i}")
         assert len(list_activity(str(p), limit=2)) == 2
         assert len(list_activity(str(p), limit=0)) == 1
+
+
+class TestQueryActivity:
+    def test_filter_level_and_pagination(self, tmp_path):
+        p = str(tmp_path / ACTIVITY_FILENAME)
+        append_activity(p, "x", "A", "", "info")
+        append_activity(p, "x", "B", "", "warning")
+        append_activity(p, "x", "C", "", "warning")
+        rows, total = query_activity(p, limit=10, offset=0, level="warning")
+        assert total == 2
+        assert len(rows) == 2
+        assert {r["label"] for r in rows} == {"B", "C"}
+        page, tot = query_activity(p, limit=1, offset=0, level="warning")
+        assert tot == 2
+        assert len(page) == 1
+        page2, tot2 = query_activity(p, limit=1, offset=1, level="warning")
+        assert tot2 == 2
+        assert len(page2) == 1
+        assert page[0]["label"] != page2[0]["label"]
+
+    def test_filter_q(self, tmp_path):
+        p = str(tmp_path / ACTIVITY_FILENAME)
+        append_activity(p, "feed_download", "T1", "hello world", "info")
+        append_activity(p, "pruefen", "T2", "nix", "info")
+        rows, total = query_activity(p, q="hello")
+        assert total == 1
+        assert rows[0]["label"] == "T1"
+
+    def test_filter_action_exact(self, tmp_path):
+        p = str(tmp_path / ACTIVITY_FILENAME)
+        append_activity(p, "a", "x", "", "info")
+        append_activity(p, "b", "y", "", "info")
+        rows, total = query_activity(p, action="b")
+        assert total == 1
+        assert rows[0]["label"] == "y"
 
 
 def test_default_activity_path(tmp_path):

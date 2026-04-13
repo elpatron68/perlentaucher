@@ -9,7 +9,7 @@ import os
 import shutil
 import threading
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 _lock = threading.Lock()
 MAX_ENTRIES = 400
@@ -145,6 +145,56 @@ def list_activity(path: str, limit: int = 50) -> List[Dict[str, Any]]:
         data = _load(path)
     entries = data.get("entries", [])
     return entries[:lim]
+
+
+def query_activity(
+    path: str,
+    *,
+    limit: int = 20,
+    offset: int = 0,
+    level: Optional[str] = None,
+    action: Optional[str] = None,
+    q: Optional[str] = None,
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Gefilterte Liste (neueste zuerst) mit Gesamtzahl der Treffer nach Filter, dann Paginierung.
+
+    ``level`` / ``action``: exakter Vergleich; leer oder None = kein Filter.
+    ``q``: Teilstring in label, detail, action, source (Groß/Kleinschreibung egal).
+    """
+    lim = max(1, min(int(limit), 200))
+    off = max(0, int(offset))
+
+    lev = (level or "").strip().lower()
+    act = (action or "").strip()
+    needle = (q or "").strip().lower()
+
+    with _lock:
+        data = _load(path)
+    raw: List[Dict[str, Any]] = list(data.get("entries", []))
+
+    def _match(e: Dict[str, Any]) -> bool:
+        if lev and (e.get("level") or "").lower() != lev:
+            return False
+        if act and (e.get("action") or "") != act:
+            return False
+        if needle:
+            hay = " ".join(
+                [
+                    str(e.get("label") or ""),
+                    str(e.get("detail") or ""),
+                    str(e.get("action") or ""),
+                    str(e.get("source") or ""),
+                ]
+            ).lower()
+            if needle not in hay:
+                return False
+        return True
+
+    filtered = [e for e in raw if _match(e)]
+    total = len(filtered)
+    page = filtered[off : off + lim]
+    return page, total
 
 
 def clear_activity(path: str) -> None:

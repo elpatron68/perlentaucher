@@ -198,6 +198,7 @@ def test_index_returns_html(tmp_path):
     assert "text/html" in r.headers.get("content-type", "")
     assert "Wunschliste" in r.text
     assert "Verlauf" in r.text
+    assert 'id="hist-details"' in r.text
     assert "/favicon.ico" in r.text
     assert "/assets/icon_32.png" in r.text
     assert 'id="wl-footer"' in r.text
@@ -227,7 +228,7 @@ def test_api_history_empty(tmp_path):
     client = TestClient(app)
     r = client.get("/api/history")
     assert r.status_code == 200
-    assert r.json() == {"entries": []}
+    assert r.json() == {"entries": [], "total": 0, "limit": 20, "offset": 0}
 
 
 def test_api_history_clear(tmp_path):
@@ -241,7 +242,36 @@ def test_api_history_clear(tmp_path):
     append_activity(hist, "pruefen", "x", "y", "info")
     assert len(client.get("/api/history").json()["entries"]) == 1
     assert client.delete("/api/history").status_code == 200
-    assert client.get("/api/history").json()["entries"] == []
+    j = client.get("/api/history").json()
+    assert j["entries"] == []
+    assert j["total"] == 0
+
+
+def test_api_history_filter_and_page(tmp_path):
+    from src.wishlist_activity import append_activity
+
+    wl = str(tmp_path / "wl.json")
+    save_wishlist(wl, {"version": 1, "items": []})
+    hist = str(tmp_path / "act.json")
+    append_activity(hist, "a1", "Alpha", "detail foo", "info", "web")
+    append_activity(hist, "a2", "Beta", "x", "warning", "cli")
+    append_activity(hist, "a1", "Gamma", "y", "error", "web")
+    app = create_app(wl, _factory(tmp_path), token=None, activity_path=hist)
+    client = TestClient(app)
+    r = client.get("/api/history", params={"level": "warning", "limit": 10})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["total"] == 1
+    assert len(j["entries"]) == 1
+    assert j["entries"][0]["label"] == "Beta"
+    r2 = client.get("/api/history", params={"q": "Gamma", "limit": 5})
+    assert r2.json()["total"] == 1
+    assert r2.json()["entries"][0]["label"] == "Gamma"
+    r3 = client.get("/api/history", params={"limit": 1, "offset": 0})
+    assert r3.json()["total"] == 3
+    assert len(r3.json()["entries"]) == 1
+    r4 = client.get("/api/history", params={"limit": 1, "offset": 1})
+    assert r4.json()["entries"][0]["label"] == "Beta"
 
 
 def test_post_item_writes_activity_log(tmp_path, monkeypatch):

@@ -29,7 +29,7 @@ except ImportError:
 from src.wishlist_activity import (
     append_activity,
     clear_activity,
-    list_activity,
+    query_activity,
     resolve_activity_path,
     summarize_probe_for_log,
 )
@@ -182,6 +182,23 @@ INDEX_HTML = """<!DOCTYPE html>
     #history-wrap { margin-top: 2.5rem; }
     #history-wrap table { font-size: 0.85rem; }
     #history-wrap td.detail { color: #a9b1d6; max-width: 22rem; word-break: break-word; }
+    details.hist-details > summary {
+      cursor: pointer;
+      list-style: none;
+      font-size: 1.15rem;
+      font-weight: 600;
+      padding: 0.35rem 0;
+      color: #c0caf5;
+    }
+    details.hist-details > summary::-webkit-details-marker { display: none; }
+    details.hist-details .hist-hint { font-weight: 400; font-size: 0.85rem; color: #a9b1d6; margin-left: 0.35rem; }
+    .hist-inner { margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid #3b4261; }
+    .hist-filters { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: flex-end; margin: 0.75rem 0 1rem; }
+    .hist-filters label { margin-top: 0; font-size: 0.85rem; }
+    .hist-filters input[type="search"], .hist-filters select { max-width: 14rem; }
+    .hist-filters input.hist-q { max-width: min(100%, 18rem); }
+    .hist-pager { margin-top: 1rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; font-size: 0.9rem; color: #a9b1d6; }
+    .hist-pager button:disabled { opacity: 0.45; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -208,11 +225,53 @@ INDEX_HTML = """<!DOCTYPE html>
   <table><thead><tr><th>Titel</th><th>Jahr</th><th>Typ</th><th class="col-actions" aria-label="Aktionen"></th></tr></thead><tbody id="rows"></tbody></table>
 
   <div id="history-wrap">
-    <h2>Verlauf</h2>
-    <p style="font-size:0.9rem;color:#a9b1d6;">Gemeinsame Aktivitätsdatei mit CLI und GUI (RSS-Feed, Suche, Wishlist, Downloads). Web-Aktionen sind als Quelle „Web“ erkennbar.</p>
-    <button type="button" class="secondary" id="reloadHist">Verlauf aktualisieren</button>
-    <button type="button" class="secondary" id="clearHist">Verlauf leeren</button>
-    <table><thead><tr><th>Zeit (UTC)</th><th>Quelle</th><th>Art</th><th>Betreff</th><th>Details</th><th>Stufe</th></tr></thead><tbody id="histRows"></tbody></table>
+    <details id="hist-details" class="hist-details">
+      <summary><span class="hist-sum-title">Verlauf</span> <span id="hist-total-hint" class="hist-hint">(aufklappen, Filter &amp; Seiten)</span></summary>
+      <div class="hist-inner">
+        <p style="font-size:0.9rem;color:#a9b1d6;margin-top:0;">Gemeinsame Aktivitätsdatei mit CLI und GUI (RSS-Feed, Suche, Wishlist, Downloads). Web-Aktionen sind als Quelle „Web“ erkennbar.</p>
+        <div class="hist-filters">
+          <label>Stufe
+            <select id="histFilterLevel" aria-label="Nach Stufe filtern">
+              <option value="">alle</option>
+              <option value="info">info</option>
+              <option value="success">success</option>
+              <option value="warning">warning</option>
+              <option value="error">error</option>
+            </select>
+          </label>
+          <label>Art
+            <select id="histFilterAction" aria-label="Nach Art filtern">
+              <option value="">alle</option>
+              <option value="hinzufuegen">Eintrag &amp; Probe</option>
+              <option value="download">Download</option>
+              <option value="pruefen">Prüfen</option>
+              <option value="verarbeiten">Verarbeiten</option>
+              <option value="entfernen">Entfernt</option>
+              <option value="wishlist_download">Wishlist-Download</option>
+              <option value="wishlist_stapel">Wishlist Stapel</option>
+              <option value="wishlist_add">Wishlist +</option>
+              <option value="wishlist_remove">Wishlist −</option>
+              <option value="feed_download">RSS-Feed</option>
+              <option value="such_download">Suche</option>
+            </select>
+          </label>
+          <label style="flex:1;min-width:12rem;">Text
+            <input class="hist-q" type="search" id="histFilterQ" placeholder="Betreff, Details, Art …" autocomplete="off" aria-label="Textsuche im Verlauf"/>
+          </label>
+          <button type="button" id="histFilterApply">Filtern</button>
+        </div>
+        <div>
+          <button type="button" class="secondary" id="reloadHist">Aktualisieren</button>
+          <button type="button" class="secondary" id="clearHist">Verlauf leeren</button>
+        </div>
+        <table><thead><tr><th>Zeit (UTC)</th><th>Quelle</th><th>Art</th><th>Betreff</th><th>Details</th><th>Stufe</th></tr></thead><tbody id="histRows"></tbody></table>
+        <div id="histPager" class="hist-pager">
+          <button type="button" class="secondary" id="histPrev" disabled>Zurück</button>
+          <span id="histPageInfo"></span>
+          <button type="button" class="secondary" id="histNext" disabled>Weiter</button>
+        </div>
+      </div>
+    </details>
   </div>
 
   <script>
@@ -238,7 +297,7 @@ INDEX_HTML = """<!DOCTYPE html>
         await api('/api/items/'+b.dataset.id, { method: 'DELETE' });
         show('Eintrag entfernt.');
         loadRows();
-        loadHistory();
+        refreshHistoryIfOpen();
       });
     }
     function escapeHtml(s) {
@@ -252,17 +311,69 @@ INDEX_HTML = """<!DOCTYPE html>
       const m = { info: 'lvl-info', success: 'lvl-success', warning: 'lvl-warning', error: 'lvl-error' };
       return m[lvl] || 'lvl-info';
     }
-    async function loadHistory() {
-      const data = await api('/api/history?limit=50');
+    const histState = { limit: 20, offset: 0, level: '', action: '', q: '' };
+    let histEverOpened = false;
+    function syncHistFiltersFromDom() {
+      const lv = document.getElementById('histFilterLevel');
+      const ac = document.getElementById('histFilterAction');
+      const tq = document.getElementById('histFilterQ');
+      histState.level = (lv && lv.value) ? lv.value : '';
+      histState.action = (ac && ac.value) ? ac.value : '';
+      histState.q = (tq && tq.value) ? tq.value.trim() : '';
+    }
+    function renderHistoryRows(entries) {
       const tb = document.getElementById('histRows');
       tb.innerHTML = '';
-      for (const e of data.entries || []) {
+      for (const e of entries || []) {
         const tr = document.createElement('tr');
         const ts = (e.ts || '').replace('T', ' ').replace('+00:00', ' UTC');
         const al = actionLabel[e.action] || e.action;
         const src = sourceLabel[e.source] || (e.source || '—');
         tr.innerHTML = '<td>'+escapeHtml(ts)+'</td><td>'+escapeHtml(src)+'</td><td>'+escapeHtml(al)+'</td><td>'+escapeHtml(e.label||'')+'</td><td class="detail">'+escapeHtml(e.detail||'')+'</td><td><span class="badge '+badgeClass(e.level)+'">'+(e.level||'info')+'</span></td>';
         tb.appendChild(tr);
+      }
+    }
+    function renderHistoryPager(total) {
+      const lim = histState.limit;
+      const off = histState.offset;
+      const tot = typeof total === 'number' ? total : 0;
+      const pages = Math.max(1, Math.ceil(tot / lim) || 1);
+      const cur = tot === 0 ? 1 : Math.min(pages, Math.floor(off / lim) + 1);
+      const prev = document.getElementById('histPrev');
+      const next = document.getElementById('histNext');
+      const info = document.getElementById('histPageInfo');
+      if (prev) prev.disabled = off <= 0;
+      if (next) next.disabled = tot === 0 || off + lim >= tot;
+      if (info) {
+        if (tot === 0) info.textContent = 'Keine Einträge (mit aktuellem Filter).';
+        else info.textContent = 'Seite ' + cur + ' von ' + pages + ' · Zeilen ' + (off + 1) + '–' + Math.min(off + lim, tot) + ' von ' + tot;
+      }
+    }
+    async function loadHistoryPage(resetOffset) {
+      if (resetOffset) histState.offset = 0;
+      const params = new URLSearchParams();
+      params.set('limit', String(histState.limit));
+      params.set('offset', String(histState.offset));
+      if (histState.level) params.set('level', histState.level);
+      if (histState.action) params.set('action', histState.action);
+      if (histState.q) params.set('q', histState.q);
+      const data = await api('/api/history?' + params.toString());
+      const total = typeof data.total === 'number' ? data.total : 0;
+      renderHistoryRows(data.entries || []);
+      const hint = document.getElementById('hist-total-hint');
+      if (hint) {
+        var filt = histState.level || histState.action || histState.q;
+        hint.textContent = total === 0
+          ? (filt ? '(keine Treffer — Filter lockern)' : '(keine Einträge)')
+          : '(' + total + ' Eintrag' + (total === 1 ? '' : 'e') + (filt ? ', gefiltert' : '') + ')';
+      }
+      renderHistoryPager(total);
+    }
+    function refreshHistoryIfOpen() {
+      const d = document.getElementById('hist-details');
+      if (d && d.open) {
+        syncHistFiltersFromDom();
+        loadHistoryPage(true).catch(function(e) { show('Verlauf: ' + e, true); });
       }
     }
     async function offerDownloadAfterProbe(item, probe) {
@@ -296,7 +407,7 @@ INDEX_HTML = """<!DOCTYPE html>
             body: JSON.stringify({ candidate_index: 0 })
           });
           show('Download: ' + (r.ok ? 'OK (' + r.code + ')' : 'Fehler (' + r.code + ')'), r.ok ? false : true);
-          loadHistory();
+          refreshHistoryIfOpen();
         } catch (e) { show(String(e), true); }
         return;
       }
@@ -339,7 +450,7 @@ INDEX_HTML = """<!DOCTYPE html>
           });
           show('Ergebnis: ' + r.code + (r.ok ? ' — bei Erfolg wurde der Eintrag entfernt.' : ''), r.ok ? false : true);
           loadRows();
-          loadHistory();
+          refreshHistoryIfOpen();
         } catch (e) { show(String(e), true); }
       };
       const btnSkip = document.createElement('button');
@@ -367,7 +478,7 @@ INDEX_HTML = """<!DOCTYPE html>
         show(String(err), true);
       }
       loadRows();
-      loadHistory();
+      refreshHistoryIfOpen();
     };
     document.getElementById('reload').onclick = () => loadRows();
     document.getElementById('check').onclick = async () => {
@@ -398,7 +509,7 @@ INDEX_HTML = """<!DOCTYPE html>
         show('Prüfung fehlgeschlagen: ' + e, true);
       } finally {
         btn.disabled = false;
-        loadHistory();
+        refreshHistoryIfOpen();
       }
     };
     document.getElementById('process').onclick = async () => {
@@ -406,17 +517,48 @@ INDEX_HTML = """<!DOCTYPE html>
         const r = await api('/api/process', { method: 'POST' });
         show('Verarbeitet: ' + r.processed + ', erfolgreich: ' + r.successes);
         loadRows();
-        loadHistory();
+        refreshHistoryIfOpen();
       } catch (e) { show(String(e), true); }
     };
-    document.getElementById('reloadHist').onclick = () => loadHistory();
+    document.getElementById('reloadHist').onclick = function() {
+      syncHistFiltersFromDom();
+      loadHistoryPage(true).catch(function(e) { show('Verlauf: ' + e, true); });
+    };
+    document.getElementById('histFilterApply').onclick = function() {
+      syncHistFiltersFromDom();
+      loadHistoryPage(true).catch(function(e) { show('Verlauf: ' + e, true); });
+    };
+    document.getElementById('histFilterQ').addEventListener('keydown', function(ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); document.getElementById('histFilterApply').click(); }
+    });
+    document.getElementById('histPrev').onclick = function() {
+      histState.offset = Math.max(0, histState.offset - histState.limit);
+      loadHistoryPage(false).catch(function(e) { show('Verlauf: ' + e, true); });
+    };
+    document.getElementById('histNext').onclick = function() {
+      histState.offset += histState.limit;
+      loadHistoryPage(false).catch(function(e) { show('Verlauf: ' + e, true); });
+    };
+    document.getElementById('hist-details').addEventListener('toggle', function() {
+      if (!this.open) return;
+      if (!histEverOpened) {
+        histEverOpened = true;
+        syncHistFiltersFromDom();
+        loadHistoryPage(true).catch(function(e) { show('Verlauf: ' + e, true); });
+      }
+    });
     document.getElementById('clearHist').onclick = async () => {
       if (!confirm('Gesamten Verlauf unwiderruflich leeren?')) return;
       await api('/api/history', { method: 'DELETE' });
-      loadHistory();
+      if (document.getElementById('hist-details').open) {
+        syncHistFiltersFromDom();
+        loadHistoryPage(true).catch(function(e) { show('Verlauf: ' + e, true); });
+      } else {
+        var hint = document.getElementById('hist-total-hint');
+        if (hint) hint.textContent = '(aufklappen, Filter & Seiten)';
+      }
     };
     loadRows();
-    loadHistory();
   </script>
 __WISHLIST_VERSION_FOOTER__
 </body>
@@ -573,9 +715,24 @@ def create_app(
         return {"processed": processed, "successes": successes}
 
     @app.get("/api/history")
-    async def get_history(request: Request, limit: int = 50):
+    async def get_history(
+        request: Request,
+        limit: int = 20,
+        offset: int = 0,
+        level: Optional[str] = None,
+        action: Optional[str] = None,
+        q: Optional[str] = None,
+    ):
         _auth(request)
-        return {"entries": list_activity(_hist, limit=limit)}
+        entries, total = query_activity(
+            _hist,
+            limit=limit,
+            offset=offset,
+            level=level,
+            action=action,
+            q=q,
+        )
+        return {"entries": entries, "total": total, "limit": limit, "offset": offset}
 
     @app.delete("/api/history")
     async def delete_history(request: Request):
