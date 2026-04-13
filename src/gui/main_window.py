@@ -295,6 +295,12 @@ class MainWindow(QMainWindow):
 
     def _on_wishlist_startup_process_done(self, processed: int, successes: int):
         """Ergebnis der automatischen Wishlist-Verarbeitung beim Start (nur Statusleiste, kein Modal)."""
+        if processed < 0:
+            self.status_bar.showMessage(
+                "Wishlist beim Start: Verarbeitung fehlgeschlagen (siehe Log).",
+                8000,
+            )
+            return
         if processed == 0:
             self.status_bar.showMessage("Wishlist beim Start: keine Einträge.", 6000)
         else:

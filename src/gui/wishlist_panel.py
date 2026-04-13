@@ -54,7 +54,12 @@ class WishlistProcessThread(QThread):
     def run(self):
         from src.wishlist_core import process_wishlist_items
 
-        p, s = process_wishlist_items(self.wishlist_path, self.args_obj, remove_on_success=True)
+        try:
+            p, s = process_wishlist_items(self.wishlist_path, self.args_obj, remove_on_success=True)
+        except Exception as ex:
+            logging.warning("Wishlist „Verarbeiten“ fehlgeschlagen: %s", ex, exc_info=True)
+            self.finished_ok.emit(-1, -1)
+            return
         self.finished_ok.emit(p, s)
 
 
@@ -93,14 +98,21 @@ class WishlistProbeAfterAddThread(QThread):
     def run(self):
         from src.wishlist_core import probe_wishlist_item
 
-        r = probe_wishlist_item(
-            self._item,
-            sprache=self._config.get("sprache", "deutsch"),
-            audiodeskription=self._config.get("audiodeskription", "egal"),
-            serien_download=self._config.get("serien_download", "erste"),
-            tmdb_api_key=self._config.get("tmdb_api_key") or None,
-            omdb_api_key=self._config.get("omdb_api_key") or None,
-        )
+        try:
+            r = probe_wishlist_item(
+                self._item,
+                sprache=self._config.get("sprache", "deutsch"),
+                audiodeskription=self._config.get("audiodeskription", "egal"),
+                serien_download=self._config.get("serien_download", "erste"),
+                tmdb_api_key=self._config.get("tmdb_api_key") or None,
+                omdb_api_key=self._config.get("omdb_api_key") or None,
+            )
+        except Exception as ex:
+            logging.warning("Wishlist-Probe nach Hinzufügen fehlgeschlagen: %s", ex, exc_info=True)
+            msg = str(ex).strip() or type(ex).__name__
+            if len(msg) > 400:
+                msg = msg[:397] + "…"
+            r = {"status": "probe_error", "message": msg}
         self.result_ready.emit(r)
 
 
@@ -126,13 +138,17 @@ class WishlistDownloadOneItemThread(QThread):
     def run(self):
         from src.wishlist_core import process_one_wishlist_item
 
-        ok, code = process_one_wishlist_item(
-            self._path,
-            self._item_id,
-            self._args_obj,
-            candidate_index=self._candidate_index,
-            remove_on_success=True,
-        )
+        try:
+            ok, code = process_one_wishlist_item(
+                self._path,
+                self._item_id,
+                self._args_obj,
+                candidate_index=self._candidate_index,
+                remove_on_success=True,
+            )
+        except Exception as ex:
+            logging.warning("Wishlist-Einzeldownload fehlgeschlagen: %s", ex, exc_info=True)
+            ok, code = False, "exception"
         self.done.emit(ok, code)
 
 
@@ -282,6 +298,16 @@ class WishlistPanel(QWidget):
         self._probe_add_thread.start()
 
     def _on_probe_after_add_result(self, probe: dict, item_id: str):
+        if probe.get("status") == "probe_error":
+            detail = probe.get("message") or "Unbekannter Fehler"
+            QMessageBox.warning(
+                self,
+                "Wishlist",
+                "Der Eintrag wurde gespeichert, die Mediathek konnte aber nicht geprüft werden:\n\n"
+                f"{detail}\n\n"
+                "Später erneut versuchen oder „Verarbeiten“ nutzen.",
+            )
+            return
         if probe.get("status") == "serien_skipped":
             QMessageBox.information(
                 self,
@@ -293,8 +319,8 @@ class WishlistPanel(QWidget):
             QMessageBox.information(
                 self,
                 "Wishlist",
-                "Kein passender Treffer in der Mediathek gefunden. "
-                "Der Eintrag bleibt auf der Liste — du kannst später „Verarbeiten“ nutzen.",
+                "Aktuell kein passender Treffer in der Mediathek. "
+                "Der Wunschtitel bleibt auf der Liste — später „Verarbeiten“, sobald er dort erscheint.",
             )
             return
         if probe.get("status") == "staffel_available":
@@ -309,10 +335,22 @@ class WishlistPanel(QWidget):
             )
             if reply == QMessageBox.StandardButton.Yes:
                 self._start_download_one_item(item_id, 0)
+            else:
+                QMessageBox.information(
+                    self,
+                    "Wishlist",
+                    "Kein Staffel-Download — der Eintrag bleibt gespeichert. "
+                    "Später „Verarbeiten“ oder eine einzelne Episode wählen.",
+                )
             return
 
         cands = probe.get("candidates") or []
         if not cands:
+            QMessageBox.information(
+                self,
+                "Wishlist",
+                "Unerwartete Antwort der Mediathek-Prüfung — der Eintrag bleibt gespeichert.",
+            )
             return
 
         st = probe.get("status")
@@ -338,6 +376,12 @@ class WishlistPanel(QWidget):
             bb.rejected.connect(dlg.reject)
             v.addWidget(bb)
             if dlg.exec() != QDialog.DialogCode.Accepted:
+                QMessageBox.information(
+                    self,
+                    "Wishlist",
+                    "Kein Vorschlag gewählt — der Eintrag bleibt gespeichert. "
+                    "Später „Verarbeiten“, sobald der Titel in der Mediathek passt.",
+                )
                 return
             cand_idx = lw.currentRow()
         else:
@@ -350,6 +394,12 @@ class WishlistPanel(QWidget):
                 QMessageBox.StandardButton.Yes,
             )
             if reply != QMessageBox.StandardButton.Yes:
+                QMessageBox.information(
+                    self,
+                    "Wishlist",
+                    "Kein Download — der Wunschtitel bleibt auf der Liste. "
+                    "Später „Verarbeiten“, sobald die passende Fassung verfügbar ist.",
+                )
                 return
             cand_idx = 0
 
@@ -377,6 +427,12 @@ class WishlistPanel(QWidget):
                 self,
                 "Wishlist",
                 "Debug-Modus: Es wurde kein Download durchgeführt.",
+            )
+        elif code == "exception":
+            QMessageBox.warning(
+                self,
+                "Wishlist",
+                "Download abgebrochen (interner Fehler — siehe Log). Der Eintrag bleibt auf der Liste.",
             )
         else:
             QMessageBox.warning(
@@ -417,6 +473,7 @@ class WishlistPanel(QWidget):
         a.serien_dir = cfg.get("serien_dir") or None
         a.no_state = cfg.get("no_state", False)
         a.state_file = cfg.get("state_file", ".perlentaucher_state.json")
+        a.activity_source = "gui"
         return a
 
     def _on_process(self):
@@ -430,6 +487,14 @@ class WishlistPanel(QWidget):
 
     def _on_process_done(self, processed: int, successes: int):
         self.btn_process.setEnabled(True)
+        if processed < 0:
+            QMessageBox.warning(
+                self,
+                "Wishlist",
+                "Die Verarbeitung ist fehlgeschlagen (Details in der Log-Ausgabe).",
+            )
+            self.refresh()
+            return
         QMessageBox.information(
             self,
             "Wishlist",

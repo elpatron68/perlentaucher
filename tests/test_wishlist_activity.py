@@ -97,6 +97,13 @@ class TestSummarizeProbe:
         assert s == "Eigene Meldung"
         assert lvl == "warning"
 
+    def test_probe_error(self):
+        s, lvl = summarize_probe_for_log({"status": "probe_error", "message": "Timeout"})
+        assert "Timeout" in s
+        assert lvl == "warning"
+        s2, _ = summarize_probe_for_log({"status": "probe_error"})
+        assert "fehlgeschlagen" in s2 or "Mediathek" in s2
+
     def test_ambiguous_clear_other(self):
         assert summarize_probe_for_log({"status": "ambiguous"})[1] == "info"
         assert summarize_probe_for_log({"status": "clear"})[1] == "success"

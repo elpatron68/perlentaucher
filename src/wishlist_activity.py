@@ -157,6 +157,8 @@ def summarize_probe_for_log(probe: Dict[str, Any]) -> tuple[str, Level]:
     st = probe.get("status") or ""
     if st == "not_found":
         return "Kein Treffer in der Mediathek", "warning"
+    if st == "probe_error":
+        return probe.get("message") or "Mediathek-Prüfung fehlgeschlagen", "warning"
     if st == "serien_skipped":
         return probe.get("message") or "Serien-Download deaktiviert", "warning"
     if st == "staffel_available":

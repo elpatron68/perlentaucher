@@ -126,6 +126,29 @@ def test_api_post_item_probe_mocked(tmp_path, monkeypatch):
     assert body["item"]["year"] == 2021
 
 
+def test_api_post_item_probe_raises_item_still_saved(tmp_path, monkeypatch):
+    from src import wishlist_web as ww
+
+    wl = str(tmp_path / "wl.json")
+    save_wishlist(wl, {"version": 1, "items": []})
+
+    def _boom(*a, **k):
+        raise RuntimeError("mv offline")
+
+    monkeypatch.setattr(ww, "probe_wishlist_item", _boom)
+    app = create_app(wl, _factory(tmp_path), token=None)
+    client = TestClient(app)
+    r = client.post("/api/items", json={"title": "X", "year": None, "kind": "movie", "note": ""})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["probe"]["status"] == "probe_error"
+    assert "mv offline" in (body["probe"].get("message") or "")
+    assert body["item"]["title"] == "X"
+    items = client.get("/api/items").json()["items"]
+    assert len(items) == 1
+    assert items[0]["id"] == body["item"]["id"]
+
+
 def test_api_check_and_process_mocked(tmp_path, monkeypatch):
     from src import wishlist_web as ww
 

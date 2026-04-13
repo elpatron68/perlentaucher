@@ -270,8 +270,14 @@ INDEX_HTML = """<!DOCTYPE html>
       msg.style.display = 'block';
       msg.style.background = '#24283b';
       msg.innerHTML = '';
+      const titleHint = item && item.title ? '„' + item.title + '“ ist gespeichert. ' : 'Eintrag gespeichert. ';
+      if (probe.status === 'probe_error') {
+        show(titleHint + 'Die Mediathek konnte nicht geprüft werden'
+          + (probe.message ? ': ' + probe.message : '') + ' Später erneut versuchen oder „Verarbeiten“ nutzen.', true);
+        return;
+      }
       if (probe.status === 'not_found') {
-        show('Kein passender Treffer in der Mediathek. Der Eintrag bleibt auf der Liste.', false);
+        show(titleHint + 'Aktuell kein passender Treffer in der Mediathek — der Wunschtitel bleibt auf der Liste und kann später mit „Verarbeiten“ geladen werden, sobald er erscheint.', false);
         return;
       }
       if (probe.status === 'serien_skipped') {
@@ -295,11 +301,19 @@ INDEX_HTML = """<!DOCTYPE html>
         return;
       }
       const cands = probe.candidates || [];
-      if (cands.length === 0) return;
+      if (cands.length === 0) {
+        show(titleHint + 'Unerwartete Antwort der Mediathek-Prüfung — der Eintrag bleibt gespeichert.', false);
+        return;
+      }
+      const savedNote = document.createElement('p');
+      savedNote.style.fontSize = '0.9rem';
+      savedNote.style.color = '#a9b1d6';
+      savedNote.textContent = titleHint + 'Wenn keiner der Vorschläge passt, ohne Download fortfahren — der Wunschtitel bleibt auf der Liste und kann später über „Verarbeiten“ geladen werden, sobald er in der Mediathek verfügbar ist.';
+      msg.appendChild(savedNote);
       const intro = document.createElement('p');
       intro.textContent = probe.status === 'ambiguous'
-        ? 'Mehrere Treffer — wähle die passende Fassung und starte den Download:'
-        : 'In der Mediathek gefunden — Download starten?';
+        ? 'Mehrere Treffer — passende Fassung wählen und Download starten, oder nur merken:'
+        : 'Treffer in der Mediathek — jetzt herunterladen oder nur merken:';
       msg.appendChild(intro);
       const sel = document.createElement('select');
       sel.style.width = '100%';
@@ -331,9 +345,10 @@ INDEX_HTML = """<!DOCTYPE html>
       const btnSkip = document.createElement('button');
       btnSkip.type = 'button';
       btnSkip.className = 'secondary';
-      btnSkip.textContent = 'Später';
+      btnSkip.textContent = 'Kein Vorschlag passt — nur merken';
+      btnSkip.title = 'Wishlist-Eintrag behalten, keinen der Vorschläge herunterladen';
       btnSkip.onclick = function() {
-        show('Eintrag gespeichert. Du kannst später „Verarbeiten“ nutzen.', false);
+        show((item && item.title ? '„' + item.title + '“ bleibt auf der Wishlist. ' : '') + 'Später „Verarbeiten“, sobald der Titel in der Mediathek passt.', false);
       };
       row.appendChild(btnDl);
       row.appendChild(btnSkip);
@@ -472,14 +487,21 @@ def create_app(
         kind: WishlistKind = "series" if body.kind == "series" else "movie"
         item = add_item(wishlist_path, title, body.year, kind, note=body.note.strip())
         args = process_args_factory()
-        probe = probe_wishlist_item(
-            item,
-            sprache=getattr(args, "sprache", "deutsch"),
-            audiodeskription=getattr(args, "audiodeskription", "egal"),
-            serien_download=getattr(args, "serien_download", "erste"),
-            tmdb_api_key=getattr(args, "tmdb_api_key", None),
-            omdb_api_key=getattr(args, "omdb_api_key", None),
-        )
+        try:
+            probe = probe_wishlist_item(
+                item,
+                sprache=getattr(args, "sprache", "deutsch"),
+                audiodeskription=getattr(args, "audiodeskription", "egal"),
+                serien_download=getattr(args, "serien_download", "erste"),
+                tmdb_api_key=getattr(args, "tmdb_api_key", None),
+                omdb_api_key=getattr(args, "omdb_api_key", None),
+            )
+        except Exception as ex:
+            logger.warning("probe_wishlist_item nach add_item fehlgeschlagen: %s", ex, exc_info=True)
+            msg = str(ex).strip() or type(ex).__name__
+            if len(msg) > 300:
+                msg = msg[:297] + "…"
+            probe = {"status": "probe_error", "message": msg}
         summ, lvl = summarize_probe_for_log(probe)
         append_activity(_hist, "hinzufuegen", item.title, summ, lvl, "web")
         return {"item": item.to_dict(), "probe": probe}
