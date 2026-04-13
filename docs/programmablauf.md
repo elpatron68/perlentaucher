@@ -35,7 +35,7 @@ flowchart TD
     StaffelOhnePush --> MarkProcessed2
     IsSeries -->|Nein| SearchMVW
     SearchMVW --> Results{Ergebnisse<br/>gefunden?}
-    Results -->|Nein| NotifyNotFound[Optional: Apprise-Warnung<br/>„Suche erfolglos“<br/>in search_mediathek]
+    Results -->|Nein| NotifyNotFound[Optional: Apprise-Warnung<br/>je nach Fehlerart<br/>in search_mediathek<br/>(kein Push: Treffer unter Titel-Schwelle)]
     NotifyNotFound --> MarkProcessed1[Als verarbeitet markieren]
     MarkProcessed1 --> NextEntry
     Results -->|Ja| ScoreResults[Bewerte alle Ergebnisse<br/>Sprache + Audiodeskription + Größe]

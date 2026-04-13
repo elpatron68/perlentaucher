@@ -1500,14 +1500,6 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
     logging.warning(
         f"Keine gültigen Ergebnisse für '{movie_title}' nach Scoring (Suchvarianten: {variants_hint})"
     )
-    if notify_source != "wishlist" and notify_url and APPRISE_AVAILABLE:
-        body = "Keine gültigen Ergebnisse für Film gefunden:\n\n"
-        body += f"📽️ {movie_title}\n"
-        body += "ℹ️ Die API lieferte Treffer, aber keine erreichten die Titel-Schwelle.\n"
-        body += f"Versuchte Suchbegriffe: {variants_hint}\n"
-        if entry_link:
-            body += f"\n🔗 Blog-Eintrag: {entry_link}"
-        send_notification(notify_url, "Suche erfolglos", body, "warning")
     return None
 
 
