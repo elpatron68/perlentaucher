@@ -84,45 +84,56 @@ def build_process_args_from_env(download_dir: Optional[str] = None) -> Any:
     return a
 
 
-def build_wishlist_web_version_footer() -> str:
+def _git_describe_footer_string() -> Optional[str]:
     """
-    Versionsstring für die Web-UI: ``git describe --tags --always``.
-    Bei geänderten/ungetrackten Dateien (unreines Repo) wird die kurze Commit-ID angehängt.
-    Ohne Git (z. B. Docker-Image nur mit Quelltext): Fallback ``src._version.__version__``.
+    Git-Referenz für den Footer: ``git describe --tags --always`` (enthält Tag bzw. Abstand zum Tag).
+    Unreines Arbeitsverzeichnis: angehängt ``+<kurze HEAD-Commit-ID>`` (nicht ``-dirty``).
     """
     root = _PROJECT_ROOT
     try:
-        if os.path.isdir(os.path.join(root, ".git")) or os.path.isfile(os.path.join(root, ".git")):
-            d = subprocess.run(
-                ["git", "describe", "--tags", "--always"],
+        if not (os.path.isdir(os.path.join(root, ".git")) or os.path.isfile(os.path.join(root, ".git"))):
+            return None
+        d = subprocess.run(
+            ["git", "describe", "--tags", "--always"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if d.returncode != 0 or not (d.stdout or "").strip():
+            return None
+        line = d.stdout.strip()
+        st = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if st.returncode == 0 and (st.stdout or "").strip():
+            r = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
                 cwd=root,
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-            if d.returncode == 0 and (d.stdout or "").strip():
-                line = d.stdout.strip()
-                st = subprocess.run(
-                    ["git", "status", "--porcelain"],
-                    cwd=root,
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if st.returncode == 0 and (st.stdout or "").strip():
-                    r = subprocess.run(
-                        ["git", "rev-parse", "--short", "HEAD"],
-                        cwd=root,
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                    )
-                    if r.returncode == 0 and (r.stdout or "").strip():
-                        return f"{line}+{r.stdout.strip()}"
-                return line
+            if r.returncode == 0 and (r.stdout or "").strip():
+                return f"{line}+{r.stdout.strip()}"
+        return line
     except Exception as ex:
         logger.debug("Wishlist-Web: Git-Version nicht ermittelbar: %s", ex)
+        return None
 
+
+def build_wishlist_web_version_footer() -> str:
+    """
+    Kurzstring für Tests und Anzeige: Git-``describe`` (Tag/Version) ggf. ``+Commit`` bei dirty,
+    sonst Paketversion aus ``src._version``.
+    """
+    g = _git_describe_footer_string()
+    if g is not None:
+        return g
     try:
         from src._version import __version__
 
@@ -132,13 +143,20 @@ def build_wishlist_web_version_footer() -> str:
 
 
 def _wishlist_version_footer_html() -> str:
+    g = _git_describe_footer_string()
+    if g is not None:
+        esc = html.escape(g)
+        return (
+            f'<footer id="wl-footer" style="margin-top:2.5rem;padding-top:1rem;border-top:1px solid #3b4261;'
+            f'font-size:0.8rem;color:#565f89;">Perlentaucher · Git: <span translate="no">{esc}</span></footer>'
+        )
     v = build_wishlist_web_version_footer()
     if not v:
         return ""
     esc = html.escape(v)
     return (
         f'<footer id="wl-footer" style="margin-top:2.5rem;padding-top:1rem;border-top:1px solid #3b4261;'
-        f'font-size:0.8rem;color:#565f89;">Perlentaucher {esc}</footer>'
+        f'font-size:0.8rem;color:#565f89;">Perlentaucher · Version (Paket): <span translate="no">{esc}</span></footer>'
     )
 
 

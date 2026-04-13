@@ -203,7 +203,10 @@ def test_index_returns_html(tmp_path):
     assert "/assets/icon_32.png" in r.text
     assert 'id="wl-footer"' in r.text
     assert "__WISHLIST_VERSION_FOOTER__" not in r.text
-    assert build_wishlist_web_version_footer() in r.text
+    ver = build_wishlist_web_version_footer()
+    assert ver in r.text
+    if (project_root / ".git").exists():
+        assert " · Git: " in r.text
 
 
 def test_build_wishlist_web_version_footer_nonempty():
