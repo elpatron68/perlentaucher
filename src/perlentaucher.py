@@ -699,6 +699,7 @@ def notify_non_wishlist_download_outcome(
     season: Optional[int] = None,
     episode: Optional[int] = None,
     error_text: Optional[str] = None,
+    entry_link: Optional[str] = None,
 ) -> None:
     """
     RSS-Feed (--notify) und Such-Download: Push bei Erfolg, Fehler oder „Datei schon da“.
@@ -720,6 +721,9 @@ def notify_non_wishlist_download_outcome(
             )
             if content_title:
                 body += f"📌 Feed-Titel: {content_title}"
+            link = (entry_link or "").strip()
+            if link:
+                body += f"\n🔗 Blog-Eintrag: {link}"
         else:
             subj = "Such-Download übersprungen (bereits vorhanden)"
             body = (
@@ -744,6 +748,9 @@ def notify_non_wishlist_download_outcome(
             )
         if is_series and season is not None and episode is not None:
             body += f"\n📺 S{season:02d}E{episode:02d}"
+        link = (entry_link or "").strip()
+        if notify_source == "feed" and link:
+            body += f"\n🔗 Blog-Eintrag: {link}"
         send_notification(notify_url, subj, body, "success")
         return
 
@@ -762,6 +769,9 @@ def notify_non_wishlist_download_outcome(
             )
         if error_text:
             body += f"⚠️ {error_text}"
+        link = (entry_link or "").strip()
+        if notify_source == "feed" and link:
+            body += f"\n🔗 Blog-Eintrag: {link}"
         send_notification(notify_url, subj, body, "error")
 
 
@@ -2222,7 +2232,8 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
                      series_base_dir: Optional[str] = None, season: Optional[int] = None,
                      episode: Optional[int] = None,
                      notify_url: Optional[str] = None,
-                     notify_source: Optional[str] = None):
+                     notify_source: Optional[str] = None,
+                     entry_link: Optional[str] = None):
     """
     Lädt einen Film oder eine Episode herunter.
 
@@ -2238,6 +2249,7 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
         notify_url: Optional Apprise-URL; bei gesetztem ``notify_source`` werden Ergebnisse per Push gemeldet
             (Wishlist, RSS-Feed und Such-Download: Erfolg, Fehler, „bereits vorhanden“).
         notify_source: ``"wishlist"``, ``"feed"`` oder ``"search"`` — steuert Formulierung der Benachrichtigung.
+        entry_link: Optional URL des Blog-Posts (RSS); wird bei ``notify_source=="feed"`` in die Push-Nachricht gesetzt.
 
     Returns:
         tuple: (success: bool, title: str, filepath: str, skipped_existing: bool)
@@ -2281,6 +2293,7 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
                 is_series=is_series,
                 season=season,
                 episode=episode,
+                entry_link=entry_link,
             )
         return (True, title, filepath, True)
 
@@ -2327,6 +2340,7 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
                 is_series=is_series,
                 season=season,
                 episode=episode,
+                entry_link=entry_link,
             )
         return (True, title, filepath, False)
 
@@ -2356,6 +2370,7 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
                 season=season,
                 episode=episode,
                 error_text=str(e),
+                entry_link=entry_link,
             )
         return (False, title, filepath, False)
 
@@ -2709,6 +2724,7 @@ def main():
                         is_series=True, series_base_dir=series_base_dir,
                         season=season, episode=episode,
                         notify_url=nu, notify_source=ns,
+                        entry_link=entry_link,
                     )
                     # Markiere Eintrag als verarbeitet nach Download-Versuch
                     if state_file:
@@ -2869,6 +2885,7 @@ def main():
                             is_series=True, series_base_dir=series_base_dir,
                             season=season, episode=episode_num,
                             notify_url=nu, notify_source=ns,
+                            entry_link=entry_link,
                         )
                         if success:
                             downloaded_count += 1
@@ -2951,6 +2968,7 @@ def main():
                 success, title, filepath, _skipped = download_content(
                     result, args.download_dir, movie_title, metadata, is_series=False,
                     notify_url=nu, notify_source=ns,
+                    entry_link=entry_link,
                 )
                 # Markiere Eintrag als verarbeitet nach Download-Versuch
                 if state_file:

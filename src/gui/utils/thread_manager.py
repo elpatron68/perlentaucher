@@ -185,6 +185,7 @@ class DownloadThread(QThread):
             Tuple (success: bool, title: str, filepath: str)
         """
         filepath = ""  # Initialisiere für Exception-Handler
+        blog_link = (self.entry_data.get("entry_link") or "").strip() or None
         try:
             # Bestimme Ziel-Verzeichnis und Dateinamen
             if is_series and series_base_dir:
@@ -230,6 +231,7 @@ class DownloadThread(QThread):
                     is_series=is_series,
                     season=season,
                     episode=episode,
+                    entry_link=blog_link,
                 )
                 return (True, movie_data.get("title"), filepath)
             
@@ -284,6 +286,7 @@ class DownloadThread(QThread):
                 is_series=is_series,
                 season=season,
                 episode=episode,
+                entry_link=blog_link,
             )
             return (True, movie_data.get("title"), filepath)
             
@@ -307,6 +310,7 @@ class DownloadThread(QThread):
                 season=season,
                 episode=episode,
                 error_text=error_msg,
+                entry_link=blog_link,
             )
             return (False, movie_data.get("title", "Unbekannt"), filepath if filepath else "")
     
