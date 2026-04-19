@@ -686,6 +686,85 @@ def send_notification(apprise_url, title, body, notification_type="info"):
     except Exception as e:
         logging.error(f"Fehler beim Senden der Benachrichtigung: {e}")
 
+
+def notify_non_wishlist_download_outcome(
+    notify_url: Optional[str],
+    notify_source: Optional[str],
+    outcome: str,
+    *,
+    title: Optional[str],
+    filepath: Optional[str],
+    content_title: str,
+    is_series: bool,
+    season: Optional[int] = None,
+    episode: Optional[int] = None,
+    error_text: Optional[str] = None,
+) -> None:
+    """
+    RSS-Feed (--notify) und Such-Download: Push bei Erfolg, Fehler oder „Datei schon da“.
+    Wishlist nutzt eigene Texte in download_content.
+    """
+    if not notify_url or notify_source not in ("feed", "search"):
+        return
+    icon = "📺" if is_series else "📽️"
+    t = title or "Unbekannt"
+    fp = filepath or ""
+
+    if outcome == "skipped_existing":
+        if notify_source == "feed":
+            subj = "Download übersprungen (bereits vorhanden)"
+            body = (
+                "Die Datei existiert bereits — Download wurde übersprungen.\n\n"
+                f"{icon} {t}\n"
+                f"💾 {fp}\n"
+            )
+            if content_title:
+                body += f"📌 Feed-Titel: {content_title}"
+        else:
+            subj = "Such-Download übersprungen (bereits vorhanden)"
+            body = (
+                "Die Datei existiert bereits — es wurde nichts erneut heruntergeladen.\n\n"
+                f"{icon} {t}\n"
+                f"💾 {fp}\n"
+                f"📌 Suchbegriff: {content_title}"
+            )
+        send_notification(notify_url, subj, body, "info")
+        return
+
+    if outcome == "success":
+        if notify_source == "feed":
+            subj = "Download erfolgreich"
+            body = f"Download abgeschlossen.\n\n{icon} {t}\n💾 {fp}\n"
+            if content_title:
+                body += f"📌 Feed-Titel: {content_title}"
+        else:
+            subj = "Such-Download erfolgreich"
+            body = (
+                f"Download abgeschlossen.\n\n{icon} {t}\n💾 {fp}\n📌 Suchbegriff: {content_title}"
+            )
+        if is_series and season is not None and episode is not None:
+            body += f"\n📺 S{season:02d}E{episode:02d}"
+        send_notification(notify_url, subj, body, "success")
+        return
+
+    if outcome == "error":
+        if notify_source == "feed":
+            subj = "Download fehlgeschlagen"
+            body = "Der Download ist fehlgeschlagen.\n\n" f"{icon} {t}\n"
+            if content_title:
+                body += f"📌 Feed-Titel: {content_title}\n"
+        else:
+            subj = "Such-Download fehlgeschlagen"
+            body = (
+                "Der Download ist fehlgeschlagen.\n\n"
+                f"{icon} {t}\n"
+                f"📌 Suchbegriff: {content_title}\n"
+            )
+        if error_text:
+            body += f"⚠️ {error_text}"
+        send_notification(notify_url, subj, body, "error")
+
+
 def is_movie_recommendation(entry) -> bool:
     """
     Prüft, ob ein RSS-Feed-Eintrag eine Film-Empfehlung ist (kein "In eigener Sache" o.ä.).
@@ -1500,6 +1579,13 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
     logging.warning(
         f"Keine gültigen Ergebnisse für '{movie_title}' nach Scoring (Suchvarianten: {variants_hint})"
     )
+    if notify_source != "wishlist" and notify_url and APPRISE_AVAILABLE:
+        body = "Keine brauchbare Übereinstimmung in der Mediathek (Scoring).\n\n"
+        body += f"📽️ Gesucht: {movie_title}\n"
+        body += f"ℹ️ Suchvarianten: {variants_hint}\n"
+        if entry_link:
+            body += f"\n🔗 Blog-Eintrag: {entry_link}"
+        send_notification(notify_url, "Film nicht gefunden", body, "warning")
     return None
 
 
@@ -2056,6 +2142,12 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
         
         if not scored_results:
             logging.warning(f"Keine gültigen Episoden für '{series_title}' gefunden")
+            if notify_source != "wishlist" and notify_url and APPRISE_AVAILABLE:
+                body = "Keine auswertbaren Episoden für die Serie (Scoring).\n\n"
+                body += f"📺 {series_title}\n"
+                if entry_link:
+                    body += f"\n🔗 Blog-Post: {entry_link}"
+                send_notification(notify_url, "Serie: keine Episoden", body, "warning")
             return []
         
         # Sortiere nach Punktzahl (höchste zuerst)
@@ -2143,8 +2235,8 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
         series_base_dir: Optional - Basis-Verzeichnis für Serien (wenn is_series=True)
         season: Optional - Staffel-Nummer (für Serien)
         episode: Optional - Episoden-Nummer (für Serien)
-        notify_url: Optional Apprise-URL; bei gesetztem ``notify_source`` werden Treffer gemeldet
-            (Wishlist: Erfolg/Fehlschlag/„bereits vorhanden“; Feed/Suche: nur „bereits vorhanden“).
+        notify_url: Optional Apprise-URL; bei gesetztem ``notify_source`` werden Ergebnisse per Push gemeldet
+            (Wishlist, RSS-Feed und Such-Download: Erfolg, Fehler, „bereits vorhanden“).
         notify_source: ``"wishlist"``, ``"feed"`` oder ``"search"`` — steuert Formulierung der Benachrichtigung.
 
     Returns:
@@ -2168,34 +2260,28 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
         file_size = os.path.getsize(filepath)
         file_size_mb = file_size / (1024 * 1024)
         logging.info(f"Datei bereits vorhanden, überspringe Download: '{title}' -> {filepath} ({file_size_mb:.1f} MB)")
-        if notify_url and notify_source:
+        if notify_url and notify_source == "wishlist":
             icon = "📺" if is_series else "📽️"
-            if notify_source == "wishlist":
-                subj = "Wishlist: Übersprungen (bereits vorhanden)"
-                body = (
-                    "Wishlist: Die Datei existiert bereits — es wurde nichts erneut heruntergeladen.\n\n"
-                    f"{icon} {title}\n"
-                    f"💾 {filepath}\n"
-                    f"📌 Gesucht: {content_title}"
-                )
-            elif notify_source == "feed":
-                subj = "Download übersprungen (bereits vorhanden)"
-                body = (
-                    "Die Datei existiert bereits — Download wurde übersprungen.\n\n"
-                    f"{icon} {title}\n"
-                    f"💾 {filepath}\n"
-                )
-                if content_title:
-                    body += f"📌 Feed-Titel: {content_title}\n"
-            else:  # search
-                subj = "Such-Download übersprungen (bereits vorhanden)"
-                body = (
-                    "Die Datei existiert bereits — es wurde nichts erneut heruntergeladen.\n\n"
-                    f"{icon} {title}\n"
-                    f"💾 {filepath}\n"
-                    f"📌 Suchbegriff: {content_title}"
-                )
+            subj = "Wishlist: Übersprungen (bereits vorhanden)"
+            body = (
+                "Wishlist: Die Datei existiert bereits — es wurde nichts erneut heruntergeladen.\n\n"
+                f"{icon} {title}\n"
+                f"💾 {filepath}\n"
+                f"📌 Gesucht: {content_title}"
+            )
             send_notification(notify_url, subj, body, "info")
+        else:
+            notify_non_wishlist_download_outcome(
+                notify_url,
+                notify_source,
+                "skipped_existing",
+                title=title,
+                filepath=filepath,
+                content_title=content_title,
+                is_series=is_series,
+                season=season,
+                episode=episode,
+            )
         return (True, title, filepath, True)
 
     logging.info(f"Starte Download: '{title}' -> {filepath}")
@@ -2230,6 +2316,18 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
             if is_series and season is not None and episode is not None:
                 body += f"\n📺 S{season:02d}E{episode:02d}"
             send_notification(notify_url, "Wishlist: Download erfolgreich", body, "success")
+        else:
+            notify_non_wishlist_download_outcome(
+                notify_url,
+                notify_source,
+                "success",
+                title=title,
+                filepath=filepath,
+                content_title=content_title,
+                is_series=is_series,
+                season=season,
+                episode=episode,
+            )
         return (True, title, filepath, False)
 
     except Exception as e:
@@ -2246,6 +2344,19 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
                 f"⚠️ {e}"
             )
             send_notification(notify_url, "Wishlist: Download fehlgeschlagen", body, "error")
+        else:
+            notify_non_wishlist_download_outcome(
+                notify_url,
+                notify_source,
+                "error",
+                title=title,
+                filepath=filepath,
+                content_title=content_title,
+                is_series=is_series,
+                season=season,
+                episode=episode,
+                error_text=str(e),
+            )
         return (False, title, filepath, False)
 
 
@@ -2292,11 +2403,13 @@ def download_by_search(
         if year and not metadata.get("year"):
             metadata["year"] = year
 
+    search_notify_src = "search" if notify_url else None
     result = search_mediathek(
         search_term,
         prefer_language=prefer_language,
         prefer_audio_desc=prefer_audio_desc,
         notify_url=notify_url,
+        notify_source=search_notify_src,
         entry_link=mvw_url,
         year=year,
         metadata=metadata,
@@ -2538,6 +2651,8 @@ def main():
         logging.warning("Apprise ist nicht installiert. Benachrichtigungen werden nicht gesendet.")
         logging.warning("Installiere Apprise mit: pip install apprise")
     
+    feed_notify_src = "feed" if args.notify else None
+
     for i, movie_data in enumerate(movies):
         entry_id, entry, entry_link = new_entries[i]
         movie_title, year = movie_data if isinstance(movie_data, tuple) else (movie_data, None)
@@ -2557,9 +2672,17 @@ def main():
                 continue
             elif args.serien_download == "erste":
                 # Lade nur erste Episode (aktuelles Verhalten)
-                result = search_mediathek(movie_title, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription, 
-                                         notify_url=args.notify, entry_link=entry_link, year=year, metadata=metadata, 
-                                         debug=args.debug_no_download)
+                result = search_mediathek(
+                    movie_title,
+                    prefer_language=args.sprache,
+                    prefer_audio_desc=args.audiodeskription,
+                    notify_url=args.notify,
+                    notify_source=feed_notify_src,
+                    entry_link=entry_link,
+                    year=year,
+                    metadata=metadata,
+                    debug=args.debug_no_download,
+                )
                 if result:
                     # Extrahiere Episode-Info für Dateinamen
                     season, episode = extract_episode_info(result, movie_title)
@@ -2594,8 +2717,6 @@ def main():
                         save_processed_entry(state_file, entry_id, status=status, movie_title=movie_title, 
                                            filename=filename, is_series=True)
                         logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}' (Status: {status})")
-                    # RSS-Feed: keine separaten Erfolgs-/Fehler-Pushes (notify_source=feed in download_content:
-                    # nur Benachrichtigung bei „Datei bereits vorhanden“).
                     log_activity_event(
                         args.download_dir,
                         "feed_download",
@@ -2619,10 +2740,17 @@ def main():
                     continue
             elif args.serien_download == "staffel":
                 # Lade alle Episoden der Staffel
-                episodes = search_mediathek_series(movie_title, prefer_language=args.sprache, 
-                                                  prefer_audio_desc=args.audiodeskription,
-                                                  notify_url=args.notify, entry_link=entry_link, 
-                                                  year=year, metadata=metadata, debug=args.debug_no_download)
+                episodes = search_mediathek_series(
+                    movie_title,
+                    prefer_language=args.sprache,
+                    prefer_audio_desc=args.audiodeskription,
+                    notify_url=args.notify,
+                    notify_source=feed_notify_src,
+                    entry_link=entry_link,
+                    year=year,
+                    metadata=metadata,
+                    debug=args.debug_no_download,
+                )
                 if episodes:
                     # Bestimme series_base_dir
                     series_base_dir = args.serien_dir if args.serien_dir else args.download_dir
@@ -2770,7 +2898,6 @@ def main():
                         episodes_list = [f"S{s:02d}E{e:02d}" for s, e, _ in episodes_with_info if s is not None and e is not None]
                         save_processed_entry(state_file, entry_id, status=status, movie_title=movie_title, 
                                             is_series=True, episodes=episodes_list)
-                    # RSS-Feed: keine Staffel-Zusammenfassung per Push (nur „bereits vorhanden“ pro Episode in download_content).
                     st_lvl = "success" if downloaded_count > 0 else "error"
                     log_activity_event(
                         args.download_dir,
@@ -2796,9 +2923,17 @@ def main():
                     continue
         else:
             # Normale Film-Verarbeitung
-            result = search_mediathek(movie_title, prefer_language=args.sprache, prefer_audio_desc=args.audiodeskription, 
-                                     notify_url=args.notify, entry_link=entry_link, year=year, metadata=metadata, 
-                                     debug=args.debug_no_download)
+            result = search_mediathek(
+                movie_title,
+                prefer_language=args.sprache,
+                prefer_audio_desc=args.audiodeskription,
+                notify_url=args.notify,
+                notify_source=feed_notify_src,
+                entry_link=entry_link,
+                year=year,
+                metadata=metadata,
+                debug=args.debug_no_download,
+            )
             if result:
                 if args.debug_no_download:
                     filepath = build_download_filepath(
@@ -2823,8 +2958,6 @@ def main():
                     filename = os.path.basename(filepath) if filepath else None
                     save_processed_entry(state_file, entry_id, status=status, movie_title=movie_title, filename=filename)
                     logging.debug(f"Eintrag als verarbeitet markiert: '{entry.title}' (Status: {status})")
-                # RSS-Feed: keine separaten Erfolgs-/Fehler-Pushes (notify_source=feed in download_content:
-                # nur Benachrichtigung bei „Datei bereits vorhanden“).
                 log_activity_event(
                     args.download_dir,
                     "feed_download",

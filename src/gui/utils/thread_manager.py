@@ -41,7 +41,12 @@ class DownloadThread(QThread):
         self.series_download_mode = series_download_mode  # Überschreibt Config für diesen Eintrag
         self.is_cancelled = False
         self.debug_no_download = self.config.get('debug_no_download', False)
-    
+
+    def _feed_notify_settings(self) -> Tuple[Optional[str], Optional[str]]:
+        """Apprise-URL aus der GUI-Konfiguration; notify_source ``feed`` für RSS-Downloads."""
+        nu = (self.config.get("notify") or "").strip() or None
+        return (nu, "feed" if nu else None)
+
     def cancel(self):
         """Bricht den Download ab."""
         self.is_cancelled = True
@@ -55,7 +60,8 @@ class DownloadThread(QThread):
             movie_title = self.entry_data['movie_title']
             year = self.entry_data.get('year')
             metadata = self.entry_data.get('metadata', {})
-            
+            notify_url, notify_src = self._feed_notify_settings()
+
             # Prüfe ob es sich um eine Serie handelt
             # Erstelle kompatibles Entry-Objekt für is_series()
             from gui.utils.feedparser_helpers import make_entry_compatible
@@ -84,7 +90,8 @@ class DownloadThread(QThread):
                         movie_title,
                         prefer_language=self.config.get('sprache', 'deutsch'),
                         prefer_audio_desc=self.config.get('audiodeskription', 'egal'),
-                        notify_url=None,  # Keine Benachrichtigungen im Thread
+                        notify_url=notify_url,
+                        notify_source=notify_src,
                         entry_link=entry_link,
                         year=year,
                         metadata=metadata,
@@ -132,7 +139,8 @@ class DownloadThread(QThread):
                     movie_title,
                     prefer_language=self.config.get('sprache', 'deutsch'),
                     prefer_audio_desc=self.config.get('audiodeskription', 'egal'),
-                    notify_url=None,
+                    notify_url=notify_url,
+                    notify_source=notify_src,
                     entry_link=entry_link,
                     year=year,
                     metadata=metadata,
@@ -211,6 +219,18 @@ class DownloadThread(QThread):
             # Prüfe ob Datei bereits existiert
             if os.path.exists(filepath):
                 self.progress_updated.emit(100, "Datei bereits vorhanden")
+                nu, ns = self._feed_notify_settings()
+                core.notify_non_wishlist_download_outcome(
+                    nu,
+                    ns,
+                    "skipped_existing",
+                    title=movie_data.get("title"),
+                    filepath=filepath,
+                    content_title=content_title,
+                    is_series=is_series,
+                    season=season,
+                    episode=episode,
+                )
                 return (True, movie_data.get("title"), filepath)
             
             # Download mit Progress
@@ -253,6 +273,18 @@ class DownloadThread(QThread):
                             )
             
             self.progress_updated.emit(100, "Download abgeschlossen")
+            nu, ns = self._feed_notify_settings()
+            core.notify_non_wishlist_download_outcome(
+                nu,
+                ns,
+                "success",
+                title=movie_data.get("title"),
+                filepath=filepath,
+                content_title=content_title,
+                is_series=is_series,
+                season=season,
+                episode=episode,
+            )
             return (True, movie_data.get("title"), filepath)
             
         except Exception as e:
@@ -263,6 +295,19 @@ class DownloadThread(QThread):
                     os.remove(filepath)
                 except:
                     pass
+            nu, ns = self._feed_notify_settings()
+            core.notify_non_wishlist_download_outcome(
+                nu,
+                ns,
+                "error",
+                title=movie_data.get("title"),
+                filepath=filepath if filepath else None,
+                content_title=content_title,
+                is_series=is_series,
+                season=season,
+                episode=episode,
+                error_text=error_msg,
+            )
             return (False, movie_data.get("title", "Unbekannt"), filepath if filepath else "")
     
     def _download_series_season(self, series_title: str, entry_link: str, year: Optional[int], metadata: Dict):
@@ -276,12 +321,14 @@ class DownloadThread(QThread):
             metadata: Dictionary mit Metadaten
         """
         try:
+            notify_url, notify_src = self._feed_notify_settings()
             # Suche nach allen Episoden
             episodes = core.search_mediathek_series(
                 series_title,
                 prefer_language=self.config.get('sprache', 'deutsch'),
                 prefer_audio_desc=self.config.get('audiodeskription', 'egal'),
-                notify_url=None,  # Keine Benachrichtigungen im Thread
+                notify_url=notify_url,
+                notify_source=notify_src,
                 entry_link=entry_link,
                 year=year,
                 metadata=metadata,
