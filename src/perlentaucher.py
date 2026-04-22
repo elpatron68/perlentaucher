@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import sys
+from collections import Counter
 import requests
 import feedparser
 import json
@@ -1688,6 +1689,7 @@ def list_mediathek_movie_candidates(
         if not filtered:
             feed = _fetch_mvw_feed_results(normalized)
             filtered = _filter_series_mvw_results(movie_title, normalized, feed or [])
+        filtered = filter_series_episodes_by_s01_topic_schema(movie_title, filtered)
         return _score_and_pack_results(filtered)
 
     search_terms = mediathek_movie_search_terms(movie_title)
@@ -1835,6 +1837,141 @@ def extract_episode_info(movie_data, series_title: str) -> Tuple[Optional[int], 
         return (1, episode)
     
     return (None, None)
+
+
+def _first_title_segment_norm(title: str) -> str:
+    """Erstes inhaltstragendes Segment (vor Trenner / vor Folge-Nennung), normalisiert."""
+    if not title:
+        return ""
+    t = normalize_search_title(title).strip()
+    for sep in (" | ", " |", "| ", " – ", " - ", "–", "-", ":", "："):
+        if sep in t:
+            t = t.split(sep, 1)[0].strip()
+            break
+    m = re.search(r"[\s,]*[Ff]olge\s+\d", t)
+    if m:
+        t = t[: m.start()]
+    t = t.strip().lower()
+    if len(t) < 3:
+        return ""
+    return t[:160]
+
+
+def _infer_s01_naming_schema(s01_items: List[Dict]) -> Optional[Dict[str, str]]:
+    """
+    Leitet aus mindestens zwei S01-Mediathek-Einträgen einen Topic-Dominant (Konsens) und optional
+    ein gemeinsames Titel-Präfix ab. Ohne genügend klaren Konsens None.
+    """
+    if len(s01_items) < 2:
+        return None
+    topic_norms: List[str] = []
+    for m in s01_items:
+        tp = (m.get("topic") or "").strip()
+        if tp:
+            topic_norms.append(normalize_search_title(tp).lower())
+    if len(topic_norms) < 2:
+        return None
+    c = Counter(topic_norms)
+    dom_topic, cnt = c.most_common(1)[0]
+    if cnt < 2:
+        return None
+    ratio = cnt / float(len(s01_items))
+    if ratio < 0.45:
+        return None
+    out: Dict[str, str] = {"dominant_topic_norm": dom_topic}
+    segs = [_first_title_segment_norm(m.get("title") or "") for m in s01_items]
+    segs = [s for s in segs if len(s) >= 4]
+    if segs:
+        cs = Counter(segs)
+        tseg, tc = cs.most_common(1)[0]
+        if tc >= max(2, int(0.55 * len(s01_items))):
+            out["title_first_segment_norm"] = tseg
+    return out
+
+
+def _schema_text_fields_compatible(blob_norm: str, dominant: str) -> bool:
+    if not blob_norm or not dominant:
+        return False
+    if dominant in blob_norm or blob_norm in dominant:
+        smin = min(len(dominant), len(blob_norm))
+        if smin < 4:
+            return dominant == blob_norm
+        return True
+    d_words = set(re.findall(r"[\wöäüß]+", dominant, flags=re.I))
+    b_words = set(re.findall(r"[\wöäüß]+", blob_norm, flags=re.I))
+    if not d_words or not b_words:
+        return False
+    return len(d_words & b_words) >= max(1, int(0.45 * len(d_words)))
+
+
+def _mvw_result_matches_s01_inferred_schema(
+    movie_data: Dict,
+    schema: Dict[str, str],
+) -> bool:
+    """Prüft Topic/Titelfit gegen das aus S01 abgeleitete Schema."""
+    dominant = schema.get("dominant_topic_norm") or ""
+    tseg = schema.get("title_first_segment_norm")
+    t = movie_data.get("title") or ""
+    top = movie_data.get("topic") or ""
+    ntop = normalize_search_title(top).lower()
+    ntit = normalize_search_title(t).lower()
+
+    if dominant and _schema_text_fields_compatible(ntop, dominant):
+        return True
+    if dominant and _schema_text_fields_compatible(ntit, dominant):
+        return True
+    if tseg:
+        cand_seg = _first_title_segment_norm(t)
+        if len(cand_seg) >= 4 and cand_seg == tseg and dominant:
+            if _schema_text_fields_compatible(ntop, dominant) or _schema_text_fields_compatible(ntit, dominant):
+                return True
+            if not ntop and ntit and (cand_seg in ntit or ntit.startswith(cand_seg) or tseg in ntit):
+                return True
+    return False
+
+
+def filter_series_episodes_by_s01_topic_schema(
+    series_title: str, results: List[Dict]
+) -> List[Dict]:
+    """
+    Wenn mindestens zwei erkannte S01-Treffer einen einheitlichen Topic-Konsens bilden, werden
+    alle Mediathek-Ergebnisse weggelassen, die weder dazu passen (Topic/Titel) noch dem optionalen
+    S01-Titel-Präfix entsprechen. Reduziert False-Positives (z. B. fremde Sendungen, nur
+    Substring in der Beschreibung) ohne Seriennamen hart auf einen Einzelfall zu begrenzen.
+    """
+    if not results or len(results) < 2:
+        return results
+    s1: List[Dict] = []
+    for m in results:
+        s, e = extract_episode_info(m, series_title)
+        if s == 1 and e is not None:
+            s1.append(m)
+    if len(s1) < 2:
+        return results
+    schema = _infer_s01_naming_schema(s1)
+    if not schema:
+        return results
+    out: List[Dict] = []
+    dropped = 0
+    for m in results:
+        if _mvw_result_matches_s01_inferred_schema(m, schema):
+            out.append(m)
+        else:
+            dropped += 1
+    if dropped:
+        hint = (schema.get("dominant_topic_norm") or "")[:70]
+        logging.info(
+            "Serien-Schema-Filter: %d Treffer entfernt (S01-Topic-Konsens: %r)",
+            dropped,
+            hint,
+        )
+    if not out and results:
+        logging.warning(
+            "Serien-Schema-Filter: würde alle Treffer entfernen — Filter für diesen Durchlauf deaktiviert"
+        )
+        return results
+    return out
+
 
 def format_episode_filename(series_title: str, season: Optional[int], episode: Optional[int], metadata: Dict) -> str:
     """
@@ -2132,6 +2269,8 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
                     send_notification(notify_url, "Keine Episoden gefunden", body, "warning")
                 return []
         
+        filtered_results = filter_series_episodes_by_s01_topic_schema(series_title, filtered_results)
+
         # Bewerte alle Episoden
         scored_results = []
         for result in filtered_results:
