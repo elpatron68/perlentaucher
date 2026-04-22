@@ -328,8 +328,8 @@ class DownloadPanel(QWidget):
                 # Hole Metadata (das Jahr aus RSS-Feed wird beibehalten wenn keine API verwendet wird)
                 # get_metadata() initialisiert bereits mit year aus RSS-Feed
                 metadata = core.get_metadata(movie_title, year, tmdb_key, omdb_key)
-                # Stelle sicher, dass Jahr aus RSS-Feed verwendet wird wenn API kein Jahr zurückgibt
-                if not metadata.get('year') and year:
+                # Für Feed-Einträge ist das RSS-Jahr kuratiert; TMDB darf es nicht überschreiben.
+                if year:
                     metadata['year'] = year
                 override = entry_data.get("is_series_override")
                 if override is True:
