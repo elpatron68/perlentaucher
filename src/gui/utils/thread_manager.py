@@ -57,6 +57,7 @@ class DownloadThread(QThread):
             entry_id = self.entry_data['entry_id']
             entry = self.entry_data['entry']
             entry_link = self.entry_data.get('entry_link', '')
+            sender_mediathek_url = self.entry_data.get('sender_mediathek_url')
             movie_title = self.entry_data['movie_title']
             year = self.entry_data.get('year')
             metadata = self.entry_data.get('metadata', {})
@@ -95,7 +96,8 @@ class DownloadThread(QThread):
                         entry_link=entry_link,
                         year=year,
                         metadata=metadata,
-                        debug=self.debug_no_download
+                        debug=self.debug_no_download,
+                        sender_reference_url=sender_mediathek_url,
                     )
                     
                     if result and not self.is_cancelled:
@@ -132,7 +134,7 @@ class DownloadThread(QThread):
                         self.download_finished.emit(False, movie_title, "", "Film/Serie nicht in Mediathek gefunden")
                 elif serien_mode == 'staffel':
                     # Ganze Staffel - Lade alle Episoden
-                    self._download_series_season(movie_title, entry_link, year, metadata)
+                    self._download_series_season(movie_title, entry_link, year, metadata, sender_mediathek_url)
             else:
                 # Normale Film-Verarbeitung
                 result = core.search_mediathek(
@@ -144,7 +146,8 @@ class DownloadThread(QThread):
                     entry_link=entry_link,
                     year=year,
                     metadata=metadata,
-                    debug=self.debug_no_download
+                    debug=self.debug_no_download,
+                    sender_reference_url=sender_mediathek_url,
                 )
                 
                 if result and not self.is_cancelled:
@@ -314,7 +317,14 @@ class DownloadThread(QThread):
             )
             return (False, movie_data.get("title", "Unbekannt"), filepath if filepath else "")
     
-    def _download_series_season(self, series_title: str, entry_link: str, year: Optional[int], metadata: Dict):
+    def _download_series_season(
+        self,
+        series_title: str,
+        entry_link: str,
+        year: Optional[int],
+        metadata: Dict,
+        sender_mediathek_url: Optional[str] = None,
+    ):
         """
         Lädt alle Episoden einer Serie herunter.
         
@@ -323,6 +333,7 @@ class DownloadThread(QThread):
             entry_link: Link zum Blog-Eintrag
             year: Optional - Das Jahr der Serie
             metadata: Dictionary mit Metadaten
+            sender_mediathek_url: Optional - Direkter Sender-Mediathek-Link aus dem Blogpost
         """
         try:
             notify_url, notify_src = self._feed_notify_settings()
@@ -336,7 +347,8 @@ class DownloadThread(QThread):
                 entry_link=entry_link,
                 year=year,
                 metadata=metadata,
-                debug=self.debug_no_download
+                debug=self.debug_no_download,
+                sender_reference_url=sender_mediathek_url,
             )
             
             if not episodes:

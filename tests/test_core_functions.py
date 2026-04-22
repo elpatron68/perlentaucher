@@ -524,6 +524,55 @@ class TestEpisodeInfo:
         assert episode == 3
 
 
+class TestSeriesS01SchemaFilter:
+    """Tests für S01-Topic-Schema-Filter (False-Positives bei Serien)."""
+
+    def test_filter_drops_mismatched_when_two_s01_share_topic(self):
+        """Drei Treffer: zwei S01 mit gleichem Topic, dritter mit anderem Thema -> einer raus."""
+        st = "Alpha Show"
+        items = [
+            {"title": "Alpha Show - Folge 1", "topic": "Alpha Show (DE)"},
+            {"title": "Alpha Show - Folge 2", "topic": "Alpha Show (DE)"},
+            {"title": "Unrelated Doku", "topic": "Wissenschaft"},
+        ]
+        out = core.filter_series_episodes_by_s01_topic_schema(st, items)
+        assert len(out) == 2
+        assert all("Alpha" in (m.get("topic") or "") for m in out)
+
+    def test_filter_keeps_staffel2_with_same_topic_as_s01(self):
+        st = "Gamma"
+        items = [
+            {"title": "Gamma - Folge 1", "topic": "Gamma Sendung"},
+            {"title": "Gamma - Folge 2", "topic": "Gamma Sendung"},
+            {
+                "title": "Gamma - Staffel 2 Episode 1 - Auftakt",
+                "topic": "Gamma Sendung",
+            },
+        ]
+        out = core.filter_series_episodes_by_s01_topic_schema(st, items)
+        assert len(out) == 3
+
+    def test_no_schema_with_only_one_s01_parsed(self):
+        st = "Delta"
+        items = [
+            {"title": "Delta - Folge 1", "topic": "Delta X"},
+            {"title": "Fremd", "topic": "Anders"},
+        ]
+        out = core.filter_series_episodes_by_s01_topic_schema(st, items)
+        assert len(out) == 2
+
+    def test_all_removed_fallback_returns_original(self):
+        """Künstlicher Fall: Filter wäre leer -> Rückgabe unverändert (Sicherheitsnetz)."""
+        st = "Zeta"
+        items = [
+            {"title": "Z - Folge 1", "topic": "A"},
+            {"title": "Z - Folge 2", "topic": "A"},
+        ]
+        with patch.object(core, "_mvw_result_matches_s01_inferred_schema", return_value=False):
+            out = core.filter_series_episodes_by_s01_topic_schema(st, items)
+        assert out == items
+
+
 class TestEpisodeFilename:
     """Tests für Episoden-Dateinamen-Formatierung."""
     
@@ -763,3 +812,49 @@ class TestEpisodeInfoPattern6:
         season, episode = core.extract_episode_info(movie_data, "The Veil")
         assert season is None
         assert episode is None
+
+
+class TestSenderReferenceHelpers:
+    def test_extract_sender_link_from_rss_summary(self):
+        entry = {
+            "id": "abc",
+            "link": "https://nexxtpress.de/post",
+            "summary": 'Hinweis: https://www.ardmediathek.de/serie/strangers/staffel-1/xyz/1',
+        }
+        url = core.resolve_sender_mediathek_url(entry, fetch_article=False, cache={})
+        assert url and "ardmediathek.de/serie/strangers" in url
+
+    def test_sender_link_fallback_fetches_article(self):
+        entry = {"id": "abc2", "link": "https://nexxtpress.de/post2", "summary": "kein link"}
+        fake = Mock()
+        fake.raise_for_status.return_value = None
+        fake.text = '<a href="https://www.ardmediathek.de/serie/strangers/staffel-1/xyz/1">ARD</a>'
+        with patch.object(core.requests, "get", return_value=fake) as get_mock:
+            url = core.resolve_sender_mediathek_url(
+                entry,
+                entry_link=entry["link"],
+                fetch_article=True,
+                cache={},
+            )
+        assert url and "ardmediathek.de/serie/strangers" in url
+        get_mock.assert_called_once()
+
+    def test_sender_reference_filter_removes_non_episode_noise(self):
+        sender_ref = "https://www.ardmediathek.de/serie/strangers/staffel-1/xyz/1"
+        results = [
+            {"title": "Folge 1: Strangers (S01/E01)", "topic": "Strangers"},
+            {"title": "Strangers in the Night", "topic": "Konzertabend"},
+        ]
+        out = core._filter_results_by_sender_reference("Strangers", results, sender_ref)
+        assert len(out) == 1
+        assert "Folge 1" in out[0]["title"]
+
+    def test_sender_reference_match_bonus_positive_for_matching_blob(self):
+        sender_ref = "https://www.ardmediathek.de/serie/strangers/staffel-1/xyz/1"
+        movie_data = {
+            "title": "Folge 1: Strangers (S01/E01)",
+            "topic": "Strangers",
+            "description": "",
+            "url_video": "https://example.org/video.mp4",
+        }
+        assert core._sender_reference_match_bonus(movie_data, sender_ref) > 0

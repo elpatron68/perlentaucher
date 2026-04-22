@@ -561,6 +561,11 @@ class BlogListPanel(QWidget):
             is_series = core.is_series(entry_dict, metadata)
             
             entry_link = get_entry_attr(entry, 'link', '')
+            sender_mediathek_url = core.resolve_sender_mediathek_url(
+                entry_dict,
+                entry_link=entry_link,
+                fetch_article=bool(self.config_manager.get("resolve_sender_link_fetch", False)),
+            )
             
             # Erscheinungsdatum des Blogposts formatieren
             published = get_entry_attr(entry, 'published_parsed') or get_entry_attr(entry, 'updated_parsed')
@@ -581,6 +586,7 @@ class BlogListPanel(QWidget):
                 'entry_id': entry_id,
                 'entry': entry,  # Speichere original entry für später
                 'entry_link': entry_link,
+                'sender_mediathek_url': sender_mediathek_url,
                 'rss_title': title,
                 'published_date_str': published_date_str,
                 'movie_title': movie_title,

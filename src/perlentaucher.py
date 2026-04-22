@@ -11,7 +11,7 @@ import semver
 import unicodedata
 from datetime import datetime
 from typing import Optional, Dict, Tuple, List, Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse, unquote
 
 # Projekt-Root auf sys.path, damit „from src.…“ funktioniert (z. B. python src/perlentaucher.py)
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -881,7 +881,188 @@ def is_series(entry, metadata: Optional[Dict] = None) -> bool:
     
     return False
 
-def parse_rss_feed(limit, state_file=None):
+_SENDER_MEDIATHEK_HOST_HINTS = (
+    "ardmediathek.de",
+    "zdf.de",
+    "arte.tv",
+    "3sat.de",
+    "ndr.de",
+    "wdr.de",
+    "swr.de",
+    "br.de",
+    "mdr.de",
+)
+
+_SENDER_LINK_FETCH_CACHE: Dict[str, Optional[str]] = {}
+_SENDER_REF_STOPWORDS = {
+    "serie",
+    "staffel",
+    "folge",
+    "film",
+    "filme",
+    "video",
+    "videos",
+    "stream",
+    "streamen",
+    "the",
+    "der",
+    "die",
+    "das",
+    "und",
+    "von",
+    "mit",
+}
+
+
+def _extract_sender_mediathek_url_from_text(text: str) -> Optional[str]:
+    if not text:
+        return None
+    for m in re.finditer(r"https?://[^\s'\"<>]+", text, flags=re.I):
+        raw = m.group(0).rstrip("),.;:!?")
+        try:
+            p = urlparse(raw)
+        except ValueError:
+            continue
+        host = (p.netloc or "").lower()
+        if not host:
+            continue
+        if any(hint in host for hint in _SENDER_MEDIATHEK_HOST_HINTS):
+            return raw
+    return None
+
+
+def _entry_content_blobs(entry: Dict[str, Any]) -> List[str]:
+    blobs: List[str] = []
+    for key in ("summary", "description"):
+        v = entry.get(key)
+        if isinstance(v, str) and v.strip():
+            blobs.append(v)
+    content = entry.get("content")
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, dict):
+                val = item.get("value")
+                if isinstance(val, str) and val.strip():
+                    blobs.append(val)
+    return blobs
+
+
+def resolve_sender_mediathek_url(
+    entry: Dict[str, Any],
+    *,
+    entry_link: Optional[str] = None,
+    fetch_article: bool = False,
+    cache: Optional[Dict[str, Optional[str]]] = None,
+) -> Optional[str]:
+    """
+    Ermittelt die Sender-Mediathek-URL aus RSS-Inhalt; optional per Artikel-HTML-Fallback.
+    """
+    cache_store = cache if cache is not None else _SENDER_LINK_FETCH_CACHE
+    cache_key = (entry.get("id") or entry_link or entry.get("link") or "").strip()
+    if cache_key and cache_key in cache_store:
+        return cache_store[cache_key]
+
+    found: Optional[str] = None
+    for blob in _entry_content_blobs(entry):
+        found = _extract_sender_mediathek_url_from_text(blob)
+        if found:
+            break
+
+    blog_url = (entry_link or entry.get("link") or "").strip()
+    if not found and fetch_article and blog_url.startswith(("http://", "https://")):
+        try:
+            resp = requests.get(blog_url, timeout=10)
+            resp.raise_for_status()
+            found = _extract_sender_mediathek_url_from_text(resp.text)
+        except requests.RequestException as e:
+            logging.debug(f"Sender-Link-Fetch fehlgeschlagen ({blog_url}): {e}")
+
+    if cache_key:
+        cache_store[cache_key] = found
+    return found
+
+
+def _sender_reference_tokens(sender_reference_url: Optional[str]) -> List[str]:
+    if not sender_reference_url:
+        return []
+    try:
+        p = urlparse(sender_reference_url)
+    except ValueError:
+        return []
+    raw = unquote((p.path or "")).lower()
+    toks = re.findall(r"[a-z0-9äöüß]+", raw, flags=re.I)
+    out: List[str] = []
+    for t in toks:
+        if len(t) < 4:
+            continue
+        if t.isdigit():
+            continue
+        if t in _SENDER_REF_STOPWORDS:
+            continue
+        out.append(t)
+    return list(dict.fromkeys(out))
+
+
+def _sender_reference_is_series_url(sender_reference_url: Optional[str]) -> bool:
+    if not sender_reference_url:
+        return False
+    try:
+        p = urlparse(sender_reference_url)
+    except ValueError:
+        return False
+    path = (p.path or "").lower()
+    return "/serie/" in path or "staffel" in path
+
+
+def _sender_reference_match_bonus(movie_data: Dict, sender_reference_url: Optional[str]) -> float:
+    if not sender_reference_url:
+        return 0.0
+    blob = " ".join(
+        [
+            (movie_data.get("title") or ""),
+            (movie_data.get("topic") or ""),
+            (movie_data.get("description") or ""),
+            (movie_data.get("url_video") or ""),
+        ]
+    ).lower()
+    tokens = _sender_reference_tokens(sender_reference_url)
+    if not blob or not tokens:
+        return 0.0
+    hits = sum(1 for t in tokens if t in blob)
+    if hits <= 0:
+        return 0.0
+    return 2000.0 + (300.0 * hits)
+
+
+def _filter_results_by_sender_reference(
+    series_title: str,
+    results: List[Dict],
+    sender_reference_url: Optional[str],
+) -> List[Dict]:
+    """
+    Nutzt Sender-Mediathek-URL als zusätzliche Serien-Leitplanke.
+    Für echte Serien-URLs bleiben nur Kandidaten mit erkennbarer Episoden-Struktur.
+    """
+    if not results or not _sender_reference_is_series_url(sender_reference_url):
+        return results
+    out: List[Dict] = []
+    dropped = 0
+    for r in results:
+        season, episode = extract_episode_info(r, series_title)
+        if season is None or episode is None:
+            dropped += 1
+            continue
+        out.append(r)
+    if dropped:
+        logging.info(
+            "Sender-Referenz-Filter: %d nicht-episodische Treffer entfernt (%s)",
+            dropped,
+            sender_reference_url,
+        )
+    return out
+
+
+def parse_rss_feed(limit, state_file=None, resolve_sender_link_fetch: bool = False):
     logging.info(f"Parse RSS-Feed: {RSS_FEED_URL}")
     feed = feedparser.parse(RSS_FEED_URL)
     
@@ -941,9 +1122,14 @@ def parse_rss_feed(limit, state_file=None):
             year = extract_year_from_title(title)
             logging.debug(f"Extracted movie title: '{movie_title}' from '{title}'" + (f" (Jahr: {year})" if year else ""))
             movies.append((movie_title, year))
-            # Speichere entry_id, entry und link für Benachrichtigungen
+            # Speichere entry_id, entry und Links für Benachrichtigungen / Referenz-Matching
             entry_link = entry.get('link', '')
-            new_entries.append((entry_id, entry, entry_link))
+            sender_mediathek_url = resolve_sender_mediathek_url(
+                entry,
+                entry_link=entry_link,
+                fetch_article=resolve_sender_link_fetch,
+            )
+            new_entries.append((entry_id, entry, entry_link, sender_mediathek_url))
         else:
             # Debug: Zeige die tatsächlichen Zeichen im Titel
             logging.warning(f"Konnte Filmtitel nicht aus RSS-Eintrag extrahieren: '{title}'")
@@ -1415,7 +1601,7 @@ def _log_scored_matches(scored_results, search_title: str, limit: int = 10, labe
         )
 
 
-def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="egal", notify_url=None, notify_source=None, entry_link=None, year: Optional[int] = None, metadata: Dict = None, debug: bool = False):
+def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="egal", notify_url=None, notify_source=None, entry_link=None, year: Optional[int] = None, metadata: Dict = None, debug: bool = False, sender_reference_url: Optional[str] = None):
     """
     Sucht nach einem Film in MediathekViewWeb und wählt die beste Fassung
     basierend auf den Präferenzen und Titelübereinstimmung aus.
@@ -1428,6 +1614,7 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
         entry_link: Optional - Link zum Blog-Eintrag für Benachrichtigungen
         year: Optional - Das Jahr des Films (für bessere Matching)
         metadata: Optional - Dictionary mit 'provider_id' (tmdbid-XXX oder imdbid-XXX) für exaktes Matching
+        sender_reference_url: Optional - Direkte Sender-Mediathek-URL aus dem Blogbeitrag
     """
     search_terms = mediathek_movie_search_terms(movie_title)
     if not search_terms:
@@ -1473,10 +1660,17 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
                     filtered_count += 1
                     continue
 
+                if _sender_reference_is_series_url(sender_reference_url):
+                    season, episode = extract_episode_info(result, movie_title)
+                    if season is None or episode is None:
+                        filtered_count += 1
+                        continue
+
                 score = score_movie(
                     result, prefer_language, prefer_audio_desc,
                     search_title=movie_title, search_year=year, metadata=metadata
                 )
+                score += _sender_reference_match_bonus(result, sender_reference_url)
                 scored_results.append((score, result))
                 logging.debug(
                     f"Bewertet: '{result_title}' - Ähnlichkeit: {title_similarity:.2f}, Score: {score:.1f}"
@@ -2208,7 +2402,8 @@ def _filter_series_mvw_results(
 
 def search_mediathek_series(series_title: str, prefer_language: str = "deutsch", prefer_audio_desc: str = "egal", 
                             notify_url: Optional[str] = None, notify_source: Optional[str] = None, entry_link: Optional[str] = None, 
-                            year: Optional[int] = None, metadata: Optional[Dict] = None, debug: bool = False) -> list:
+                            year: Optional[int] = None, metadata: Optional[Dict] = None, debug: bool = False,
+                            sender_reference_url: Optional[str] = None) -> list:
     """
     Sucht nach allen Episoden einer Serie in MediathekViewWeb.
     
@@ -2220,6 +2415,7 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
         entry_link: Optional - Link zum Blog-Eintrag
         year: Optional - Das Jahr der Serie
         metadata: Optional - Dictionary mit 'provider_id' und 'content_type'
+        sender_reference_url: Optional - Direkte Sender-Mediathek-URL aus dem Blogbeitrag
         
     Returns:
         Liste von Episoden-Daten (sortiert nach Score), oder leere Liste wenn keine gefunden
@@ -2270,6 +2466,11 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
                 return []
         
         filtered_results = filter_series_episodes_by_s01_topic_schema(series_title, filtered_results)
+        filtered_results = _filter_results_by_sender_reference(
+            series_title,
+            filtered_results,
+            sender_reference_url,
+        )
 
         # Bewerte alle Episoden
         scored_results = []
@@ -2284,6 +2485,7 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
                     metadata=metadata,
                     use_series_listing_similarity=True,
                 )
+                score += _sender_reference_match_bonus(result, sender_reference_url)
                 scored_results.append((score, result))
             except Exception as e:
                 logging.debug(f"Fehler beim Bewerten einer Episode für '{series_title}': {e}")
@@ -2625,6 +2827,8 @@ def main():
                        help="Basis-Verzeichnis für Serien-Downloads (Standard: --download-dir). Episoden werden in Unterordnern [Titel] (Jahr)/ gespeichert")
     parser.add_argument("--debug-no-download", action="store_true",
                       help="Debug-Modus: keine Downloads durchführen, aber Feed/Suche/Matches ausgeben")
+    parser.add_argument("--resolve-sender-link-fetch", action="store_true",
+                      help="Wenn RSS-Inhalt keinen Sender-Mediathek-Link enthält, Blog-Artikel nachladen und Link extrahieren")
     parser.add_argument("--search", default=None,
                        help="Film per Suchbegriff herunterladen (z.B. 'The Quiet Girl'). Kein RSS-Feed.")
     parser.add_argument("--year", type=int, default=None,
@@ -2799,7 +3003,11 @@ def main():
             )
         sys.exit(0 if success else 1)
 
-    movies, new_entries = parse_rss_feed(args.limit, state_file=state_file)
+    movies, new_entries = parse_rss_feed(
+        args.limit,
+        state_file=state_file,
+        resolve_sender_link_fetch=args.resolve_sender_link_fetch,
+    )
     
     if args.notify and not APPRISE_AVAILABLE:
         logging.warning("Apprise ist nicht installiert. Benachrichtigungen werden nicht gesendet.")
@@ -2808,7 +3016,7 @@ def main():
     feed_notify_src = "feed" if args.notify else None
 
     for i, movie_data in enumerate(movies):
-        entry_id, entry, entry_link = new_entries[i]
+        entry_id, entry, entry_link, sender_mediathek_url = new_entries[i]
         movie_title, year = movie_data if isinstance(movie_data, tuple) else (movie_data, None)
         
         # Hole Metadata VOR der Suche, damit wir sie für besseres Matching nutzen können
@@ -2836,6 +3044,7 @@ def main():
                     year=year,
                     metadata=metadata,
                     debug=args.debug_no_download,
+                    sender_reference_url=sender_mediathek_url,
                 )
                 if result:
                     # Extrahiere Episode-Info für Dateinamen
@@ -2905,6 +3114,7 @@ def main():
                     year=year,
                     metadata=metadata,
                     debug=args.debug_no_download,
+                    sender_reference_url=sender_mediathek_url,
                 )
                 if episodes:
                     # Bestimme series_base_dir
@@ -3089,6 +3299,7 @@ def main():
                 year=year,
                 metadata=metadata,
                 debug=args.debug_no_download,
+                sender_reference_url=sender_mediathek_url,
             )
             if result:
                 if args.debug_no_download:
