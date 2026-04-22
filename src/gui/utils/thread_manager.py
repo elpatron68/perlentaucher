@@ -43,9 +43,11 @@ class DownloadThread(QThread):
         self.debug_no_download = self.config.get('debug_no_download', False)
 
     def _feed_notify_settings(self) -> Tuple[Optional[str], Optional[str]]:
-        """Apprise-URL aus der GUI-Konfiguration; notify_source ``feed`` für RSS-Downloads."""
-        nu = (self.config.get("notify") or "").strip() or None
-        return (nu, "feed" if nu else None)
+        """
+        GUI löst grundsätzlich keine externen Benachrichtigungen aus.
+        CLI bleibt der einzige Kanal für Ntfy/Apprise.
+        """
+        return (None, None)
 
     def cancel(self):
         """Bricht den Download ab."""
