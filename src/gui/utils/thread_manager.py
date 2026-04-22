@@ -389,7 +389,7 @@ class DownloadThread(QThread):
                     episodes_dict[episode_key] = (score, episode_data)
             
             # Fallback: Episoden ohne S/E nicht verwerfen – als Staffel 1 fortlaufend nummerieren (wie CLI)
-            if episodes_without_info:
+            if episodes_without_info and core.should_use_unknown_episode_fallback(episodes_dict):
                 max_ep_s1 = max((e for (s, e) in episodes_dict if s == 1), default=0)
                 for i, episode_data in enumerate(episodes_without_info):
                     fallback_ep = max_ep_s1 + 1 + i
@@ -410,6 +410,11 @@ class DownloadThread(QThread):
                     if key not in episodes_dict or score > episodes_dict[key][0]:
                         episodes_dict[key] = (score, episode_data)
                 logging.info(f"{len(episodes_without_info)} Episoden ohne Staffel/Episode-Info als S01E{max_ep_s1 + 1}+ nummeriert")
+            elif episodes_without_info:
+                logging.info(
+                    f"{len(episodes_without_info)} Episoden ohne Staffel/Episode-Info verworfen "
+                    "(genug valide Episoden vorhanden)"
+                )
             
             # Konvertiere Dictionary zu Liste und sortiere
             episodes_with_info = [(s, e, data) for (s, e), (score, data) in episodes_dict.items()]

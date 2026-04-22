@@ -576,7 +576,7 @@ def _process_series_staffel(
         episode_key = (season, episode_num)
         if episode_key not in episodes_dict or score > episodes_dict[episode_key][0]:
             episodes_dict[episode_key] = (score, episode_data)
-    if episodes_without_info:
+    if episodes_without_info and core.should_use_unknown_episode_fallback(episodes_dict):
         max_ep_s1 = max((e for (s, e) in episodes_dict if s == 1), default=0)
         for i, episode_data in enumerate(episodes_without_info):
             fallback_ep = max_ep_s1 + 1 + i
@@ -592,6 +592,11 @@ def _process_series_staffel(
             key = (1, fallback_ep)
             if key not in episodes_dict or score > episodes_dict[key][0]:
                 episodes_dict[key] = (score, episode_data)
+    elif episodes_without_info:
+        logging.info(
+            f"{len(episodes_without_info)} Episoden ohne Staffel/Episode-Info verworfen "
+            "(genug valide Episoden vorhanden)"
+        )
     episodes_with_info = [(s, e, data) for (s, e), (score, data) in episodes_dict.items()]
     episodes_with_info.sort(key=lambda x: (x[0] or 0, x[1] or 0))
     total_episodes = len(episodes_with_info)

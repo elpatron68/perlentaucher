@@ -858,3 +858,25 @@ class TestSenderReferenceHelpers:
             "url_video": "https://example.org/video.mp4",
         }
         assert core._sender_reference_match_bonus(movie_data, sender_ref) > 0
+
+
+class TestUnknownEpisodeFallbackPolicy:
+    def test_fallback_allowed_when_no_parsed_episodes(self):
+        assert core.should_use_unknown_episode_fallback({}) is True
+
+    def test_fallback_blocked_when_many_parsed_episodes(self):
+        episodes_dict = {
+            (1, 1): (1.0, {}),
+            (1, 2): (1.0, {}),
+            (1, 3): (1.0, {}),
+            (1, 4): (1.0, {}),
+        }
+        assert core.should_use_unknown_episode_fallback(episodes_dict) is False
+
+    def test_fallback_blocked_when_season1_has_three(self):
+        episodes_dict = {
+            (1, 1): (1.0, {}),
+            (1, 2): (1.0, {}),
+            (1, 3): (1.0, {}),
+        }
+        assert core.should_use_unknown_episode_fallback(episodes_dict) is False
