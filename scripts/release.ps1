@@ -1,5 +1,13 @@
 #!/usr/bin/env pwsh
 # Script zum Inkrementieren des Patch-Levels, Taggen, Pushen und Docker-Image erstellen/pushen
+#
+#   -SkipRelease  Kein GitHub-Release (gh) und kein Codeberg-Release (API) — z. B. wenn der
+#                 letzte Lauf scheiterte und du nur Tag/Push/Docker erneut anstoßen willst,
+#                 ohne doppelte Release-Seiten zu erzeugen.
+
+param(
+    [switch]$SkipRelease
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -261,7 +269,13 @@ if ($githubRemote) {
         Write-Host "✓ master Branch erfolgreich zu GitHub gepusht" -ForegroundColor Green
     }
     
+    if ($SkipRelease) {
+        Write-Host "`nℹ -SkipRelease: Überspringe GitHub-Release (kein gh release create, kein Release-Event)." -ForegroundColor Cyan
+        Write-Host "  Tag und Branch wurden gepusht. GUI-Build ggf. per Workflow-Dispatch oder erneutem Release starten." -ForegroundColor Gray
+    }
+    
     # Starte GitHub Actions Workflow für GUI Builds
+    if (-not $SkipRelease) {
     Write-Host "`nStarte GitHub Actions Workflow für Cross-Platform GUI Builds..." -ForegroundColor Cyan
     
     # Prüfe ob gh CLI verfügbar ist
@@ -351,12 +365,16 @@ if ($githubRemote) {
         Write-Host "⚠ Warnung: GitHub CLI (gh) nicht verfügbar" -ForegroundColor Yellow
         Write-Host "  Installiere GitHub CLI oder starte Workflow manuell auf GitHub.com" -ForegroundColor Gray
     }
+    } # end if (-not $SkipRelease) GitHub Release / gh
 } else {
     Write-Host "ℹ GitHub Remote nicht gefunden. Überspringe GitHub Push und Workflow-Start." -ForegroundColor Gray
     Write-Host "  Füge GitHub Remote hinzu mit: git remote add github https://github.com/USERNAME/REPO.git" -ForegroundColor Gray
 }
 
 # Erstelle Release über Codeberg API
+$response = $null
+$codebergToken = $null
+if (-not $SkipRelease) {
 Write-Host "`nErstelle Release über Codeberg API..." -ForegroundColor Cyan
 
 # Extrahiere Repository-Informationen aus Git-Remote
@@ -484,6 +502,9 @@ if ($remoteUrl -match 'codeberg\.org[/:]([^/]+)/([^/]+?)(?:\.git)?$') {
     Write-Host "⚠ Konnte Repository-Informationen nicht aus Git-Remote extrahieren." -ForegroundColor Yellow
     Write-Host "  Remote URL: $remoteUrl" -ForegroundColor Gray
     Write-Host "  Release kann manuell erstellt werden." -ForegroundColor Yellow
+}
+} else {
+    Write-Host "`nℹ -SkipRelease: Überspringe Codeberg-Release (API)." -ForegroundColor Cyan
 }
 
 # Docker-Image bauen
