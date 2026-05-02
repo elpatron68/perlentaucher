@@ -87,6 +87,60 @@ class ConfigManager:
         self.project_root = os.path.dirname(config_file)
         self.config = self.DEFAULT_CONFIG.copy()
         self.load()
+        self.ensure_ffmpeg_path_at_startup()
+
+    def ensure_ffmpeg_path_at_startup(self, persist: bool = True) -> None:
+        """
+        Setzt ``ffmpeg_path``, wenn leer oder kein ausführbares ffmpeg gefunden wird:
+        zuerst gültiger gespeicherter Wert (normalisiert), sonst FFMPEG_PATH, sonst PATH (which ffmpeg).
+        Schreibt die Konfiguration optional zurück.
+        """
+        try:
+            from src import perlentaucher as core
+        except ImportError:
+            try:
+                import perlentaucher as core
+            except ImportError:
+                return
+
+        def norm_exe(p: str) -> str:
+            if not p:
+                return p
+            try:
+                return os.path.abspath(p)
+            except OSError:
+                return p
+
+        changed = False
+        raw = (self.config.get("ffmpeg_path") or "").strip()
+        if raw:
+            resolved = core.resolve_ffmpeg_executable(raw)
+            if resolved:
+                n = norm_exe(resolved)
+                if self.config.get("ffmpeg_path") != n:
+                    self.config["ffmpeg_path"] = n
+                    changed = True
+                if persist and changed:
+                    self.save()
+                return
+
+        probes = []
+        env_ff = (os.environ.get("FFMPEG_PATH") or "").strip()
+        if env_ff:
+            probes.append(env_ff)
+        probes.append(None)
+
+        for probe in probes:
+            resolved = core.resolve_ffmpeg_executable(probe)
+            if resolved:
+                n = norm_exe(resolved)
+                if self.config.get("ffmpeg_path") != n:
+                    self.config["ffmpeg_path"] = n
+                    changed = True
+                break
+
+        if persist and changed:
+            self.save()
     
     def load(self) -> Dict:
         """

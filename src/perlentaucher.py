@@ -2617,14 +2617,18 @@ def download_hls_with_ffmpeg(
         output_path,
     ]
 
-    proc = subprocess.Popen(
-        cmd,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-    )
+    # Windows: Ohne CREATE_NO_WINDOW öffnet ffmpeg kurz ein Konsolenfenster (stört GUI/PyInstaller).
+    popen_kw: Dict[str, Any] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.PIPE,
+        "text": True,
+        "bufsize": 1,
+    }
+    if sys.platform == "win32" and hasattr(subprocess, "CREATE_NO_WINDOW"):
+        popen_kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+    proc = subprocess.Popen(cmd, **popen_kw)
 
     def _read_stderr() -> None:
         try:
