@@ -2907,7 +2907,7 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
                 notify_source,
                 "error",
                 title=title,
-                filepath=filepath,
+                filepath=None,
                 content_title=content_title,
                 is_series=is_series,
                 season=season,
@@ -2915,7 +2915,7 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
                 error_text=str(e),
                 entry_link=entry_link,
             )
-        return (False, title, filepath, False)
+        return (False, title, "", False)
 
     except Exception as e:
         logging.error(f"Download fehlgeschlagen für '{title}': {e}")
@@ -2937,7 +2937,7 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
                 notify_source,
                 "error",
                 title=title,
-                filepath=filepath,
+                filepath=None,
                 content_title=content_title,
                 is_series=is_series,
                 season=season,
@@ -2945,7 +2945,7 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
                 error_text=str(e),
                 entry_link=entry_link,
             )
-        return (False, title, filepath, False)
+        return (False, title, "", False)
 
 
 def download_by_search(
