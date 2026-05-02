@@ -372,6 +372,11 @@ class TestTitleSimilarity:
         """Test: Case-insensitive Übereinstimmung."""
         similarity = core.calculate_title_similarity("The Matrix", "the matrix")
         assert similarity == 1.0
+
+    def test_accented_title_matches_mediathek_ascii_spelling(self):
+        """Blog/Suche mit Diakritika, Mediathek oft ohne (z. B. Fantômas vs Fantomas)."""
+        assert core.calculate_title_similarity("Fantômas", "Fantomas") == 1.0
+        assert core.calculate_title_similarity("Fantômas", "Fantomas gegen Interpol") >= 0.85
     
     def test_substring_match(self):
         """Test: Teilstring-Übereinstimmung."""

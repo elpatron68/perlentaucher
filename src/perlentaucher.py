@@ -1274,9 +1274,15 @@ def calculate_title_similarity(search_title: str, result_title: str) -> float:
     Berechnet die Ähnlichkeit zwischen Suchtitel und Ergebnis-Titel.
     Gibt einen Wert zwischen 0.0 (keine Übereinstimmung) und 1.0 (exakte Übereinstimmung) zurück.
     Ignoriert Stopwords bei der Berechnung.
+
+    Vergleich erfolgt nach ``normalize_search_title`` (z. B. Fantômas ↔ Fantomas wie in
+    Mediathek-Metadaten), nicht nach Roh-Unicode.
     """
-    search_lower = search_title.lower().strip()
-    result_lower = result_title.lower().strip()
+    search_use = normalize_search_title(search_title or "")
+    result_use = normalize_search_title(result_title or "")
+
+    search_lower = search_use.lower().strip()
+    result_lower = result_use.lower().strip()
     
     # Exakte Übereinstimmung (nach Normalisierung)
     if search_lower == result_lower:
@@ -1295,8 +1301,8 @@ def calculate_title_similarity(search_title: str, result_title: str) -> float:
         return 0.80
     
     # Extrahiere signifikante Wörter (ohne Stopwords)
-    search_significant = get_significant_words(search_title)
-    result_significant = get_significant_words(result_title)
+    search_significant = get_significant_words(search_use)
+    result_significant = get_significant_words(result_use)
     
     # Wenn keine signifikanten Wörter vorhanden sind, verwende alle Wörter
     if not search_significant:
@@ -1648,9 +1654,9 @@ def search_mediathek(movie_title, prefer_language="deutsch", prefer_audio_desc="
                 result_title = result.get("title", "")
                 title_similarity = calculate_title_similarity(movie_title, result_title)
 
-                normalized_search = movie_title.lower().strip()
-                normalized_result = result_title.lower().strip()
-                title_contained = normalized_search in normalized_result or normalized_result in normalized_search
+                ns = normalize_search_title(movie_title).lower().strip()
+                nr = normalize_search_title(result_title).lower().strip()
+                title_contained = ns in nr or nr in ns
 
                 if title_similarity < MIN_TITLE_SIMILARITY_FOR_SCORING and not title_contained:
                     logging.debug(
@@ -1828,9 +1834,9 @@ def list_mediathek_movie_candidates(
                     title_similarity = calculate_title_similarity_for_series_listing(movie_title, result)
                 else:
                     title_similarity = calculate_title_similarity(movie_title, result_title)
-                normalized_search = movie_title.lower().strip()
-                normalized_result = result_title.lower().strip()
-                title_contained = normalized_search in normalized_result or normalized_result in normalized_search
+                ns = normalize_search_title(movie_title).lower().strip()
+                nr = normalize_search_title(result_title).lower().strip()
+                title_contained = ns in nr or nr in ns
                 if title_similarity < MIN_TITLE_SIMILARITY_FOR_SCORING and not title_contained:
                     continue
                 score = score_movie(
