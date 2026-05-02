@@ -184,132 +184,56 @@ class DownloadThread(QThread):
                                is_series: bool = False, series_base_dir: Optional[str] = None,
                                season: Optional[int] = None, episode: Optional[int] = None) -> tuple:
         """
-        Lädt einen Film/Episode herunter mit Progress-Updates.
-        
+        Lädt einen Film/Episode herunter mit Progress-Updates (einheitlich über core.download_content).
+
         Returns:
             Tuple (success: bool, title: str, filepath: str)
         """
-        filepath = ""  # Initialisiere für Exception-Handler
         blog_link = (self.entry_data.get("entry_link") or "").strip() or None
+        cfg_ff = (self.config.get("ffmpeg_path") or "").strip()
+        ffmpeg_path_kw = cfg_ff if cfg_ff else None
+
+        def progress_cb(pct: int, msg: str) -> None:
+            if not self.is_cancelled:
+                self.progress_updated.emit(pct, msg)
+
+        def cancel_cb() -> bool:
+            return self.is_cancelled
+
         try:
-            # Bestimme Ziel-Verzeichnis und Dateinamen
-            if is_series and series_base_dir:
-                target_dir = core.get_series_directory(series_base_dir, content_title, metadata.get("year"))
-                base_filename = core.format_episode_filename(content_title, season, episode, metadata)
-            else:
-                target_dir = self.config.get('download_dir')
-                base_title = content_title
-                import re
-                safe_title = re.sub(r'[<>:"/\\|?*]', '_', base_title)
-                filename_parts = [safe_title]
-                year = metadata.get("year")
-                if year:
-                    filename_parts.append(f"({year})")
-                provider_id = metadata.get("provider_id")
-                if provider_id:
-                    filename_parts.append(provider_id)
-                base_filename = " ".join(filename_parts)
-            
-            # Bestimme Extension
-            url = movie_data.get("url_video")
-            if not url:
-                return (False, movie_data.get("title", "Unbekannt"), "")
-            
-            ext = "mp4"
-            if url.endswith(".mkv"):
-                ext = "mkv"
-            
-            filename = f"{base_filename}.{ext}"
-            filepath = os.path.join(target_dir, filename)
-            
-            # Prüfe ob Datei bereits existiert
-            if os.path.exists(filepath):
-                self.progress_updated.emit(100, "Datei bereits vorhanden")
-                nu, ns = self._feed_notify_settings()
-                core.notify_non_wishlist_download_outcome(
-                    nu,
-                    ns,
-                    "skipped_existing",
-                    title=movie_data.get("title"),
-                    filepath=filepath,
-                    content_title=content_title,
-                    is_series=is_series,
-                    season=season,
-                    episode=episode,
-                    entry_link=blog_link,
-                )
-                return (True, movie_data.get("title"), filepath)
-            
-            # Download mit Progress
-            import requests
-            
-            self.progress_updated.emit(0, "Starte Download...")
-            
-            with requests.get(url, stream=True, timeout=30) as r:
-                r.raise_for_status()
-                total_size = int(r.headers.get('content-length', 0))
-                
-                downloaded = 0
-                chunk_size = 8192
-                
-                os.makedirs(target_dir, exist_ok=True)
-                
-                with open(filepath, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=chunk_size):
-                        if self.is_cancelled:
-                            f.close()
-                            if os.path.exists(filepath):
-                                os.remove(filepath)
-                            return (False, movie_data.get("title"), filepath)
-                        
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        
-                        if total_size > 0:
-                            progress = int((downloaded / total_size) * 100)
-                            mb_downloaded = downloaded / (1024 * 1024)
-                            self.progress_updated.emit(
-                                progress,
-                                f"{mb_downloaded:.1f} MB / {total_size / (1024 * 1024):.1f} MB"
-                            )
-                        else:
-                            mb_downloaded = downloaded / (1024 * 1024)
-                            self.progress_updated.emit(
-                                50,  # Unbekannte Größe, zeige 50%
-                                f"{mb_downloaded:.1f} MB heruntergeladen"
-                            )
-            
-            self.progress_updated.emit(100, "Download abgeschlossen")
-            nu, ns = self._feed_notify_settings()
-            core.notify_non_wishlist_download_outcome(
-                nu,
-                ns,
-                "success",
-                title=movie_data.get("title"),
-                filepath=filepath,
+            success, title, filepath, skipped = core.download_content(
+                movie_data,
+                self.config.get("download_dir"),
                 content_title=content_title,
+                metadata=metadata,
                 is_series=is_series,
+                series_base_dir=series_base_dir,
                 season=season,
                 episode=episode,
+                notify_url=None,
+                notify_source=None,
                 entry_link=blog_link,
+                ffmpeg_path=ffmpeg_path_kw,
+                progress_callback=progress_cb,
+                cancel_check=cancel_cb,
             )
-            return (True, movie_data.get("title"), filepath)
-            
+            disp = title or movie_data.get("title", "Unbekannt")
+            if success and filepath:
+                if skipped:
+                    self.progress_updated.emit(100, "Datei bereits vorhanden")
+                else:
+                    self.progress_updated.emit(100, "Download abgeschlossen")
+            return (success, disp, filepath or "")
         except Exception as e:
             error_msg = str(e)
             logging.error(f"Download-Fehler: {error_msg}")
-            if filepath and os.path.exists(filepath):
-                try:
-                    os.remove(filepath)
-                except:
-                    pass
             nu, ns = self._feed_notify_settings()
             core.notify_non_wishlist_download_outcome(
                 nu,
                 ns,
                 "error",
                 title=movie_data.get("title"),
-                filepath=filepath if filepath else None,
+                filepath=None,
                 content_title=content_title,
                 is_series=is_series,
                 season=season,
@@ -317,7 +241,7 @@ class DownloadThread(QThread):
                 error_text=error_msg,
                 entry_link=blog_link,
             )
-            return (False, movie_data.get("title", "Unbekannt"), filepath if filepath else "")
+            return (False, movie_data.get("title", "Unbekannt"), "")
     
     def _download_series_season(
         self,

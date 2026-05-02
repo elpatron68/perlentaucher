@@ -100,6 +100,11 @@ class SettingsPanel(QWidget):
         self.no_state_checkbox.setText("State-Tracking deaktivieren (--no-state)")
         self.no_state_checkbox.toggled.connect(self._on_no_state_toggled)
         download_layout.addRow("", self.no_state_checkbox)
+
+        self.ffmpeg_path_edit = QLineEdit()
+        self.ffmpeg_path_edit.setPlaceholderText("Leer = ffmpeg aus PATH oder Umgebungsvariable FFMPEG_PATH (HLS/.m3u8)")
+        self.ffmpeg_path_edit.setMinimumHeight(MIN_FIELD_HEIGHT)
+        download_layout.addRow("Pfad zu ffmpeg (optional):", self.ffmpeg_path_edit)
         
         download_group.setLayout(download_layout)
         layout.addWidget(download_group)
@@ -337,6 +342,7 @@ class SettingsPanel(QWidget):
             self.loglevel_combo.setCurrentIndex(index)
         
         self.rss_feed_edit.setText(config.get('rss_feed_url', 'https://nexxtpress.de/author/mediathekperlen/feed/'))
+        self.ffmpeg_path_edit.setText(config.get("ffmpeg_path", ""))
         
         # no_state Option
         no_state = config.get('no_state', False)
@@ -365,7 +371,8 @@ class SettingsPanel(QWidget):
             'omdb_api_key': self.omdb_api_key_edit.text(),
             'notify': self.notify_edit.text(),
             'loglevel': self.loglevel_combo.currentText(),
-            'rss_feed_url': self.rss_feed_edit.text()
+            'rss_feed_url': self.rss_feed_edit.text(),
+            'ffmpeg_path': self.ffmpeg_path_edit.text().strip(),
         }
         
         # Validierung
@@ -418,5 +425,6 @@ class SettingsPanel(QWidget):
             'omdb_api_key': self.omdb_api_key_edit.text(),
             'notify': self.notify_edit.text(),
             'loglevel': self.loglevel_combo.currentText(),
-            'rss_feed_url': self.rss_feed_edit.text()
+            'rss_feed_url': self.rss_feed_edit.text(),
+            'ffmpeg_path': self.ffmpeg_path_edit.text().strip(),
         }

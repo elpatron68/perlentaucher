@@ -2,7 +2,11 @@ import argparse
 import logging
 import os
 import re
+import shutil
+import subprocess
 import sys
+import threading
+import time
 from collections import Counter
 import requests
 import feedparser
@@ -10,7 +14,7 @@ import json
 import semver
 import unicodedata
 from datetime import datetime
-from typing import Optional, Dict, Tuple, List, Any
+from typing import Optional, Dict, Tuple, List, Any, Callable
 from urllib.parse import quote, urlparse, unquote
 
 # Projekt-Root auf sys.path, damit „from src.…“ funktioniert (z. B. python src/perlentaucher.py)
@@ -2546,6 +2550,135 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
         logging.error(f"Unerwarteter Fehler bei der Suche nach Serie '{series_title}': {e}")
         return []
 
+
+def is_hls_playlist_url(url: str) -> bool:
+    """True wenn die URL eine HLS-Master- oder Media-Playlist (.m3u8) bezeichnet."""
+    if not url or not str(url).strip():
+        return False
+    base = str(url).strip().split("?", 1)[0].lower()
+    return base.endswith(".m3u8")
+
+
+def resolve_ffmpeg_executable(explicit: Optional[str]) -> Optional[str]:
+    """
+    Ermittelt das ffmpeg-Binary: optional expliziter Pfad/Name, sonst PATH (ffmpeg).
+    """
+    if explicit and str(explicit).strip():
+        e = str(explicit).strip()
+        if os.path.isfile(e):
+            return e
+        w = shutil.which(e)
+        if w:
+            return w
+    return shutil.which("ffmpeg")
+
+
+def effective_ffmpeg_cli_setting(cli_or_env: Optional[str]) -> Optional[str]:
+    """CLI ``--ffmpeg-path`` oder Umgebungsvariable FFMPEG_PATH; leer = automatische Suche."""
+    if cli_or_env and str(cli_or_env).strip():
+        return str(cli_or_env).strip()
+    env = os.environ.get("FFMPEG_PATH")
+    return env.strip() if env and env.strip() else None
+
+
+def download_hls_with_ffmpeg(
+    url: str,
+    output_path: str,
+    ffmpeg_exe: str,
+    *,
+    progress_callback: Optional[Callable[[int, str], None]] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
+) -> None:
+    """
+    Lädt einen HLS-Stream (.m3u8) per ffmpeg und schreibt nach output_path (z. B. .mp4).
+    """
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    cmd = [
+        ffmpeg_exe,
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "info",
+        "-stats",
+        "-protocol_whitelist",
+        "file,http,https,tcp,tls,crypto",
+        "-user_agent",
+        "Mozilla/5.0 (compatible; Perlentaucher/1.0; +https://codeberg.org/elpatron/Perlentaucher)",
+        "-i",
+        url,
+        "-c",
+        "copy",
+        "-bsf:a",
+        "aac_adtstoasc",
+        "-y",
+        output_path,
+    ]
+
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+
+    def _read_stderr() -> None:
+        try:
+            if proc.stderr is None:
+                return
+            for line in iter(proc.stderr.readline, ""):
+                if not line:
+                    break
+                if progress_callback and ("time=" in line or "size=" in line):
+                    msg = line.strip()
+                    if len(msg) > 120:
+                        msg = msg[:117] + "..."
+                    progress_callback(55, f"HLS: {msg}")
+        finally:
+            if proc.stderr:
+                try:
+                    proc.stderr.close()
+                except OSError:
+                    pass
+
+    reader = threading.Thread(target=_read_stderr, daemon=True)
+    reader.start()
+
+    while True:
+        rc = proc.poll()
+        if rc is not None:
+            break
+        if cancel_check and cancel_check():
+            proc.terminate()
+            try:
+                proc.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+            reader.join(timeout=3)
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except OSError:
+                    pass
+            raise InterruptedError("Download abgebrochen")
+        time.sleep(0.15)
+
+    reader.join(timeout=8)
+
+    if proc.returncode != 0:
+        if os.path.exists(output_path):
+            try:
+                os.remove(output_path)
+            except OSError:
+                pass
+        raise RuntimeError(f"ffmpeg wurde mit Exit-Code {proc.returncode} beendet")
+
+
 def build_download_filepath(movie_data, download_dir, content_title: str, metadata: Dict, is_series: bool = False, 
                            series_base_dir: Optional[str] = None, season: Optional[int] = None, 
                            episode: Optional[int] = None, create_dirs: bool = True) -> str:
@@ -2580,13 +2713,15 @@ def build_download_filepath(movie_data, download_dir, content_title: str, metada
             filename_parts.append(provider_id)
         base_filename = " ".join(filename_parts)
     
-    # Try to guess extension
+    # Try to guess extension (HLS: Ausgabe nach Remux typischerweise mp4)
     ext = "mp4"
     if url.endswith(".mkv"):
         ext = "mkv"
     if url.endswith(".mp4"):
         ext = "mp4"
-    
+    if is_hls_playlist_url(url):
+        ext = "mp4"
+
     filename = f"{base_filename}.{ext}"
     filepath = os.path.join(target_dir, filename)
     return filepath
@@ -2597,7 +2732,10 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
                      episode: Optional[int] = None,
                      notify_url: Optional[str] = None,
                      notify_source: Optional[str] = None,
-                     entry_link: Optional[str] = None):
+                     entry_link: Optional[str] = None,
+                     ffmpeg_path: Optional[str] = None,
+                     progress_callback: Optional[Callable[[int, str], None]] = None,
+                     cancel_check: Optional[Callable[[], bool]] = None):
     """
     Lädt einen Film oder eine Episode herunter.
 
@@ -2614,12 +2752,18 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
             (Wishlist, RSS-Feed und Such-Download: Erfolg, Fehler, „bereits vorhanden“).
         notify_source: ``"wishlist"``, ``"feed"`` oder ``"search"`` — steuert Formulierung der Benachrichtigung.
         entry_link: Optional URL des Blog-Posts (RSS); wird bei ``notify_source=="feed"`` in die Push-Nachricht gesetzt.
+        ffmpeg_path: Optional Pfad/Name zu ffmpeg (HLS/.m3u8); None = ``FFMPEG_PATH`` bzw. PATH.
+        progress_callback: Optional ``(prozent, status_text)`` für GUI-Fortschritt.
+        cancel_check: Optional Callback; wenn True, Abbruch (HLS/ffmpeg).
 
     Returns:
         tuple: (success: bool, title: str, filepath: str, skipped_existing: bool)
     """
     url = movie_data.get("url_video")
     title = movie_data.get("title")
+    if not url:
+        logging.error(f"Keine Video-URL für '{title}'")
+        return (False, title, "", False)
     filepath = build_download_filepath(
         movie_data,
         download_dir,
@@ -2664,21 +2808,56 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
     logging.info(f"Starte Download: '{title}' -> {filepath}")
 
     try:
-        with requests.get(url, stream=True) as r:
-            r.raise_for_status()
-            total_size_in_bytes = int(r.headers.get('content-length', 0))
-            if total_size_in_bytes == 0:
-                logging.warning("Content-Length Header fehlt. Fortschritt kann nicht angezeigt werden.")
+        if is_hls_playlist_url(url):
+            ff_setting = effective_ffmpeg_cli_setting(ffmpeg_path)
+            ffmpeg_exe = resolve_ffmpeg_executable(ff_setting)
+            if not ffmpeg_exe:
+                msg = (
+                    "HLS-Stream (.m3u8) benötigt ffmpeg. Bitte ffmpeg installieren "
+                    "oder den Pfad mit --ffmpeg-path bzw. FFMPEG_PATH setzen."
+                )
+                logging.error(msg)
+                raise FileNotFoundError(msg)
+            if progress_callback:
+                progress_callback(5, "Starte HLS-Download (ffmpeg)…")
+            logging.info(f"HLS-Download per ffmpeg: {ffmpeg_exe}")
+            download_hls_with_ffmpeg(
+                url,
+                filepath,
+                ffmpeg_exe,
+                progress_callback=progress_callback,
+                cancel_check=cancel_check,
+            )
+        else:
+            with requests.get(url, stream=True) as r:
+                r.raise_for_status()
+                total_size_in_bytes = int(r.headers.get('content-length', 0))
+                if total_size_in_bytes == 0:
+                    logging.warning("Content-Length Header fehlt. Fortschritt kann nicht angezeigt werden.")
+                if progress_callback:
+                    progress_callback(0, "Starte Download…")
 
-            with open(filepath, 'wb') as f:
-                downloaded = 0
-                chunk_size = 8192
-                for chunk in r.iter_content(chunk_size=chunk_size):
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    # Fortschritt alle 50MB loggen
-                    if downloaded % (50 * 1024 * 1024) < chunk_size: # ca. alle 50MB
-                         logging.info(f"Heruntergeladen: {downloaded / (1024*1024):.1f} MB ...")
+                with open(filepath, 'wb') as f:
+                    downloaded = 0
+                    chunk_size = 8192
+                    for chunk in r.iter_content(chunk_size=chunk_size):
+                        if cancel_check and cancel_check():
+                            raise InterruptedError("Download abgebrochen")
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size_in_bytes > 0 and progress_callback:
+                            pct = min(99, int((downloaded / total_size_in_bytes) * 100))
+                            progress_callback(
+                                pct,
+                                f"{downloaded / (1024*1024):.1f} MB / {total_size_in_bytes / (1024*1024):.1f} MB",
+                            )
+                        elif progress_callback and downloaded % (256 * 1024) < chunk_size:
+                            progress_callback(
+                                50,
+                                f"{downloaded / (1024*1024):.1f} MB heruntergeladen",
+                            )
+                        if downloaded % (50 * 1024 * 1024) < chunk_size:
+                            logging.info(f"Heruntergeladen: {downloaded / (1024*1024):.1f} MB ...")
 
         logging.info(f"Download abgeschlossen: {filepath}")
         if notify_url and notify_source == "wishlist":
@@ -2707,6 +2886,36 @@ def download_content(movie_data, download_dir, content_title: str, metadata: Dic
                 entry_link=entry_link,
             )
         return (True, title, filepath, False)
+
+    except InterruptedError as e:
+        logging.warning(f"Download abgebrochen für '{title}': {e}")
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except OSError:
+                pass
+        if notify_url and notify_source == "wishlist":
+            send_notification(
+                notify_url,
+                "Wishlist: Download abgebrochen",
+                f"{title}\n📌 {content_title}\n⚠️ {e}",
+                "warning",
+            )
+        else:
+            notify_non_wishlist_download_outcome(
+                notify_url,
+                notify_source,
+                "error",
+                title=title,
+                filepath=filepath,
+                content_title=content_title,
+                is_series=is_series,
+                season=season,
+                episode=episode,
+                error_text=str(e),
+                entry_link=entry_link,
+            )
+        return (False, title, filepath, False)
 
     except Exception as e:
         logging.error(f"Download fehlgeschlagen für '{title}': {e}")
@@ -2749,6 +2958,7 @@ def download_by_search(
     year: Optional[int] = None,
     tmdb_api_key: Optional[str] = None,
     omdb_api_key: Optional[str] = None,
+    ffmpeg_path: Optional[str] = None,
 ) -> Tuple[bool, Optional[str], Optional[str]]:
     """
     Sucht einen Film in MediathekViewWeb per Suchbegriff (Titel) und lädt die beste
@@ -2763,6 +2973,7 @@ def download_by_search(
         debug: Wenn True, wird nur gesucht, nicht heruntergeladen
         year: Optional - Erscheinungsjahr für besseres Matching
         tmdb_api_key / omdb_api_key: Optional für Metadaten
+        ffmpeg_path: Optional – wie bei ``download_content`` (HLS/.m3u8).
 
     Returns:
         Tuple (success, title, filepath). Bei "nicht gefunden" oder Fehler: (False, None, None).
@@ -2821,6 +3032,7 @@ def download_by_search(
         is_series=False,
         notify_url=nu,
         notify_source=ns,
+        ffmpeg_path=ffmpeg_path,
     )
     return (success, title, filepath)
 
@@ -2878,7 +3090,13 @@ def main():
                        help="Bind-Adresse für Wishlist-Web-UI (Default: 127.0.0.1 oder WISHLIST_WEB_HOST)")
     parser.add_argument("--wishlist-web-port", type=int, default=None,
                        help="Port für Wishlist-Web-UI (Default: 8765 oder WISHLIST_WEB_PORT)")
-    
+    parser.add_argument(
+        "--ffmpeg-path",
+        default=None,
+        metavar="PATH",
+        help="Pfad oder Name von ffmpeg (HLS/.m3u8-Remux); sonst Umgebungsvariable FFMPEG_PATH oder ffmpeg im PATH",
+    )
+
     args = parser.parse_args()
     args.activity_source = "cli"
 
@@ -3003,6 +3221,7 @@ def main():
             year=args.year,
             tmdb_api_key=args.tmdb_api_key,
             omdb_api_key=args.omdb_api_key,
+            ffmpeg_path=args.ffmpeg_path,
         )
         if success:
             logging.info(f"Download per Suchbegriff abgeschlossen: {title} -> {filepath}")
@@ -3096,6 +3315,7 @@ def main():
                         season=season, episode=episode,
                         notify_url=nu, notify_source=ns,
                         entry_link=entry_link,
+                        ffmpeg_path=args.ffmpeg_path,
                     )
                     # Markiere Eintrag als verarbeitet nach Download-Versuch
                     if state_file:
@@ -3263,6 +3483,7 @@ def main():
                             season=season, episode=episode_num,
                             notify_url=nu, notify_source=ns,
                             entry_link=entry_link,
+                            ffmpeg_path=args.ffmpeg_path,
                         )
                         if success:
                             downloaded_count += 1
@@ -3347,6 +3568,7 @@ def main():
                     result, args.download_dir, movie_title, metadata, is_series=False,
                     notify_url=nu, notify_source=ns,
                     entry_link=entry_link,
+                    ffmpeg_path=args.ffmpeg_path,
                 )
                 # Markiere Eintrag als verarbeitet nach Download-Versuch
                 if state_file:

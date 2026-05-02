@@ -34,7 +34,9 @@ class ConfigManager:
         "gui_window_x": None,
         "gui_window_y": None,
         "gui_window_width": 1200,
-        "gui_window_height": 800
+        "gui_window_height": 800,
+        # Leer = ffmpeg über PATH bzw. FFMPEG_PATH (HLS/.m3u8)
+        "ffmpeg_path": "",
         # Hinweis: "limit" wurde entfernt - es werden automatisch die letzten 30 Tage geladen
     }
     

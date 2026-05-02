@@ -98,7 +98,9 @@ def test_process_wishlist_series_serien_keine_keeps_item(tmp_path):
     assert len(load_wishlist(p)["items"]) == 1
 
 
-def test_notify_download_kwargs():
+def test_notify_download_kwargs(monkeypatch):
+    monkeypatch.delenv("FFMPEG_PATH", raising=False)
+
     class Mit:
         notify = "ntfy://x"
 
@@ -108,8 +110,13 @@ def test_notify_download_kwargs():
     assert wc._notify_download_kwargs(Mit()) == {
         "notify_url": "ntfy://x",
         "notify_source": "wishlist",
+        "ffmpeg_path": None,
     }
-    assert wc._notify_download_kwargs(Ohne()) == {"notify_url": None, "notify_source": None}
+    assert wc._notify_download_kwargs(Ohne()) == {
+        "notify_url": None,
+        "notify_source": None,
+        "ffmpeg_path": None,
+    }
 
 
 def test_classify_movie_probe():

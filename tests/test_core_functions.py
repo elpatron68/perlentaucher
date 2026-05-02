@@ -3,6 +3,7 @@ Tests für Core-Funktionalität von perlentaucher.py.
 """
 import pytest
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import patch, Mock
 
@@ -885,3 +886,59 @@ class TestUnknownEpisodeFallbackPolicy:
             (1, 3): (1.0, {}),
         }
         assert core.should_use_unknown_episode_fallback(episodes_dict) is False
+
+
+class TestHlsDownloadHelpers:
+    def test_is_hls_playlist_url(self):
+        assert core.is_hls_playlist_url("https://sender.example/stream/master.m3u8") is True
+        assert core.is_hls_playlist_url("https://sender.example/stream/index.m3u8?token=1") is True
+        assert core.is_hls_playlist_url("https://sender.example/video.mp4") is False
+
+    def test_build_download_filepath_m3u8_output_mp4(self):
+        md = {"url_video": "https://wdr.de/foo/bar.m3u8", "title": "T"}
+        path = core.build_download_filepath(md, "/tmp/dl", "Serie", {}, is_series=False, create_dirs=False)
+        assert path.endswith(".mp4")
+
+    @patch.object(core, "download_hls_with_ffmpeg")
+    @patch.object(core, "resolve_ffmpeg_executable", return_value="/bin/ffmpeg")
+    def test_download_content_hls_invokes_ffmpeg(self, _resolve, mock_hls):
+        with tempfile.TemporaryDirectory() as td:
+            md = {"url_video": "https://x.example/hls.m3u8", "title": "HlsTitel"}
+            ok, title, fp, skipped = core.download_content(
+                md, td, "HlsTitel", {}, is_series=False, ffmpeg_path="/bin/ffmpeg"
+            )
+        assert ok is True
+        assert skipped is False
+        mock_hls.assert_called_once()
+        call_kw = mock_hls.call_args
+        assert call_kw[0][0] == "https://x.example/hls.m3u8"
+        assert call_kw[0][2] == "/bin/ffmpeg"
+
+    @patch.object(core, "resolve_ffmpeg_executable", return_value=None)
+    def test_download_content_hls_without_ffmpeg_fails(self, _r):
+        with tempfile.TemporaryDirectory() as td:
+            md = {"url_video": "https://x.example/h.m3u8", "title": "X"}
+            ok, title, fp, skipped = core.download_content(md, td, "X", {}, is_series=False)
+        assert ok is False
+        assert skipped is False
+
+    @patch.object(core.requests, "get")
+    def test_download_content_http_uses_requests(self, mock_get):
+        class Resp:
+            headers = {"content-length": "5"}
+            def raise_for_status(self):
+                return None
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return None
+            def iter_content(self, chunk_size=8192):
+                yield b"abcde"
+
+        mock_get.return_value = Resp()
+        with tempfile.TemporaryDirectory() as td:
+            md = {"url_video": "https://x.example/vid.mp4", "title": "P"}
+            ok, title, fp, skipped = core.download_content(md, td, "P", {}, is_series=False)
+        assert ok is True
+        assert skipped is False
+        mock_get.assert_called_once()

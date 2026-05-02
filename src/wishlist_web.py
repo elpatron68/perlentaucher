@@ -81,6 +81,8 @@ def build_process_args_from_env(download_dir: Optional[str] = None) -> Any:
     a.no_state = os.environ.get("NO_STATE", "").lower() in ("1", "true", "yes")
     a.state_file = os.environ.get("STATE_FILE", ".perlentaucher_state.json")
     a.activity_source = "web"
+    ff = os.environ.get("FFMPEG_PATH")
+    a.ffmpeg_path = ff.strip() if ff and ff.strip() else None
     return a
 
 

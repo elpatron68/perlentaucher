@@ -19,11 +19,19 @@ WishlistKind = Literal["movie", "series"]
 
 
 def _notify_download_kwargs(args: Any) -> Dict[str, Any]:
-    """Apprise/Ntfy: Wishlist-Kontext für download_content."""
+    """Apprise/Ntfy und ffmpeg: Wishlist-Kontext für download_content."""
     nu = getattr(args, "notify", None)
-    if nu:
-        return {"notify_url": nu, "notify_source": "wishlist"}
-    return {"notify_url": None, "notify_source": None}
+    out: Dict[str, Any] = {
+        "notify_url": nu if nu else None,
+        "notify_source": "wishlist" if nu else None,
+    }
+    ff = getattr(args, "ffmpeg_path", None)
+    if isinstance(ff, str) and ff.strip():
+        out["ffmpeg_path"] = ff.strip()
+    else:
+        env = os.environ.get("FFMPEG_PATH")
+        out["ffmpeg_path"] = env.strip() if env and env.strip() else None
+    return out
 
 
 @dataclass
