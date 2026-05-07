@@ -9,6 +9,7 @@ Basierend auf dem Git-Verlauf des Repos [Perlentaucher](https://codeberg.org/elp
 ### GUI
 
 - RSS-Initialladen: Standard für `resolve_sender_link_fetch` auf `false` gesetzt, damit beim Start keine blockierenden Artikel-HTTP-Requests im GUI-Thread mehr ausgeführt werden (Fix für ~30s Hänger bei manchen Umgebungen).
+- GUI-RSS-Laden nutzt `fetch_article=False` nun unabhängig von bestehender Benutzer-Konfiguration, damit alte Config-Werte (`resolve_sender_link_fetch=true`) den Start nicht weiter blockieren.
 
 ### Infrastruktur
 
