@@ -6,6 +6,10 @@ Basierend auf dem Git-Verlauf des Repos [Perlentaucher](https://codeberg.org/elp
 
 ## [Unreleased]
 
+### GUI
+
+- RSS-Initialladen: Standard für `resolve_sender_link_fetch` auf `false` gesetzt, damit beim Start keine blockierenden Artikel-HTTP-Requests im GUI-Thread mehr ausgeführt werden (Fix für ~30s Hänger bei manchen Umgebungen).
+
 ### Infrastruktur
 
 - `release.ps1`: Schalter `-SkipRelease` überspringt GitHub-Release (`gh`) und Codeberg-Release (API); Version bump, Tag, Push und Docker-Build laufen weiter.

@@ -564,7 +564,8 @@ class BlogListPanel(QWidget):
             sender_mediathek_url = core.resolve_sender_mediathek_url(
                 entry_dict,
                 entry_link=entry_link,
-                fetch_article=bool(self.config_manager.get("resolve_sender_link_fetch", True)),
+                # Kein synchrones Artikelfetching im GUI-Thread (verhindert Start-Hänger).
+                fetch_article=bool(self.config_manager.get("resolve_sender_link_fetch", False)),
             )
             
             # Erscheinungsdatum des Blogposts formatieren
