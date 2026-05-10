@@ -7,8 +7,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QCheckBox, QLabel, QMessageBox,
     QComboBox, QLineEdit, QAbstractItemView, QInputDialog, QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QUrl, QThread
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtCore import Qt, pyqtSignal, QThread
 import sys
 import os
 import feedparser
@@ -26,6 +25,7 @@ if src_dir not in sys.path:
 from src import perlentaucher as core
 
 from .utils.feedparser_helpers import get_entry_attr, make_entry_compatible
+from .utils.safe_desktop_open import open_url
 
 
 class RssSslError(Exception):
@@ -795,9 +795,14 @@ class BlogListPanel(QWidget):
             QMessageBox.warning(self, "Kein Link", "Für diesen Eintrag ist kein Link verfügbar.")
             return
         
-        # Öffne Link im Standard-Browser
+        # Öffne Link im Standard-Browser (Linux: ohne geerbtes LD_LIBRARY_PATH von PyInstaller)
         try:
-            QDesktopServices.openUrl(QUrl(link))
+            if not open_url(link):
+                QMessageBox.warning(
+                    self,
+                    "Link öffnen",
+                    "Der Link konnte nicht mit dem Standard-Programm geöffnet werden.",
+                )
         except Exception as e:
             QMessageBox.critical(
                 self,

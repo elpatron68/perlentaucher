@@ -7,8 +7,8 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QPushButton, QButtonGroup, QRadioButton, QSizePolicy,
     QApplication, QProgressDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QThread, pyqtSlot, QObject, QUrl, QTimer
-from PyQt6.QtGui import QAction, QDesktopServices, QIcon, QPixmap
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QThread, pyqtSlot, QObject, QTimer
+from PyQt6.QtGui import QAction, QIcon, QPixmap
 from typing import Dict, Optional
 import sys
 import os
@@ -19,6 +19,7 @@ from .download_panel import DownloadPanel
 from .wishlist_panel import WishlistPanel
 from .config_manager import ConfigManager
 from .utils.update_checker import check_for_updates
+from .utils.safe_desktop_open import open_url
 
 
 class UpdateCheckWorker(QThread):
@@ -512,7 +513,12 @@ class MainWindow(QMainWindow):
         
         # Öffne Download-URL wenn "Zum Download" geklickt wurde
         if msg_box.clickedButton() == download_btn:
-            QDesktopServices.openUrl(QUrl(download_url))
+            if not open_url(download_url):
+                QMessageBox.warning(
+                    self,
+                    "Download",
+                    "Die Download-Adresse konnte nicht geöffnet werden.",
+                )
     
     def closeEvent(self, event):
         """Wird aufgerufen wenn das Fenster geschlossen wird."""

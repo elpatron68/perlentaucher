@@ -133,6 +133,22 @@ class TestNormalizeSearchTitle:
         assert terms[0] == "Die Schachnovelle"
         assert "Schachnovelle" in terms
         assert len(terms) == len(set(terms))
+
+    def test_compact_spaced_single_letter_runs(self):
+        """MVW indeziert häufig „AEIOU“ statt durch Leerzeichen getrennter Buchstaben."""
+        t = "A E I O U - Das schnelle Alphabet der Liebe"
+        compacted = core.compact_spaced_single_letter_runs(t)
+        assert " " not in compacted.split("-")[0].strip()
+        assert compacted.startswith("AEIOU")
+        assert core.compact_spaced_single_letter_runs("Die Schachnovelle") == "Die Schachnovelle"
+
+    def test_mediathek_movie_search_terms_spaced_initialism_and_subtitle(self):
+        """Suchvarianten vor vollem Roh-Titel compact + Unterteil nach Gedankenstrich."""
+        raw = "A E I O U - Das schnelle Alphabet der Liebe"
+        terms = core.mediathek_movie_search_terms(raw)
+        assert terms[0] == "AEIOU - Das schnelle Alphabet der Liebe"
+        assert "Das schnelle Alphabet der Liebe" in terms
+        assert raw in terms
     
     def test_normalize_preserves_german_umlauts(self):
         """Test: Deutsche Umlaute bleiben erhalten (MediathekViewWeb-Suche)."""

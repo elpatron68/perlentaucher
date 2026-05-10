@@ -329,10 +329,67 @@ def strip_leading_german_article(title: str) -> Optional[str]:
     return remainder
 
 
+# Folge von durch Leerzeichen getrennten Einzelbuchstaben (Mind. vier), typisch Buchstabenkürzel
+# im Mediennamen („A E I O U – …“, „L L L – …"). MediathekViewWeb indexiert oft ohne Leerzeichen.
+_SPACED_SINGLE_LETTERS_SEGMENT = re.compile(
+    r"((?:[A-Za-zÄÖÜäöüß]\s+){3,}[A-Za-zÄÖÜäöüß])(?=\s*[-–—:\u2013\u2014]|\s*\(|$)",
+    flags=re.MULTILINE,
+)
+
+
+def compact_spaced_single_letter_runs(title: str) -> str:
+    """
+    Wendet zusammenziehende Substitution auf gefundene Segment(e) an, z.B.
+    „A E I O U – Titel`` → „AEIOU – Titel``.
+    Ungewöhnliche Titel mit vielen Kurz„Wörtern“ werden nur getroffen, wenn mindestens
+    vier aufeinanderfolgende Ein-Buchstaben-Tokens gefunden werden.
+    """
+
+    def repl(m: re.Match) -> str:
+        blob = m.group(1)
+        parts = blob.split()
+        if len(parts) >= 4 and all(len(p) == 1 for p in parts):
+            return "".join(parts)
+        return blob
+
+    return _SPACED_SINGLE_LETTERS_SEGMENT.sub(repl, title)
+
+
+def subtitle_search_term_after_dash(title: str) -> Optional[str]:
+    """
+    Liefert einen kürzeren zweiten Teil bei „Akronym/Untertitel“-Titelformen („X – Langer deutscher Titel`),
+    wenn der rechte Teil genug tragfähige Wörter hat (Titelfeld-Suche in MVW ohne Rauschen).
+    """
+    if not title:
+        return None
+    nt = normalize_search_title(title.strip())
+    if " - " not in nt:
+        return None
+    left, right = nt.split(" - ", 1)
+    right_st = right.strip()
+    words = right_st.split()
+    if len(words) < 3 or len(right_st) < 12:
+        return None
+    if _SPACED_SINGLE_LETTERS_SEGMENT.search(left.strip()):
+        return right_st  # ohnehin Akronym-Sparte
+    # „Normale Verbindung ohne Ein-Buchstaben-Links“ oft kein eigener zweiter Haupttitel
+    if len(left.split()) <= 1 and len(left) <= 4:
+        return right_st
+    return None
+
+
+# Mindest-Titelüberschneidung, wenn MVW ohne Titelfeld sehr viele Volltext-Treffer liefert (Rauschen).
+_MVW_BROAD_FULLTEXT_SIM_GATE = 0.08
+
+
 def mediathek_movie_search_terms(movie_title: str) -> List[str]:
     """
-    Reihenfolge der Suchbegriffe für MediathekViewWeb: Original, Normalisierung, ohne Artikel.
-    Duplikate werden ausgelassen.
+    Reihenfolge der Suchbegriffe für MediathekViewWeb: zuerst MVW-verträgliche Varianten,
+    dann Original-/Normalisiert, ohne Artikel. Duplikate werden ausgelassen.
+
+    Reihenfolge: kompakte Buchstabenläufe (Mediathek-Index ohne Leerzeichen), Untertitel-Anteil nach Bindestrich,
+    dann vollständiger Titel – damit die Titelfeld-API oft trifft und die wenig spezifische Volltext-Query nicht
+    nötig ist.
     """
     seen = set()
     out: List[str] = []
@@ -346,11 +403,22 @@ def mediathek_movie_search_terms(movie_title: str) -> List[str]:
             seen.add(s)
             out.append(s)
 
+    compacted_base = compact_spaced_single_letter_runs(base)
+    add(compacted_base)
+    add(normalize_search_title(compacted_base))
+
+    subtitle = subtitle_search_term_after_dash(base)
+    if subtitle:
+        add(subtitle)
+
     add(base)
     norm = normalize_search_title(base)
     add(norm)
     stripped = strip_leading_german_article(base)
     if stripped:
+        compacted_stripped = compact_spaced_single_letter_runs(stripped)
+        add(compacted_stripped)
+        add(normalize_search_title(compacted_stripped))
         add(stripped)
         add(normalize_search_title(stripped))
     return out
@@ -358,58 +426,86 @@ def mediathek_movie_search_terms(movie_title: str) -> List[str]:
 
 def _fetch_mvw_api_movie_results(search_term: str) -> list:
     """
-    Fragt die MediathekViewWeb-API mit einem Suchbegriff ab (Feldsuche + einfache query,
-    optional normalisierte Variante). Gibt die erste nicht-leere Ergebnisliste zurück.
+    Fragt die MediathekViewWeb-API mit einem Suchbegriff ab.
+
+    Reihenfolge: zuerst ausschließlich Titelfeld-Queries ({queries fields:title}), danach erst die
+    allgemeine {query}-Vollsuche — sonst kann bei nicht im Index befindlichen Titelformen bereits
+    der zweite Schritt sehr viele themenfremde Treffer liefern und die späteren spezifischen Varianten
+    werden nicht mehr probiert.
+    Übermäßige Volltext-Treffer werden nach Titel-Überlappung gefiltert.
     """
     normalized_search_title = normalize_search_title(search_term)
-    payloads = []
-    payloads.append({
-        "headers": {"Content-Type": "application/json"},
-        "payload": {
-            "queries": [
-                {"fields": ["title"], "query": search_term}
-            ]
-        }
-    })
-    payloads.append({
-        "headers": {"Content-Type": "application/json"},
-        "payload": {"query": search_term}
-    })
-    if normalized_search_title != search_term:
-        payloads.append({
-            "headers": {"Content-Type": "application/json"},
-            "payload": {
-                "queries": [
-                    {"fields": ["title"], "query": normalized_search_title}
-                ]
-            }
-        })
-        payloads.append({
-            "headers": {"Content-Type": "application/json"},
-            "payload": {"query": normalized_search_title}
-        })
 
-    results = []
-    for payload_entry in payloads:
+    title_payloads: List[Dict] = [
+        {
+            "queries": [{"fields": ["title"], "query": search_term}]
+        },
+    ]
+    if normalized_search_title != search_term.strip():
+        title_payloads.append(
+            {"queries": [{"fields": ["title"], "query": normalized_search_title}]}
+        )
+
+    broad_payloads: List[Dict] = [{"query": search_term}]
+    if normalized_search_title != search_term.strip():
+        broad_payloads.append({"query": normalized_search_title})
+
+    def post_json(payload_body: Dict) -> list:
         try:
-            payload = payload_entry.get("payload", {})
-            headers = payload_entry.get("headers", {"Content-Type": "application/json"})
-            response = requests.post(MVW_API_URL, json=payload, headers=headers, timeout=10)
+            headers = {"Content-Type": "application/json"}
+            response = requests.post(MVW_API_URL, json=payload_body, headers=headers, timeout=10)
             response.raise_for_status()
             data = response.json()
-            results = data.get("result", {}).get("results", [])
-            if results:
-                logging.debug(
-                    f"MediathekViewWeb-API: {len(results)} Treffer für Suchbegriff '{search_term}'"
-                )
-                break
+            return data.get("result", {}).get("results", [])
         except requests.RequestException as e:
-            logging.debug(f"Fehler mit Payload-Format, versuche nächstes: {e}")
-            continue
+            logging.debug(f"MediathekViewWeb-API Fehler: {e}")
+            return []
         except (KeyError, ValueError, TypeError) as e:
-            logging.debug(f"Ungültige Antwort, versuche nächstes Format: {e}")
+            logging.debug(f"MediathekViewWeb-API ungültige Antwort: {e}")
+            return []
+
+    for pb in title_payloads:
+        results = post_json(pb)
+        if results:
+            logging.debug(
+                f"MediathekViewWeb-API: {len(results)} Titelfeld-Treffer für '{search_term}'"
+            )
+            return results
+
+    broad_noise_cap = 12
+    nt_lower = normalized_search_title.lower().strip()
+
+    for pb in broad_payloads:
+        results = post_json(pb)
+        if not results:
             continue
-    return results
+        if len(results) > broad_noise_cap:
+            kept = []
+            for r in results:
+                rt = r.get("title") or ""
+                if calculate_title_similarity(search_term, rt) >= _MVW_BROAD_FULLTEXT_SIM_GATE:
+                    kept.append(r)
+                    continue
+                rn = normalize_search_title(rt).lower().strip()
+                if nt_lower and (nt_lower in rn or rn in nt_lower):
+                    kept.append(r)
+            if not kept:
+                logging.debug(
+                    f"MediathekViewWeb-API: {len(results)} breite Query-Treffer für '{search_term}', "
+                    f"aber keine plausible Titelüberschneidung — ignoriert"
+                )
+                continue
+            logging.debug(
+                f"MediathekViewWeb-API: breite Query auf "
+                f"{len(kept)}/{len(results)} Treffer mit Titel-Überlappung reduziert"
+            )
+            return kept
+        logging.debug(
+            f"MediathekViewWeb-API: {len(results)} Treffer (Volltext) für '{search_term}'"
+        )
+        return results
+
+    return []
 
 
 def extract_year_from_title(title: str) -> Optional[int]:

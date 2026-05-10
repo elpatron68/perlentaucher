@@ -12,9 +12,10 @@ from PyQt6.QtGui import QFont
 from typing import Dict, List, Optional, Any
 import logging
 import os
-import subprocess
 import sys
 from datetime import datetime
+
+from .utils.safe_desktop_open import open_folder
 
 
 class DownloadPanel(QWidget):
@@ -220,13 +221,13 @@ class DownloadPanel(QWidget):
             )
             return
         try:
-            if sys.platform == "win32":
-                os.startfile(folder)
-            elif sys.platform == "darwin":
-                subprocess.run(["open", folder], check=True)
-            else:
-                subprocess.run(["xdg-open", folder], check=True)
-        except (OSError, subprocess.CalledProcessError) as e:
+            if not open_folder(folder):
+                QMessageBox.warning(
+                    self,
+                    "Ordner öffnen",
+                    "Der Ordner konnte nicht mit dem Standard-Dateimanager geöffnet werden.",
+                )
+        except OSError as e:
             logging.warning(f"Ordner konnte nicht geöffnet werden: {e}")
             QMessageBox.warning(
                 self,

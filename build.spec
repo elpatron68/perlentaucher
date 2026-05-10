@@ -63,6 +63,7 @@ a = Analysis(
         'src.gui.utils.thread_manager',
         'src.gui.utils.update_checker',
         'src.gui.utils.feedparser_helpers',
+        'src.gui.utils.safe_desktop_open',
     ],
     hookspath=[],
     hooksconfig={},
