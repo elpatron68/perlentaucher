@@ -226,16 +226,22 @@ Das Executable befindet sich in `dist/PerlentaucherGUI.exe`
 
 ### Linux
 
+Das Skript legt bei Bedarf ein **`.venv`** im Projektverzeichnis an und installiert dort **PyInstaller** und die Requirements (unabhängig von PEP 668 auf z. B. Arch/CachyOS).
+
 ```bash
 chmod +x scripts/build_gui_linux.sh
 ./scripts/build_gui_linux.sh
 ```
 
-Oder manuell:
+**Fish-Shell:** Bash-`activate` ist hier ungeeignet. Zum manuellen Arbeiten im venv: `source .venv/bin/activate.fish` oder Befehle mit `.venv/bin/python`/`pip` aufrufen.
+
+Oder manuell mit eigenem venv:
 ```bash
-pip3 install pyinstaller
-pip3 install -r requirements-gui.txt
-pyinstaller build.spec --clean
+python3 -m venv .venv
+source .venv/bin/activate   # unter Fish: source .venv/bin/activate.fish
+pip install --upgrade pip pyinstaller
+pip install -r requirements-gui.txt
+python -m PyInstaller build.spec --clean --noconfirm
 ```
 
 Das Executable befindet sich in `dist/PerlentaucherGUI`

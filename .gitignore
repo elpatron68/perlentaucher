@@ -32,3 +32,5 @@ coverage.xml
 *.cover
 .hypothesis/
 .vscode/
+# Cursor IDE (lokale Session-/Debug-Artefakte, z. B. NDJSON-Logs)
+.cursor/

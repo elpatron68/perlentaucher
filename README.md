@@ -108,7 +108,7 @@ Eine ausführliche Anleitung zur GUI findest du in der [GUI-Dokumentation](docs/
 **Als Executable:**
 
 - Windows: `scripts\build_gui_windows.bat`
-- Linux: `./scripts/build_gui_linux.sh`
+- Linux: `./scripts/build_gui_linux.sh` (legt bei Bedarf `.venv` für PyInstaller/requirements an, um PEP-668-Problemen aus dem Weg zu gehen)
 - macOS: `./scripts/build_gui_macos.sh`
 
 Das Executable befindet sich nach dem Build in `dist/`.
