@@ -3,6 +3,7 @@ __pycache__/
 test_downloads/
 downloads/
 *.pyc
+*.log
 .perlentaucher_state.json
 .perlentaucher_wishlist.json
 .perlentaucher_wishlist_activity.json
@@ -30,3 +31,4 @@ htmlcov/
 coverage.xml
 *.cover
 .hypothesis/
+.vscode/
