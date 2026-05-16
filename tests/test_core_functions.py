@@ -810,6 +810,54 @@ class TestPromotionalAndSeriesMatch:
             "Kurzinfo nur in der Beschreibung, Titel aber identisch.",
         )
 
+    def test_short_series_rejects_extended_title_without_episode_marker(self):
+        """Kurzer Name: „Etty Hillesum …“ ist kein Serienlisting."""
+        assert not core.series_mediathek_result_matches(
+            "Etty",
+            core.normalize_search_title("Etty"),
+            "Etty Hillesum racontée par Hagai Levi - 28 minutes",
+            "Info et société - Décryptages",
+            "",
+        )
+
+    def test_short_series_accepts_episode_numbering_in_title(self):
+        assert core.series_mediathek_result_matches(
+            "Etty",
+            core.normalize_search_title("Etty"),
+            "Etty (3/6) - Der Himmel in mir",
+            "Fernsehfilme und Serien - Serien",
+            "",
+        )
+
+    def test_short_series_rejects_broadcast_date_fraction_in_title(self):
+        assert not core.series_mediathek_result_matches(
+            "Etty",
+            core.normalize_search_title("Etty"),
+            "Etty Hillesum racontée - 28 minutes (05/05/2026)",
+            "Info et société",
+            "",
+        )
+
+    def test_merge_mvw_raw_results_dedupes_by_url(self):
+        a = {"title": "A", "topic": "T", "url_video": "https://example.org/v1"}
+        b = {"title": "A copy", "topic": "T", "url_video": "https://example.org/v1"}
+        c = {"title": "B", "topic": "T", "url_video": "https://example.org/v2"}
+        merged = core._merge_mvw_raw_results([a], [b, c])
+        assert len(merged) == 2
+
+    def test_fetch_mvw_series_raw_results_merges_feed_when_larger(self):
+        api_row = {"title": "Noise", "topic": "X", "url_video": "https://x/a"}
+        feed_rows = [
+            {"title": "Show (1/6)", "topic": "Show", "url_video": "https://x/b"},
+            {"title": "Show (2/6)", "topic": "Show", "url_video": "https://x/c"},
+        ]
+        with patch.object(core, "_fetch_mvw_api_series_raw_results", return_value=[api_row]):
+            with patch.object(core, "_fetch_mvw_feed_results", return_value=feed_rows):
+                out = core._fetch_mvw_series_raw_results("Show")
+        assert len(out) == 3
+        urls = {core._merge_mvw_result_if_source(r).get("url_video") for r in out}
+        assert urls == {"https://x/a", "https://x/b", "https://x/c"}
+
     def test_series_topic_alignment_prefers_listing_with_show_topic(self):
         """Gleicher Suchbegriff: Topic = Serienname stärker als nur Vorkommen im Fließtext-Titel."""
         ep = {"title": "Folge 2", "topic": "Gamma"}

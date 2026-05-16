@@ -1509,6 +1509,66 @@ def is_promotional_or_non_episode(movie_data: dict) -> bool:
     return bool(_PROMOTIONAL_TITLE_RE.search(blob))
 
 
+def _is_short_single_word_series_title(normalized_search_title: str) -> bool:
+    """Ein kurzes Wort (z. B. „Etty“) trifft sonst leicht auf Fremdtitel wie „Etty Hillesum …“."""
+    s = (normalized_search_title or "").strip()
+    if not s or " " in s:
+        return False
+    return len(s) <= 6
+
+
+def _paren_fraction_looks_like_episode_marker(text: str) -> bool:
+    """
+    (1/6) / (6/6) in Serientiteln vs. Sendungsdaten wie (05/05/2026).
+    """
+    for m in re.finditer(r"\((\d+)/(\d+)\)", text):
+        raw_a, raw_b = m.group(1), m.group(2)
+        if len(raw_a) >= 2 and raw_a.startswith("0"):
+            continue
+        if len(raw_b) >= 2 and raw_b.startswith("0"):
+            continue
+        if re.match(r"/\d{4}", text[m.end() : m.end() + 6]):
+            continue
+        a, b = int(raw_a), int(raw_b)
+        if a <= 0 or b <= 0 or a > b or b > 99:
+            continue
+        return True
+    return False
+
+
+def _short_series_title_listing_title_match(series_lower: str, title: str, title_norm: str) -> bool:
+    """
+    Titel-Feld-Match für kurze Seriennamen: „Etty (6/6)“ ja, „Etty Hillesum …“ nein.
+    """
+    for t in (title, title_norm):
+        if not t.startswith(series_lower):
+            continue
+        rest = t[len(series_lower) :]
+        if not rest:
+            return True
+        rest_s = rest.lstrip()
+        if not rest_s:
+            return True
+        if rest_s[0] in "-:–|":
+            return True
+        if _paren_fraction_looks_like_episode_marker(rest_s[:64]):
+            return True
+    return False
+
+
+def _short_series_title_topic_match(series_lower: str, normalized_lower: str, topic: str, topic_norm: str) -> bool:
+    """Topic muss den Seriennamen als Ganzes tragen, nicht nur als Substring."""
+    for tp in (topic, topic_norm):
+        if not tp:
+            continue
+        if tp == series_lower or tp == normalized_lower:
+            return True
+        tokens = set(re.findall(r"[\wöäüß]+", tp, flags=re.I))
+        if series_lower in tokens or normalized_lower in tokens:
+            return True
+    return False
+
+
 def series_mediathek_result_matches(
     series_title: str,
     normalized_search_title: str,
@@ -1534,14 +1594,29 @@ def series_mediathek_result_matches(
     topic_norm = normalize_search_title(raw_topic).lower()
     desc_norm = normalize_search_title(raw_desc).lower()
 
-    in_title_or_topic = (
+    short_series = _is_short_single_word_series_title(normalized_search_title)
+
+    title_hit = (
         series_title_lower in title
-        or series_title_lower in topic
         or normalized_lower in title
-        or normalized_lower in topic
         or normalized_lower in title_norm
+    )
+    topic_hit = (
+        series_title_lower in topic
+        or normalized_lower in topic
         or normalized_lower in topic_norm
     )
+    if short_series:
+        if title_hit and not _short_series_title_listing_title_match(
+            series_title_lower, title, title_norm
+        ):
+            title_hit = False
+        if topic_hit and not _short_series_title_topic_match(
+            series_title_lower, normalized_lower, topic, topic_norm
+        ):
+            topic_hit = False
+
+    in_title_or_topic = title_hit or topic_hit
     if in_title_or_topic:
         return True
 
@@ -1554,7 +1629,16 @@ def series_mediathek_result_matches(
         return False
 
     sim = calculate_title_similarity(series_title, raw_title)
-    return sim >= min_title_similarity_for_description_only
+    min_sim = min_title_similarity_for_description_only
+    if short_series:
+        min_sim = max(min_sim, 0.45)
+        if not _short_series_title_listing_title_match(
+            series_title_lower, title, title_norm
+        ) and not _short_series_title_topic_match(
+            series_title_lower, normalized_lower, topic, topic_norm
+        ):
+            return False
+    return sim >= min_sim
 
 
 def score_movie(
@@ -1984,11 +2068,8 @@ def list_mediathek_movie_candidates(
 
     if for_series:
         normalized = _series_api_query_term(movie_title)
-        raw = _fetch_mvw_api_series_raw_results(normalized)
+        raw = _fetch_mvw_series_raw_results(normalized)
         filtered = _filter_series_mvw_results(movie_title, normalized, raw)
-        if not filtered:
-            feed = _fetch_mvw_feed_results(normalized)
-            filtered = _filter_series_mvw_results(movie_title, normalized, feed or [])
         filtered = filter_series_episodes_by_s01_topic_schema(movie_title, filtered)
         return _score_and_pack_results(filtered)
 
@@ -2424,6 +2505,46 @@ def _merge_mvw_result_if_source(result: Dict) -> Dict:
     return result
 
 
+def _mvw_raw_result_dedup_key(result: Dict) -> str:
+    """Stabiler Schlüssel zum Zusammenführen von API- und Feed-Treffern."""
+    merged = _merge_mvw_result_if_source(result)
+    url = (merged.get("url_video") or merged.get("url") or "").strip()
+    if url:
+        return f"url:{url}"
+    rt, rp, _ = _mvw_raw_title_topic_desc(result)
+    return f"tt:{normalize_search_title(rt).lower()}|{normalize_search_title(rp).lower()}"
+
+
+def _merge_mvw_raw_results(*result_lists: list) -> list:
+    """Führt mehrere MVW-Rohlisten zusammen (Reihenfolge = Priorität)."""
+    seen: set = set()
+    out: List[Dict] = []
+    for lst in result_lists:
+        for item in lst or []:
+            key = _mvw_raw_result_dedup_key(item)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(item)
+    return out
+
+
+def _fetch_mvw_series_raw_results(normalized_search_title: str) -> list:
+    """
+    Serien-Rohsuche: API plus Feed (Website nutzt den Feed für #query=…).
+    Die API liefert bei kurzen Suchbegriffen oft nur wenige irrelevante Treffer.
+    """
+    api_results = _fetch_mvw_api_series_raw_results(normalized_search_title)
+    feed_results = _fetch_mvw_feed_results(normalized_search_title)
+    if feed_results and len(feed_results) > len(api_results):
+        logging.debug(
+            "Serien-Suche: Feed ergänzt API (%d vs %d Roh-Einträge)",
+            len(feed_results),
+            len(api_results),
+        )
+    return _merge_mvw_raw_results(api_results, feed_results)
+
+
 def _fetch_mvw_api_series_raw_results(normalized_search_title: str) -> list:
     """
     Breite MediathekViewWeb-Suche (wie Website / #query), nicht nur Titelfeld.
@@ -2552,7 +2673,7 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
 
     results = []
     try:
-        results = _fetch_mvw_api_series_raw_results(normalized_search_title)
+        results = _fetch_mvw_series_raw_results(normalized_search_title)
 
         if not results:
             logging.warning(f"Keine Ergebnisse gefunden für Serie '{series_title}'")
@@ -2567,26 +2688,20 @@ def search_mediathek_series(series_title: str, prefer_language: str = "deutsch",
         filtered_results = _filter_series_mvw_results(series_title, normalized_search_title, results)
 
         if not filtered_results:
-            # Fallback: MediathekViewWeb-Feed (Website nutzt gleichen Feed für #query=...)
-            feed_results = _fetch_mvw_feed_results(normalized_search_title)
-            if feed_results:
-                logging.info(f"Serien-API-Filter 0 Treffer, nutze MediathekViewWeb-Feed: {len(feed_results)} Einträge")
-                filtered_results = _filter_series_mvw_results(series_title, normalized_search_title, feed_results)
-            if not filtered_results:
-                # Bei 0 Treffern: erste API-Ergebnisse ausgeben (INFO), damit Filter angepasst werden kann
-                if results:
-                    logging.info(f"Serien-Filter lieferte 0 Treffer bei {len(results)} API-Ergebnissen. Erste Titel:")
-                    for i, r in enumerate(results[:5]):
-                        rt, rp, _ = _mvw_raw_title_topic_desc(r)
-                        logging.info(f"  [{i+1}] title={rt!r} topic={rp!r}")
-                logging.warning(f"Keine Episoden für Serie '{series_title}' gefunden")
-                if notify_source != "wishlist" and notify_url and APPRISE_AVAILABLE:
-                    body = f"Keine Episoden für Serie gefunden:\n\n"
-                    body += f"📺 {series_title}\n"
-                    if entry_link:
-                        body += f"\n🔗 Blog-Post: {entry_link}"
-                    send_notification(notify_url, "Keine Episoden gefunden", body, "warning")
-                return []
+            # Bei 0 Treffern: erste API-Ergebnisse ausgeben (INFO), damit Filter angepasst werden kann
+            if results:
+                logging.info(f"Serien-Filter lieferte 0 Treffer bei {len(results)} API-Ergebnissen. Erste Titel:")
+                for i, r in enumerate(results[:5]):
+                    rt, rp, _ = _mvw_raw_title_topic_desc(r)
+                    logging.info(f"  [{i+1}] title={rt!r} topic={rp!r}")
+            logging.warning(f"Keine Episoden für Serie '{series_title}' gefunden")
+            if notify_source != "wishlist" and notify_url and APPRISE_AVAILABLE:
+                body = f"Keine Episoden für Serie gefunden:\n\n"
+                body += f"📺 {series_title}\n"
+                if entry_link:
+                    body += f"\n🔗 Blog-Post: {entry_link}"
+                send_notification(notify_url, "Keine Episoden gefunden", body, "warning")
+            return []
         
         filtered_results = filter_series_episodes_by_s01_topic_schema(series_title, filtered_results)
         filtered_results = _filter_results_by_sender_reference(
