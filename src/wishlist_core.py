@@ -266,9 +266,17 @@ def probe_wishlist_item(
         )
         if not eps:
             return {"status": "not_found"}
+        slots = core.pick_best_series_episodes_per_slot(
+            eps,
+            item.title,
+            prefer_language=sprache,
+            prefer_audio_desc=audiodeskription,
+            search_year=item.year,
+            metadata=meta,
+        )
         return {
             "status": "staffel_available",
-            "episode_count": len(eps),
+            "episode_count": len(slots) if slots else len(eps),
         }
 
     raw = core.list_mediathek_movie_candidates(
@@ -383,6 +391,7 @@ def process_one_wishlist_item(
     args: Any,
     candidate_index: int = 0,
     remove_on_success: bool = True,
+    serien_download_override: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
     Verarbeitet genau einen Wishlist-Eintrag. Bei Film/Serie (erste Folge) kann ``candidate_index``
@@ -406,7 +415,7 @@ def process_one_wishlist_item(
     entry_id = f"wishlist:{item.id}"
     entry_link = f"wishlist:{item.id}"
     state_file = None if getattr(args, "no_state", False) else getattr(args, "state_file", None)
-    serien_mode = getattr(args, "serien_download", "erste")
+    serien_mode = serien_download_override or getattr(args, "serien_download", "erste")
 
     if item.kind == "series" and serien_mode == "keine":
         log_wishlist_item_result(
@@ -565,48 +574,14 @@ def _process_series_staffel(
             )
         return False, "not_found"
     series_base_dir = args.serien_dir if args.serien_dir else args.download_dir
-    episodes_dict: Dict[Tuple[int, int], Tuple[float, Any]] = {}
-    episodes_without_info: List[Any] = []
-    for episode_data in episodes:
-        season, episode_num = core.extract_episode_info(episode_data, movie_title)
-        if season is None or episode_num is None:
-            episodes_without_info.append(episode_data)
-            continue
-        score = core.score_movie(
-            episode_data,
-            args.sprache,
-            args.audiodeskription,
-            search_title=movie_title,
-            search_year=year,
-            metadata=metadata,
-            use_series_listing_similarity=True,
-        )
-        episode_key = (season, episode_num)
-        if episode_key not in episodes_dict or score > episodes_dict[episode_key][0]:
-            episodes_dict[episode_key] = (score, episode_data)
-    if episodes_without_info and core.should_use_unknown_episode_fallback(episodes_dict):
-        max_ep_s1 = max((e for (s, e) in episodes_dict if s == 1), default=0)
-        for i, episode_data in enumerate(episodes_without_info):
-            fallback_ep = max_ep_s1 + 1 + i
-            score = core.score_movie(
-                episode_data,
-                args.sprache,
-                args.audiodeskription,
-                search_title=movie_title,
-                search_year=year,
-                metadata=metadata,
-                use_series_listing_similarity=True,
-            )
-            key = (1, fallback_ep)
-            if key not in episodes_dict or score > episodes_dict[key][0]:
-                episodes_dict[key] = (score, episode_data)
-    elif episodes_without_info:
-        logging.info(
-            f"{len(episodes_without_info)} Episoden ohne Staffel/Episode-Info verworfen "
-            "(genug valide Episoden vorhanden)"
-        )
-    episodes_with_info = [(s, e, data) for (s, e), (score, data) in episodes_dict.items()]
-    episodes_with_info.sort(key=lambda x: (x[0] or 0, x[1] or 0))
+    episodes_with_info = core.pick_best_series_episodes_per_slot(
+        episodes,
+        movie_title,
+        prefer_language=args.sprache,
+        prefer_audio_desc=args.audiodeskription,
+        search_year=year,
+        metadata=metadata,
+    )
     total_episodes = len(episodes_with_info)
     if args.debug_no_download:
         logging.info(f"DEBUG-MODUS: Wishlist-Staffel übersprungen ({total_episodes} Episoden)")

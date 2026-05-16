@@ -424,7 +424,7 @@ INDEX_HTML = """<!DOCTYPE html>
         try {
           const r = await api('/api/items/' + encodeURIComponent(item.id) + '/download', {
             method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ candidate_index: 0 })
+            body: JSON.stringify({ candidate_index: 0, force_staffel: true })
           });
           show('Download: ' + (r.ok ? 'OK (' + r.code + ')' : 'Fehler (' + r.code + ')'), r.ok ? false : true);
           refreshHistoryIfOpen();
@@ -676,15 +676,18 @@ def create_app(
         except Exception:
             data = {}
         ci = int(data.get("candidate_index", 0))
+        force_staffel = bool(data.get("force_staffel"))
         args = process_args_factory()
         wl_items = list_items(wishlist_path)
         title_dl = next((i.title for i in wl_items if i.id == item_id), item_id)
+        serien_override = "staffel" if force_staffel else None
         ok, code = process_one_wishlist_item(
             wishlist_path,
             item_id,
             args,
             candidate_index=ci,
             remove_on_success=True,
+            serien_download_override=serien_override,
         )
         return {"ok": ok, "code": code}
 

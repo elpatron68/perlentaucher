@@ -127,6 +127,7 @@ class WishlistDownloadOneItemThread(QThread):
         item_id: str,
         args_obj: object,
         candidate_index: int = 0,
+        serien_download_override: Optional[str] = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -134,6 +135,7 @@ class WishlistDownloadOneItemThread(QThread):
         self._item_id = item_id
         self._args_obj = args_obj
         self._candidate_index = candidate_index
+        self._serien_download_override = serien_download_override
 
     def run(self):
         from src.wishlist_core import process_one_wishlist_item
@@ -145,6 +147,7 @@ class WishlistDownloadOneItemThread(QThread):
                 self._args_obj,
                 candidate_index=self._candidate_index,
                 remove_on_success=True,
+                serien_download_override=self._serien_download_override,
             )
         except Exception as ex:
             logging.warning("Wishlist-Einzeldownload fehlgeschlagen: %s", ex, exc_info=True)
@@ -334,7 +337,7 @@ class WishlistPanel(QWidget):
                 QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.Yes:
-                self._start_download_one_item(item_id, 0)
+                self._start_download_one_item(item_id, 0, serien_download_override="staffel")
             else:
                 QMessageBox.information(
                     self,
@@ -405,12 +408,21 @@ class WishlistPanel(QWidget):
 
         self._start_download_one_item(item_id, cand_idx)
 
-    def _start_download_one_item(self, item_id: str, candidate_index: int):
+    def _start_download_one_item(
+        self,
+        item_id: str,
+        candidate_index: int,
+        serien_download_override: Optional[str] = None,
+    ):
         cfg = self._get_config()
         path = wishlist_path_from_config(cfg)
         args_obj = self._build_process_args(cfg)
         self._download_one_thread = WishlistDownloadOneItemThread(
-            path, item_id, args_obj, candidate_index
+            path,
+            item_id,
+            args_obj,
+            candidate_index,
+            serien_download_override=serien_download_override,
         )
         self._download_one_thread.done.connect(self._on_download_one_item_done)
         self._download_one_thread.start()
