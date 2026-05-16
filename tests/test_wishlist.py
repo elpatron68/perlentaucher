@@ -299,6 +299,19 @@ def test_process_wishlist_series_staffel_one_episode(tmp_path):
         assert load_wishlist(p)["items"] == []
 
 
+def test_process_one_staffel_override_uses_staffel_path(tmp_path):
+    p = str(tmp_path / "wl.json")
+    it = add_item(p, "SerieX", None, "series")
+    args = _args_base(tmp_path, serien_download="erste")
+    with patch.object(wc, "_process_series_staffel", return_value=(True, "success")) as mock_staffel:
+        ok, code = process_one_wishlist_item(
+            p, it.id, args, serien_download_override="staffel", remove_on_success=False
+        )
+    mock_staffel.assert_called_once()
+    assert ok is True
+    assert code == "success"
+
+
 def test_process_one_wishlist_item_not_found_item(tmp_path):
     p = str(tmp_path / "wl.json")
     save_wishlist(p, {"version": 1, "items": []})

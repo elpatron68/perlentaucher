@@ -2237,6 +2237,75 @@ def should_use_unknown_episode_fallback(episodes_dict: Dict[Tuple[int, int], Tup
     return True
 
 
+def pick_best_series_episodes_per_slot(
+    episodes: List[Dict],
+    series_title: str,
+    prefer_language: str = "deutsch",
+    prefer_audio_desc: str = "egal",
+    search_year: Optional[int] = None,
+    metadata: Optional[Dict] = None,
+) -> List[Tuple[int, int, Dict]]:
+    """
+    Wählt pro (Staffel, Episode) die beste Mediathek-Fassung (Sprache, Audiodeskription, Scoring).
+    Gibt sortierte Liste (season, episode_num, episode_data) zurück.
+    """
+    meta = metadata or {}
+    episodes_dict: Dict[Tuple[int, int], Tuple[float, Dict]] = {}
+    episodes_without_info: List[Dict] = []
+
+    for episode_data in episodes:
+        season, episode_num = extract_episode_info(episode_data, series_title)
+        if season is None or episode_num is None:
+            episodes_without_info.append(episode_data)
+            continue
+        try:
+            score = score_movie(
+                episode_data,
+                prefer_language,
+                prefer_audio_desc,
+                search_title=series_title,
+                search_year=search_year,
+                metadata=meta,
+                use_series_listing_similarity=True,
+            )
+        except Exception as e:
+            logging.debug(f"Fehler beim Bewerten einer Episode für '{series_title}': {e}")
+            score = 0.0
+        episode_key = (season, episode_num)
+        if episode_key not in episodes_dict or score > episodes_dict[episode_key][0]:
+            episodes_dict[episode_key] = (score, episode_data)
+
+    if episodes_without_info and should_use_unknown_episode_fallback(episodes_dict):
+        max_ep_s1 = max((e for (s, e) in episodes_dict if s == 1), default=0)
+        for i, episode_data in enumerate(episodes_without_info):
+            fallback_ep = max_ep_s1 + 1 + i
+            try:
+                score = score_movie(
+                    episode_data,
+                    prefer_language,
+                    prefer_audio_desc,
+                    search_title=series_title,
+                    search_year=search_year,
+                    metadata=meta,
+                    use_series_listing_similarity=True,
+                )
+            except Exception as e:
+                logging.debug(f"Fehler beim Bewerten einer Episode (Fallback): {e}")
+                score = 0.0
+            key = (1, fallback_ep)
+            if key not in episodes_dict or score > episodes_dict[key][0]:
+                episodes_dict[key] = (score, episode_data)
+    elif episodes_without_info:
+        logging.info(
+            "%d Episoden ohne Staffel/Episode-Info verworfen (genug valide Episoden vorhanden)",
+            len(episodes_without_info),
+        )
+
+    out = [(s, e, data) for (s, e), (_score, data) in episodes_dict.items()]
+    out.sort(key=lambda x: (x[0] or 0, x[1] or 0))
+    return out
+
+
 def _first_title_segment_norm(title: str) -> str:
     """Erstes inhaltstragendes Segment (vor Trenner / vor Folge-Nennung), normalisiert."""
     if not title:

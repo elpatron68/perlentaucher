@@ -930,6 +930,30 @@ class TestSenderReferenceHelpers:
         assert core._sender_reference_match_bonus(movie_data, sender_ref) > 0
 
 
+class TestPickBestSeriesEpisodesPerSlot:
+    def test_prefers_higher_scored_variant_per_episode(self):
+        de = {"title": "Show (1/6)", "topic": "Show"}
+        ov = {"title": "Show (1/6) (Originalversion)", "topic": "Show"}
+
+        def fake_score(movie_data, prefer_language, prefer_audio_desc, **kwargs):
+            t = movie_data.get("title", "")
+            if prefer_language == "deutsch" and "Original" in t:
+                return 1.0
+            if prefer_language == "deutsch":
+                return 100.0
+            return 50.0
+
+        with patch.object(core, "extract_episode_info", return_value=(1, 1)), patch.object(
+            core, "score_movie", side_effect=fake_score
+        ):
+            slots = core.pick_best_series_episodes_per_slot(
+                [ov, de], "Show", prefer_language="deutsch", prefer_audio_desc="ohne"
+            )
+        assert len(slots) == 1
+        assert slots[0][1] == 1
+        assert "Original" not in (slots[0][2].get("title") or "")
+
+
 class TestUnknownEpisodeFallbackPolicy:
     def test_fallback_allowed_when_no_parsed_episodes(self):
         assert core.should_use_unknown_episode_fallback({}) is True
