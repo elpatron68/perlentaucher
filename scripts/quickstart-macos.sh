@@ -23,11 +23,11 @@ check_python() {
         PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
         PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
         
-        if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 7 ]; then
+        if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 8 ]; then
             echo -e "${GREEN}✓${NC} Python $PYTHON_VERSION gefunden"
             return 0
         else
-            echo -e "${RED}✗${NC} Python $PYTHON_VERSION gefunden, aber Version 3.7+ erforderlich"
+            echo -e "${RED}✗${NC} Python $PYTHON_VERSION gefunden, aber Version 3.8+ erforderlich"
             return 1
         fi
     else
@@ -38,7 +38,7 @@ check_python() {
 # Funktion: Python-Installationshinweise anzeigen
 show_python_instructions() {
     echo ""
-    echo -e "${YELLOW}Python 3.7+ ist nicht installiert.${NC}"
+    echo -e "${YELLOW}Python 3.8+ ist nicht installiert.${NC}"
     echo ""
     echo "Installation auf macOS:"
     echo ""

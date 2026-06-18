@@ -25,7 +25,7 @@ Die Quickstart-Scripts führen dich interaktiv durch die Installation und Konfig
 3. Folge den Anweisungen auf dem Bildschirm
 
 **Voraussetzungen:**
-- Python 3.7+ (wird beim Start geprüft)
+- Python 3.8+ (wird beim Start geprüft)
 - pip (wird automatisch installiert falls möglich)
 
 **Installation von Python (falls nicht vorhanden):**
@@ -61,7 +61,7 @@ Die Quickstart-Scripts führen dich interaktiv durch die Installation und Konfig
 3. Folge den Anweisungen auf dem Bildschirm
 
 **Voraussetzungen:**
-- Python 3.7+ (wird beim Start geprüft)
+- Python 3.8+ (wird beim Start geprüft)
 - pip (wird automatisch installiert falls möglich)
 
 **Installation von Python (falls nicht vorhanden):**
@@ -95,7 +95,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
 **Voraussetzungen:**
-- Python 3.7+ (wird beim Start geprüft)
+- Python 3.8+ (wird beim Start geprüft)
 - pip (wird automatisch installiert falls möglich)
 
 **Installation von Python (falls nicht vorhanden):**
