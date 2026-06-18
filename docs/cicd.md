@@ -15,7 +15,7 @@ Das Projekt verwendet Codeberg Actions (Forgejo Actions) für automatische Tests
 
 Codeberg bietet keine gehosteten Runner. Du musst einen selbstgehosteten Runner einrichten:
 
-1. Lade den [Forgejo Runner](https://codeberg.org/forgejo/runner/releases) herunter
+1. Lade den [Forgejo Runner](https://code.forgejo.org/forgejo/runner/releases) herunter
 2. Registriere den Runner mit dem Label `self-hosted`:
    ```bash
    ./forgejo-runner register --name myrunner --labels self-hosted
