@@ -64,11 +64,11 @@ function Test-Python {
                 $major = [int]$versionParts[0]
                 $minor = [int]$versionParts[1]
                 
-                if ($major -eq 3 -and $minor -ge 7) {
+                if ($major -eq 3 -and $minor -ge 8) {
                     Write-Host "✓ Python $versionString gefunden" -ForegroundColor Green
                     return $true
                 } else {
-                    Write-Host "✗ Python $versionString gefunden, aber Version 3.7+ erforderlich" -ForegroundColor Red
+                    Write-Host "✗ Python $versionString gefunden, aber Version 3.8+ erforderlich" -ForegroundColor Red
                     return $false
                 }
             }
@@ -83,7 +83,7 @@ function Test-Python {
 # Funktion: Python-Installationshinweise anzeigen
 function Show-PythonInstructions {
     Write-Host ""
-    Write-Host "Python 3.7+ ist nicht installiert." -ForegroundColor Yellow
+    Write-Host "Python 3.8+ ist nicht installiert." -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Installation auf Windows:"
     Write-Host ""
