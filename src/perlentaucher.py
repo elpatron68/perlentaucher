@@ -2996,6 +2996,9 @@ def build_download_filepath(movie_data, download_dir, content_title: str, metada
         if provider_id:
             filename_parts.append(provider_id)
         base_filename = " ".join(filename_parts)
+
+    if create_dirs:
+        os.makedirs(target_dir, exist_ok=True)
     
     # Try to guess extension (HLS: Ausgabe nach Remux typischerweise mp4)
     ext = "mp4"
