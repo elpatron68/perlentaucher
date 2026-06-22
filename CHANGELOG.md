@@ -6,14 +6,106 @@ Basierend auf dem Git-Verlauf des Repos [Perlentaucher](https://codeberg.org/elp
 
 ## [Unreleased]
 
+---
+
+## [0.1.55] – 2026-06-22
+
+Vergleich: `v0.1.54` … `v0.1.55` (lokal: `git log v0.1.54^{}..v0.1.55^{}`).
+
+### Sonstiges
+
+- Keine funktionalen Änderungen gegenüber 0.1.54; nur Version-Bump (`486db2f`).
+
+---
+
+## [0.1.54] – 2026-06-22
+
+Vergleich: `v0.1.53` … `v0.1.54` (lokal: `git log v0.1.53^{}..v0.1.54^{}`).
+
+### GUI / Downloads
+
+- Beim ersten Download aus der GUI wurde das Zielverzeichnis (`downloads`) nicht angelegt; der erste Versuch schlug fehl, der zweite klappte. `build_download_filepath` erstellt das Verzeichnis jetzt bei Bedarf (`4878d0a`, PR #8).
+
+---
+
+## [0.1.53] – 2026-06-22
+
+Vergleich: `v0.1.52` … `v0.1.53` (lokal: `git log v0.1.52^{}..v0.1.53^{}`).
+
+### Dokumentation & Quickstart
+
+- Minimale Pythonversion in Quickstart-Skripten und Doku auf **3.8+** angehoben (uvicorn `>=0.23.0` unterstützt Python 3.7 nicht mehr) (`1ae2d97`, PR #7).
+- Forgejo-Runner-Download-Link in `docs/cicd.md` auf `code.forgejo.org` aktualisiert (`44d4b98`, PR #6).
+- Mermaid-Syntaxfehler im Programmablauf-Flowchart behoben (`b8802ce`, PR #6).
+
+### CI
+
+- `build-gui.yml`: GitHub Actions auf Node.js-24-kompatible Versionen (`upload-artifact` v6, `download-artifact` v7, `action-gh-release` v3) (`9d4ba2c`).
+
+---
+
+## [0.1.52] – 2026-05-16
+
+Vergleich: `v0.1.51` … `v0.1.52` (lokal: `git log v0.1.51^{}..v0.1.52^{}`).
+
+### Mediathek & Serien
+
+- MVW-Titelsuche robuster: kompakte Buchstabenfolgen, Untertitel nach Gedankenstrich, API zuerst Titelfeld (`d16e7e5`).
+
 ### GUI
 
-- RSS-Initialladen: Standard für `resolve_sender_link_fetch` auf `false` gesetzt, damit beim Start keine blockierenden Artikel-HTTP-Requests im GUI-Thread mehr ausgeführt werden (Fix für ~30s Hänger bei manchen Umgebungen).
-- GUI-RSS-Laden nutzt `fetch_article=False` nun unabhängig von bestehender Benutzer-Konfiguration, damit alte Config-Werte (`resolve_sender_link_fetch=true`) den Start nicht weiter blockieren.
+- Externes Öffnen von URLs/Ordnern ohne PyInstaller-`LD_LIBRARY_PATH`-Probleme unter Linux/macOS (`safe_desktop_open`) (`d16e7e5`).
+
+### Build & Infrastruktur
+
+- Linux-GUI-Build: projektweites `.venv` (PEP 668); `build_gui_linux.sh` ausführbar (`ac0eb72`, `c75d1ec`).
+- `.gitignore`: Log-Dateien, VSCode-Einstellungen, `.cursor/` (`60bc8d6`, `ac0eb72`).
+
+---
+
+## [0.1.51] – 2026-05-16
+
+Vergleich: `v0.1.50` … `v0.1.51` (lokal: `git log v0.1.50^{}..v0.1.51^{}`).
+
+### Mediathek & Serien
+
+- Serien-Suche: MVW-Feed und API parallel; Ein-Wort-Titel strenger gefiltert, um Verwechslungen zu vermeiden (`0c2fe7d`).
+
+### Wishlist & Staffel-Download
+
+- Staffel-Download: pro Episode beste Variante nach Sprache/AD-Einstellungen; Staffel-Modus unabhängig von `serien_download=erste` (`5abed11`).
+
+---
+
+## [0.1.50] – 2026-05-07
+
+Vergleich: `v0.1.49` … `v0.1.50` (lokal: `git log v0.1.49^{}..v0.1.50^{}`).
+
+### GUI
+
+- RSS-Laden: `fetch_article=False` fest verdrahtet, damit alte Config-Werte (`resolve_sender_link_fetch=true`) den Start nicht erneut blockieren (`cc9a165`).
+
+---
+
+## [0.1.49] – 2026-05-07
+
+Vergleich: `v0.1.48` … `v0.1.49` (lokal: `git log v0.1.48^{}..v0.1.49^{}`).
+
+### GUI
+
+- RSS-Initialladen: Standard für `resolve_sender_link_fetch` auf `false`; kein synchrones Artikelfetching im GUI-Thread mehr (Fix für ~30s Hänger bei Timeout) (`015b61a`).
+
+---
+
+## [0.1.48] – 2026-05-02
+
+Vergleich: `v0.1.47` … `v0.1.48` (lokal: `git log v0.1.47^{}..v0.1.48^{}`).
 
 ### Infrastruktur
 
-- `release.ps1`: Schalter `-SkipRelease` überspringt GitHub-Release (`gh`) und Codeberg-Release (API); Version bump, Tag, Push und Docker-Build laufen weiter.
+- `release.ps1`: Schalter `-SkipRelease` überspringt GitHub-Release (`gh`) und Codeberg-Release (API); Version bump, Tag, Push und Docker-Build laufen weiter (`63e6c8b`).
+- `release.ps1`: Einrückung in SkipRelease-Zweigen vereinheitlicht (`e3cb99e`).
+- CHANGELOG versioniert; Unreleased-Einträge für `-SkipRelease` dokumentiert (`6cfb55b`).
 
 ---
 
@@ -69,8 +161,16 @@ Vergleich: `v0.1.46` … `v0.1.47` (lokal: `git log v0.1.46^{}..v0.1.47^{}`).
 
 ## Referenz
 
-| Tag      | Commit (annotiert `^{}`) |
-|----------|---------------------------|
+| Tag       | Commit (annotiert `^{}`) |
+|-----------|---------------------------|
+| `v0.1.55` | Version bump 0.1.55 (`486db2f`) |
+| `v0.1.54` | Version bump 0.1.54 (`8cf5d75`) |
+| `v0.1.53` | Version bump 0.1.53 (`6b92361`) |
+| `v0.1.52` | Version bump 0.1.52 (`70cbed2`) |
+| `v0.1.51` | Version bump 0.1.51 (`275b28e`) |
+| `v0.1.50` | Version bump 0.1.50 (`802b1e6`) |
+| `v0.1.49` | Version bump 0.1.49 (`32f0c18`) |
+| `v0.1.48` | Version bump 0.1.48 (`e4d3b69`) |
 | `v0.1.47` | Version bump 0.1.47 (`406db8c`) |
 
-Links: [Commits zu Tag v0.1.47](https://codeberg.org/elpatron/Perlentaucher/commits/tag/v0.1.47)
+Links: [Commits zu Tag v0.1.55](https://codeberg.org/elpatron/Perlentaucher/commits/tag/v0.1.55)
