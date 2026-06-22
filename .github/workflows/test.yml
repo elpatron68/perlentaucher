@@ -6,14 +6,12 @@ on:
   pull_request:
     branches: [ main, master ]
 
-# Neuere Action-Versionen nutzen Node.js 24 (statt deprecated Node 20 auf den Runnern).
-# Self-hosted: GitHub Actions Runner >= 2.327.1 erforderlich (siehe actions/checkout v5).
 jobs:
   test:
-    # WICHTIG: Du musst einen Runner mit dem Label "self-hosted" oder "linux" registrieren
-    # Siehe README für Anleitung zur Runner-Einrichtung
-    runs-on: self-hosted
+    name: Run Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
 
@@ -24,6 +22,7 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
+        cache: 'pip'
 
     - name: Install dependencies
       run: |
@@ -40,13 +39,12 @@ jobs:
 
     - name: Check Python syntax
       run: |
-        python -m py_compile perlentaucher.py
+        python -m py_compile src/perlentaucher.py
 
     - name: Test script help
       run: |
-        python perlentaucher.py --help
+        python src/perlentaucher.py --help
 
     - name: Test script with dry-run (no actual downloads)
       run: |
-        python perlentaucher.py --limit 1 --loglevel DEBUG --download-dir /tmp/test_downloads || true
-
+        python src/perlentaucher.py --limit 1 --loglevel DEBUG --download-dir /tmp/test_downloads || true
